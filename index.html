@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#07151f" id="themeColor">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Rotta Nautica</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* Layout: carta a tutto schermo, strumenti in alto (HUD), pannelli a scorrimento dal basso. */
+:root{
+  --bg:#07151f; --panel:#0d2230; --panel2:#133244; --line:#245068;
+  --fg:#e9f3f7; --mut:#8fb0bf; --acc:#3fd0d9; --route:#e254ff; --track:#ff9f1c;
+  --ok:#4ade80; --warn:#fbbf24; --bad:#ff4d4d;
+  --mono:ui-monospace,"SF Mono","Roboto Mono",Menlo,Consolas,monospace;
+}
+body.night{
+  --bg:#140404; --panel:#200808; --panel2:#2e0f0f; --line:#5a1c1c;
+  --fg:#ff8f84; --mut:#b34a44; --acc:#ff6b5e; --route:#ff6b5e; --track:#ff9f1c;
+  --ok:#ff8f84; --warn:#ffb08a; --bad:#ff3b30;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);
+  font:15px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  overscroll-behavior:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#map{position:fixed;inset:0;background:#aad3df}
+body.night .leaflet-tile-pane{filter:brightness(.55) sepia(1) hue-rotate(-40deg) saturate(3)}
+.leaflet-bottom{bottom:calc(56px + env(safe-area-inset-bottom,0px))}
+.leaflet-control-attribution{font-size:9px}
+
+button{font:inherit;color:var(--fg);background:var(--panel2);border:1px solid var(--line);
+  border-radius:10px;padding:8px 12px;min-height:44px;cursor:pointer}
+button:active{filter:brightness(1.3)}
+button.primary{background:var(--acc);border-color:var(--acc);color:#04222a;font-weight:700}
+body.night button.primary{color:#200808}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+input,select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);
+  border-radius:8px;padding:8px 10px;min-height:40px;max-width:100%}
+input[type=number]{width:5.5em}
+input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accent-color:var(--acc)}
+
+/* HUD */
+#hud{position:fixed;left:0;right:0;top:0;z-index:900;display:grid;grid-template-columns:auto 1fr;gap:10px;
+  padding:calc(env(safe-area-inset-top,0px) + 6px) max(10px,env(safe-area-inset-right,0px)) 8px max(10px,env(safe-area-inset-left,0px));
+  background:color-mix(in srgb,var(--bg) 93%,transparent);border-bottom:1px solid var(--line)}
+.sog{display:flex;flex-direction:column;justify-content:center;min-width:104px}
+.sog b{font:700 52px/1 var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-1px}
+.sog .u{font-size:12px;color:var(--mut)}
+.lbl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.cells{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 8px;min-width:0}
+.c{min-width:0}
+.c b{display:block;font:600 19px/1.2 var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+#alarms{position:fixed;z-index:890;left:max(10px,env(safe-area-inset-left,0px));right:76px;
+  top:calc(env(safe-area-inset-top,0px) + 100px);display:flex;flex-direction:column;gap:6px}
+.al{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 8px 8px 12px;border-radius:10px;
+  font-weight:600;background:var(--panel);border:2px solid var(--warn);color:var(--fg)}
+.al.bad{border-color:var(--bad);background:var(--bad);color:#fff;animation:pulse 1s infinite alternate}
+.al.info{border-color:var(--ok)}
+.al button{min-height:34px;padding:2px 10px;background:transparent;color:inherit;border-color:currentColor}
+@keyframes pulse{to{filter:brightness(1.35)}}
+@media (prefers-reduced-motion:reduce){.al.bad{animation:none}}
+
+#fabs{position:fixed;z-index:890;right:max(10px,env(safe-area-inset-right,0px));
+  top:calc(env(safe-area-inset-top,0px) + 100px);display:flex;flex-direction:column;gap:8px}
+.fab{width:58px;min-height:46px;padding:4px 2px;font-size:11px;font-weight:700;letter-spacing:.04em;
+  background:color-mix(in srgb,var(--panel) 94%,transparent)}
+.fab.on{border-color:var(--acc);color:var(--acc)}
+.fab.ok{border-color:var(--ok);color:var(--ok)}
+.fab.search{border-color:var(--warn);color:var(--warn)}
+.fab.mob{background:var(--bad);border-color:var(--bad);color:#fff}
+
+#pickBar{position:fixed;z-index:940;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));
+  bottom:calc(66px + env(safe-area-inset-bottom,0px));display:flex;justify-content:space-between;align-items:center;gap:8px;
+  background:var(--acc);color:#04222a;padding:8px 8px 8px 14px;border-radius:12px;font-weight:700}
+#pickBar button{background:#04222a;color:var(--fg);border-color:#04222a;min-height:38px}
+#toast{position:fixed;z-index:970;left:50%;transform:translateX(-50%);
+  bottom:calc(130px + env(safe-area-inset-bottom,0px));max-width:88vw;background:var(--panel2);border:1px solid var(--line);
+  padding:9px 14px;border-radius:10px;text-align:center}
+
+#tabs{position:fixed;z-index:960;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(4,1fr);
+  padding:0 max(0px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(0px,env(safe-area-inset-left,0px));
+  background:var(--panel);border-top:1px solid var(--line)}
+#tabs button{border:0;border-radius:0;background:transparent;min-height:56px;font-weight:600;color:var(--mut)}
+#tabs button.on{color:var(--acc);box-shadow:inset 0 3px 0 var(--acc)}
+
+#sheet{position:fixed;z-index:950;left:0;right:0;bottom:calc(56px + env(safe-area-inset-bottom,0px));max-height:56vh;overflow-y:auto;
+  background:var(--panel);border-top:1px solid var(--line);border-radius:14px 14px 0 0;
+  padding:12px max(14px,env(safe-area-inset-right,0px)) 16px max(14px,env(safe-area-inset-left,0px));
+  box-shadow:0 -6px 24px rgba(0,0,0,.35)}
+.pane{display:flex;flex-direction:column;gap:10px}
+.pane h4{margin:8px 0 0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.pt{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.pt label{width:100%;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.pt .val{flex:1 1 12em;font:14px var(--mono);min-width:0;overflow-wrap:anywhere}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.btns>*{flex:1 1 8em}
+.btns.big button{min-height:50px}
+.search{display:flex;gap:8px}
+.search input{flex:1;min-width:0}
+.leg,.row{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.leg b,.row b{font-weight:600;min-width:0;overflow-wrap:anywhere}
+.leg span,.row span{font-family:var(--mono);font-size:13px}
+.leg button,.row button{min-height:34px;padding:2px 10px}
+.sum{font-family:var(--mono);font-size:14px;display:flex;flex-wrap:wrap;gap:4px 16px}
+.res{padding:8px 0;border-bottom:1px solid var(--line)}
+.res p{margin:0 0 6px;font-size:13px}
+.res .btns button{min-height:36px;padding:2px 8px;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
+.grid .g{background:var(--panel2);border-radius:10px;padding:8px 10px;min-width:0}
+.grid .g.w{grid-column:1/-1}
+.grid .g b{display:block;font:600 18px/1.25 var(--mono);overflow-wrap:anywhere}
+.form{display:flex;flex-direction:column;gap:8px}
+.form label,.inl,.chk{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.form label{justify-content:space-between}
+.chk{padding:4px 0}
+.seg{display:flex;gap:16px}
+.seg label{display:flex;gap:8px;align-items:center}
+.note{margin:0;font-size:12.5px;color:var(--mut)}
+.note.warn{color:var(--warn)}
+.bad{color:var(--bad)}.okc{color:var(--ok)}.wr{color:var(--warn)}
+
+/* Marker sulla carta */
+.wp{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:700 12px var(--mono);
+  color:#fff;background:#7b1fa2;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.wp.start{background:#2e9e4f}.wp.dest{background:#d32f2f}
+.hz{width:24px;height:24px;display:grid;place-items:center;background:#d32f2f;color:#fff;font:700 15px/1 system-ui;
+  border:2px solid #fff;transform:rotate(45deg);border-radius:4px}
+.hz i{transform:rotate(-45deg);font-style:normal}
+.mobm{width:30px;height:30px;border-radius:50%;background:var(--bad);color:#fff;display:grid;place-items:center;font:700 11px var(--mono);border:3px solid #fff}
+#boat{transition:transform .3s linear;filter:drop-shadow(0 1px 3px rgba(0,0,0,.6))}
+.ctx{display:flex;flex-direction:column;gap:6px}
+.ctx button{min-height:40px}
+</style>
+</head>
+<body>
+<div id="map" aria-label="Carta nautica"></div>
+
+<header id="hud">
+  <div class="sog"><span class="lbl">SOG</span><b id="sog">0.0</b><span class="u">nodi</span></div>
+  <div class="cells">
+    <div class="c"><span class="lbl">COG</span><b id="cog">---°</b></div>
+    <div class="c"><span class="lbl" id="tgtLbl">BRG</span><b id="brg">---°</b></div>
+    <div class="c"><span class="lbl">DTW</span><b id="dtw">--</b></div>
+    <div class="c"><span class="lbl">XTE</span><b id="xte">--</b></div>
+    <div class="c"><span class="lbl">ETA</span><b id="eta">--:--</b></div>
+    <div class="c"><span class="lbl">VMG kn</span><b id="vmg">--</b></div>
+  </div>
+</header>
+
+<div id="alarms" aria-live="assertive"></div>
+
+<div id="fabs">
+  <button id="bGps" class="fab" aria-label="Attiva o disattiva il GPS">GPS</button>
+  <button id="bFollow" class="fab" aria-label="Centra la carta sulla barca">SEGUI</button>
+  <button id="bNight" class="fab" aria-label="Modalità notte">NOTTE</button>
+  <button id="bMute" class="fab" aria-label="Audio allarmi">AUDIO</button>
+  <button id="bMob" class="fab mob" aria-label="Uomo in mare">MOB</button>
+</div>
+
+<div id="pickBar" hidden><span id="pickTxt"></span><button id="pickDone">Fine</button></div>
+<div id="toast" hidden></div>
+
+<section id="sheet" hidden>
+  <div class="pane" id="p-rotta" hidden>
+    <div class="pt"><label>Partenza</label><span class="val" id="tStart">non impostata</span>
+      <div class="btns"><button data-act="startGps">Posizione GPS</button><button data-act="pickStart">Sulla carta</button></div></div>
+    <div class="pt"><label>Destinazione</label><span class="val" id="tDest">non impostata</span>
+      <div class="btns"><button data-act="pickDest">Sulla carta</button><button data-act="pickVia">+ Tappa</button></div></div>
+    <form id="fSearch" class="search"><input id="q" type="search" placeholder="Cerca porto, luogo o lat, lon" enterkeyhint="search" autocomplete="off"><button>Cerca</button></form>
+    <div id="results"></div>
+    <div id="legs"></div>
+    <div class="sum" id="sum"></div>
+    <label class="inl">Velocità prevista <input id="sPlan" type="number" min="0.5" max="40" step="0.5"> nodi</label>
+    <div class="btns big"><button id="bGo" class="primary">Avvia navigazione</button><button id="bSim">Simula</button></div>
+    <div class="btns"><button data-act="reverse">Inverti rotta</button><button data-act="clear">Cancella rotta</button></div>
+    <h4>Rotte salvate</h4>
+    <form id="fSave" class="search"><input id="rName" placeholder="Nome della rotta" autocomplete="off"><button>Salva</button></form>
+    <div id="saved"></div>
+    <div class="btns"><button data-act="gpxOut">Esporta GPX</button><button data-act="gpxIn">Importa GPX</button></div>
+    <input id="fileIn" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" hidden>
+  </div>
+
+  <div class="pane" id="p-dati" hidden>
+    <div id="grid" class="grid"></div>
+    <p class="note">XTE: D = sei a dritta della rotta, S = a sinistra. DTW = distanza al punto successivo, VMG = velocità utile verso il punto.</p>
+  </div>
+
+  <div class="pane" id="p-avvisi" hidden>
+    <h4>Soglie di allarme</h4>
+    <div class="form">
+      <label>Fuori rotta (XTE) <span><input id="sXte" type="number" step="0.01" min="0.01"> nm</span></label>
+      <label>Raggio di arrivo punto <span><input id="sArr" type="number" step="5" min="10"> m</span></label>
+      <label>Velocità massima (0 = off) <span><input id="sSpd" type="number" step="0.5" min="0"> nodi</span></label>
+      <label>Raffica di vento (0 = off) <span><input id="sWind" type="number" step="1" min="0"> nodi</span></label>
+      <label>Raggio di sicurezza ostacoli <span><input id="sHz" type="number" step="25" min="25"> m</span></label>
+    </div>
+    <h4>Allarme ancora</h4>
+    <div class="form"><label>Raggio di deriva <span><input id="sAnc" type="number" step="5" min="10"> m</span></label></div>
+    <div class="btns"><button data-act="anchor" id="bAnchor">Getta ancora qui</button></div>
+    <h4>Secche e ostacoli</h4>
+    <div class="btns"><select id="hType"><option>Secca</option><option>Scoglio</option><option>Relitto</option><option>Ostacolo</option></select><button data-act="pickHazard">Segna sulla carta</button></div>
+    <div id="hList"></div>
+    <p class="note">Le secche segnate qui generano un allarme se la prua le raggiunge entro 5 minuti o se la rotta ci passa vicino. Tieni premuto sulla carta per un menu rapido.</p>
+  </div>
+
+  <div class="pane" id="p-mappa" hidden>
+    <div class="seg"><label><input type="radio" name="base" value="osm"> Carta</label><label><input type="radio" name="base" value="sat"> Satellite</label></div>
+    <label class="chk"><input type="checkbox" id="lSea"> Segnali nautici (OpenSeaMap)</label>
+    <label class="chk"><input type="checkbox" id="lBathy"> Profondità (EMODnet, indicativa)</label>
+    <label class="chk"><input type="checkbox" id="lTrack"> Mostra la traccia percorsa</label>
+    <div class="btns"><button data-act="trackClear">Azzera traccia e statistiche</button><button data-act="trackGpx">Esporta traccia GPX</button></div>
+    <p class="note">Le zone di carta già visualizzate restano disponibili anche senza rete. Prima di partire scorri la carta sulla zona di navigazione, a vari livelli di zoom.</p>
+    <p class="note warn">Ausilio alla navigazione. Non sostituisce carte ufficiali, strumenti di bordo, bollettini meteo e buona condotta marinaresca. Le profondità e le secche mostrate possono essere incomplete.</p>
+  </div>
+</section>
+
+<nav id="tabs">
+  <button data-t="rotta">Rotta</button>
+  <button data-t="dati">Dati</button>
+  <button data-t="avvisi">Avvisi</button>
+  <button data-t="mappa">Carta</button>
+</nav>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
