@@ -6,7 +6,7 @@
    NB: la carta non conosce le profondità. La rotta va sempre verificata. */
 (function (root) {
   const TILE = 256, RAD = Math.PI / 180, DEG = 180 / Math.PI, SQ2 = Math.SQRT2;
-  const CFG = { maxTiles: 72, closeR: 2, clear: 8, clearK: 3, snapR: 300 };
+  const CFG = { maxTiles: 90, closeR: 2, clear: 8, clearK: 3, snapR: 300 };
 
   const lon2px = (lng, z) => (lng + 180) / 360 * TILE * 2 ** z;
   const lat2px = (lat, z) => { const s = Math.sin(lat * RAD); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * TILE * 2 ** z; };
@@ -17,7 +17,7 @@
   function tileBox(pts) {
     let la0 = Infinity, la1 = -Infinity, lo0 = Infinity, lo1 = -Infinity;
     pts.forEach(p => { la0 = Math.min(la0, p.lat); la1 = Math.max(la1, p.lat); lo0 = Math.min(lo0, p.lng); lo1 = Math.max(lo1, p.lng); });
-    const pLat = Math.max((la1 - la0) * 0.3, 0.012), pLng = Math.max((lo1 - lo0) * 0.3, 0.018);
+    const pLat = Math.max((la1 - la0) * 0.4, 0.02), pLng = Math.max((lo1 - lo0) * 0.4, 0.03);
     la0 -= pLat; la1 += pLat; lo0 -= pLng; lo1 += pLng;
     for (let z = 15; z >= 13; z--) {
       const tx0 = Math.floor(lon2px(lo0, z) / TILE), tx1 = Math.floor(lon2px(lo1, z) / TILE);
@@ -27,13 +27,47 @@
     return null;
   }
 
-  /* RGBA -> maschera acqua (1 = acqua). */
+  /* RGBA -> maschera acqua (1 = acqua). Riconosce l'azzurro dell'acqua (#aad3df) anche sui bordi
+     sfumati dei fiumi e dei canali stretti, e le scritte blu disegnate sull'acqua. */
   function waterMask(rgba, n) {
     const w = new Uint8Array(n);
-    for (let i = 0, j = 0; i < n; i++, j += 4)
-      w[i] = Math.abs(rgba[j] - 170) < 16 && Math.abs(rgba[j + 1] - 211) < 16 && Math.abs(rgba[j + 2] - 223) < 16 ? 1 : 0;
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      const r = rgba[j], g = rgba[j + 1], b = rgba[j + 2];
+      w[i] = b - r >= 18 && g - r >= 10 && b >= 150 && rgba[j + 3] > 0 ? 1 : 0;
+    }
     return w;
   }
+  /* Disegna sulla maschera le linee dei corsi d'acqua (fiumi, canali), larghe 3 pixel:
+     così restano continue anche sotto i ponti e dove la carta non le disegna. */
+  function drawLines(w, W, H, box, lines) {
+    const z = box.z, ox = box.tx0 * TILE, oy = box.ty0 * TILE;
+    const dot = (x, y) => {
+      for (let yy = y - 1; yy <= y + 1; yy++) for (let xx = x - 1; xx <= x + 1; xx++)
+        if (xx >= 0 && yy >= 0 && xx < W && yy < H) w[yy * W + xx] = 1;
+    };
+    lines.forEach(line => {
+      for (let k = 1; k < line.length; k++) {
+        let x0 = Math.floor(lon2px(line[k - 1].lng, z) - ox), y0 = Math.floor(lat2px(line[k - 1].lat, z) - oy);
+        const x1 = Math.floor(lon2px(line[k].lng, z) - ox), y1 = Math.floor(lat2px(line[k].lat, z) - oy);
+        if ((x0 < 0 && x1 < 0) || (y0 < 0 && y1 < 0) || (x0 >= W && x1 >= W) || (y0 >= H && y1 >= H)) continue;
+        const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+        let err = dx + dy;
+        for (let guard = 0; guard < 20000; guard++) {
+          dot(x0, y0);
+          if (x0 === x1 && y0 === y1) break;
+          const e2 = 2 * err;
+          if (e2 >= dy) { err += dy; x0 += sx; }
+          if (e2 <= dx) { err += dx; y0 += sy; }
+        }
+      }
+    });
+  }
+  /* Limiti geografici del riquadro di tiles (per scaricare i corsi d'acqua della stessa zona). */
+  const boxBounds = box => ({
+    s: px2lat((box.ty1 + 1) * TILE, box.z), n: px2lat(box.ty0 * TILE, box.z),
+    w: px2lon(box.tx0 * TILE, box.z), e: px2lon((box.tx1 + 1) * TILE, box.z)
+  });
+  const gridBounds = g => [[px2lat(g.oy + g.H, g.z), px2lon(g.ox, g.z)], [px2lat(g.oy, g.z), px2lon(g.ox + g.W, g.z)]];
 
   /* Dilatazione / erosione binaria con finestra quadrata, separabile. */
   function pass(src, out, W, H, r, dil, horiz) {
@@ -87,8 +121,10 @@
     return d;
   }
 
-  function makeGrid(rgba, W, H, box) {
-    const w = close(waterMask(rgba, W * H), W, H, CFG.closeR);
+  function makeGrid(rgba, W, H, box, lines) {
+    const m = waterMask(rgba, W * H);
+    if (box && lines && lines.length) drawLines(m, W, H, box, lines);
+    const w = close(m, W, H, CFG.closeR);
     return { z: box ? box.z : 0, ox: box ? box.tx0 * TILE : 0, oy: box ? box.ty0 * TILE : 0, W, H, d: landDist(w, W, H) };
   }
 
@@ -205,5 +241,5 @@
     return out;
   }
 
-  root.Water = { CFG, TILE, tileBox, makeGrid, snap, snapXY, astar, simplify, cellLL, landDist, close, waterMask };
+  root.Water = { CFG, TILE, tileBox, boxBounds, gridBounds, makeGrid, snap, snapXY, astar, simplify, cellLL, landDist, close, waterMask };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -90,7 +90,7 @@ const S = {
   pos: null, sogS: null, active: false, leg: 1, legFrom: null,
   pick: null, anchor: null, mob: null, wx: null, wxT: 0,
   sim: null, simBackup: null, watch: null, gpsOn: false, lastFix: 0, centered: false,
-  tab: null, results: [], ctx: null, mobTap: 0
+  tab: null, results: [], ctx: null, mobTap: 0, grids: [], waterOn: false
 };
 const wps = () => [S.route.start, ...(S.route.path || S.route.via), S.route.dest].filter(Boolean);
 const userPts = () => [S.route.start, ...S.route.via, S.route.dest].filter(Boolean);
@@ -480,11 +480,26 @@ async function loadGrid(a, b, k, n) {
       autoMsg(`Tratto ${k}/${n}: scarico la carta ${++done}/${nx * ny}`);
     }
   };
-  await Promise.all([0, 1, 2, 3].map(work));
+  const [lines] = await Promise.all([fetchWaterways(box), ...[0, 1, 2, 3].map(work)]);
   if (failed > nx * ny * 0.15) throw new Error('Carta non scaricata: serve la connessione a Internet');
   autoMsg(`Tratto ${k}/${n}: calcolo il percorso…`);
   await new Promise(r => setTimeout(r, 30));
-  return Water.makeGrid(ctx.getImageData(0, 0, W, H).data, W, H, box);
+  return Water.makeGrid(ctx.getImageData(0, 0, W, H).data, W, H, box, lines);
+}
+/* Fiumi e canali da OpenStreetMap (Overpass): tengono continui i corsi d'acqua sotto i ponti
+   e dove la carta li disegna male. Se il servizio non risponde si usa solo la carta. */
+async function fetchWaterways(box) {
+  const b = Water.boxBounds(box), bb = [b.s, b.w, b.n, b.e].map(v => v.toFixed(5)).join(',');
+  const q = `[out:json][timeout:20];way["waterway"~"^(river|canal|fairway|tidal_channel|dock)$"]["tunnel"!="culvert"]["boat"!="no"](${bb});out geom;`;
+  try {
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 20000);
+    const r = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+    clearTimeout(to);
+    if (!r.ok) return [];
+    const j = await r.json();
+    return (j.elements || []).filter(e => e.geometry).map(e => e.geometry.map(p => ({ lat: p.lat, lng: p.lon })));
+  } catch (e) { return []; }
 }
 /* Calcolo automatico: parte da solo quando partenza, tappe o destinazione cambiano.
    Le tappe dell'utente restano in S.route.via; il percorso calcolato va in S.route.path. */
@@ -499,12 +514,14 @@ async function autoRoute() {
   if (w.length < 2) { toast('Imposta partenza e destinazione'); return; }
   const seq = ++autoSeq;
   $('bAuto').disabled = true;
+  S.grids = []; showWater(false);
   const pts = [w[0]];
   try {
     for (let k = 1; k < w.length; k++) {
       const a = w[k - 1], b = w[k], n = w.length - 1;
       const g = await loadGrid(a, b, k, n);
       if (seq !== autoSeq) return;
+      S.grids.push(g);
       const s = Water.snap(g, a), t = Water.snap(g, b);
       if (s < 0) throw new Error(`Tratto ${k}: il punto di partenza è troppo lontano dall'acqua`);
       if (t < 0) throw new Error(`Tratto ${k}: il punto di arrivo è troppo lontano dall'acqua`);
@@ -516,7 +533,8 @@ async function autoRoute() {
   } catch (e) {
     if (seq !== autoSeq) return;
     const m = (e.message || 'Calcolo non riuscito') + '. Per ora la rotta è mostrata in linea retta.';
-    autoMsg(m); toast('Rotta via acqua non calcolata');
+    autoMsg(m + (S.grids.length ? ' Tocca "Mostra acqua riconosciuta" per vedere quale acqua ha trovato.' : '')); toast('Rotta via acqua non calcolata');
+    showWater(false);
     $('bAuto').disabled = false; return;
   }
   if (seq !== autoSeq) return;
@@ -526,9 +544,30 @@ async function autoRoute() {
   routeChanged();
   map.fitBounds(routeLine.getBounds().pad(0.15));
   if (S.tab) minSheet(true);
+  showWater(false);
   autoMsg('Rotta calcolata sulle zone d\'acqua della carta, che non indica le profondità: controlla che segua i canali segnati. Per cambiare passaggio aggiungi una tappa.');
   toast('Rotta via acqua calcolata: verificala sulla carta');
   $('bAuto').disabled = false;
+}
+
+/* Mostra sulla carta l'acqua riconosciuta dall'ultimo calcolo (in azzurro): utile per capire perché
+   una rotta passa da un punto o perché non si trova un passaggio. */
+const waterLayer = L.layerGroup();
+function showWater(on) {
+  waterLayer.clearLayers();
+  if (on && S.grids.length) {
+    S.grids.forEach(g => {
+      const cv = document.createElement('canvas'); cv.width = g.W; cv.height = g.H;
+      const cx = cv.getContext('2d'), im = cx.createImageData(g.W, g.H);
+      for (let i = 0; i < g.d.length; i++) if (g.d[i]) { const j = i * 4; im.data[j] = 0; im.data[j + 1] = 140; im.data[j + 2] = 255; im.data[j + 3] = 150; }
+      cx.putImageData(im, 0, 0);
+      L.imageOverlay(cv.toDataURL(), Water.gridBounds(g), { interactive: false, zIndex: 4 }).addTo(waterLayer);
+    });
+    waterLayer.addTo(map);
+  } else map.removeLayer(waterLayer);
+  $('bWater').textContent = on ? 'Nascondi acqua riconosciuta' : 'Mostra acqua riconosciuta';
+  $('bWater').hidden = !S.grids.length;
+  S.waterOn = on;
 }
 
 /* ---------- Interfaccia ---------- */
@@ -793,6 +832,7 @@ document.addEventListener('click', e => {
     case 'trackClear': S.track = []; S.trip = { dist: 0, t0: null, max: 0 }; trackLine.setLatLngs([]); store.set('track', []); store.set('trip', S.trip); toast('Traccia azzerata'); ui(); break;
     case 'anchor': setAnchor(); break;
     case 'autoRoute': autoRoute(); break;
+    case 'water': showWater(!S.waterOn); if (S.waterOn && S.grids.length) minSheet(true); break;
     case 'undoRoute': autoSeq++; if (S.active) stopNav(); S.route.path = null; autoMsg('Rotta in linea retta: tocca "Ricalcola" per tornare alla rotta via acqua.'); routeChanged(); break;
     case 'delHaz': S.hazards = S.hazards.filter(h => h.id !== d.id); clearAl('h' + d.id); store.set('hazards', S.hazards); map.closePopup(); drawHazards(); routeCheck(); renderHaz(); renderRoute(); break;
     case 'goHaz': { const h = S.hazards.find(x => x.id === d.id); if (h) { map.setView([h.lat, h.lng], 15); S.set.follow = false; saveSet(); fabs(); } break; }
