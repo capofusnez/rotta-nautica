@@ -6,7 +6,7 @@
    NB: la carta non conosce le profondità. La rotta va sempre verificata. */
 (function (root) {
   const TILE = 256, RAD = Math.PI / 180, DEG = 180 / Math.PI, SQ2 = Math.SQRT2;
-  const CFG = { maxTiles: 90, closeR: 0, clear: 8, clearK: 3, snapR: 300 };
+  const CFG = { maxTiles: 90, closeR: 1, clear: 8, clearK: 3, snapR: 300 };
 
   const lon2px = (lng, z) => (lng + 180) / 360 * TILE * 2 ** z;
   const lat2px = (lat, z) => { const s = Math.sin(lat * RAD); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * TILE * 2 ** z; };
