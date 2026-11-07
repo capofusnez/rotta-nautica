@@ -92,7 +92,8 @@ const S = {
   sim: null, simBackup: null, watch: null, gpsOn: false, lastFix: 0, centered: false,
   tab: null, results: [], ctx: null, mobTap: 0
 };
-const wps = () => [S.route.start, ...S.route.via, S.route.dest].filter(Boolean);
+const wps = () => [S.route.start, ...(S.route.path || S.route.via), S.route.dest].filter(Boolean);
+const userPts = () => [S.route.start, ...S.route.via, S.route.dest].filter(Boolean);
 const legFrom = w => (S.leg === 1 && S.legFrom) ? S.legFrom : w[S.leg - 1];
 
 /* ---------- Carta ---------- */
@@ -219,8 +220,9 @@ function place(type, ll) {
   else if (type === 'dest') S.route.dest = p;
   else if (type === 'via') S.route.via.push(p);
   else if (type === 'hazard') { addHazard(p); return; }
-  routeChanged();
+  editRoute();
 }
+function editRoute() { S.route.path = null; autoMsg(''); routeChanged(); autoSchedule(); }
 function routeChanged() {
   persistRoute();
   const w = wps();
@@ -246,7 +248,7 @@ function drawRoute() {
     m.on('dragend', () => {
       const ll = m.getLatLng(), np = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) };
       if (it.role === 'start') S.route.start = np; else if (it.role === 'dest') S.route.dest = np; else S.route.via[it.idx] = np;
-      routeChanged();
+      editRoute();
     });
   });
 }
@@ -484,16 +486,25 @@ async function loadGrid(a, b, k, n) {
   await new Promise(r => setTimeout(r, 30));
   return Water.makeGrid(ctx.getImageData(0, 0, W, H).data, W, H, box);
 }
+/* Calcolo automatico: parte da solo quando partenza, tappe o destinazione cambiano.
+   Le tappe dell'utente restano in S.route.via; il percorso calcolato va in S.route.path. */
+let autoT = 0, autoSeq = 0;
+function autoSchedule() {
+  clearTimeout(autoT);
+  if (S.pick || !S.route.start || !S.route.dest) return;
+  autoT = setTimeout(autoRoute, 600);
+}
 async function autoRoute() {
-  const w = wps();
+  const w = userPts();
   if (w.length < 2) { toast('Imposta partenza e destinazione'); return; }
-  if (S.routing) return;
-  S.routing = true; $('bAuto').disabled = true;
-  const before = JSON.parse(JSON.stringify(S.route)), pts = [w[0]];
+  const seq = ++autoSeq;
+  $('bAuto').disabled = true;
+  const pts = [w[0]];
   try {
     for (let k = 1; k < w.length; k++) {
       const a = w[k - 1], b = w[k], n = w.length - 1;
       const g = await loadGrid(a, b, k, n);
+      if (seq !== autoSeq) return;
       const s = Water.snap(g, a), t = Water.snap(g, b);
       if (s < 0) throw new Error(`Tratto ${k}: il punto di partenza è troppo lontano dall'acqua`);
       if (t < 0) throw new Error(`Tratto ${k}: il punto di arrivo è troppo lontano dall'acqua`);
@@ -503,19 +514,21 @@ async function autoRoute() {
       pts.push(b);
     }
   } catch (e) {
-    autoMsg(e.message || 'Calcolo non riuscito'); toast(e.message || 'Calcolo non riuscito');
-    S.routing = false; $('bAuto').disabled = false; return;
+    if (seq !== autoSeq) return;
+    const m = (e.message || 'Calcolo non riuscito') + '. Per ora la rotta è mostrata in linea retta.';
+    autoMsg(m); toast('Rotta via acqua non calcolata');
+    $('bAuto').disabled = false; return;
   }
+  if (seq !== autoSeq) return;
   const clean = pts.filter((p, i) => i === 0 || i === pts.length - 1 || dist(p, pts[i - 1]) > 15);
-  stopNav();
-  S.undo = before;
-  S.route = { start: w[0], via: clean.slice(1, -1), dest: w[w.length - 1] };
+  if (S.active) stopNav();
+  S.route.path = clean.slice(1, -1);
   routeChanged();
   map.fitBounds(routeLine.getBounds().pad(0.15));
-  minSheet(true);
-  autoMsg('Rotta calcolata sulle zone d\'acqua della carta, che non indica le profondità: controlla che segua i canali segnati e trascina i punti dove serve.');
+  if (S.tab) minSheet(true);
+  autoMsg('Rotta calcolata sulle zone d\'acqua della carta, che non indica le profondità: controlla che segua i canali segnati. Per cambiare passaggio aggiungi una tappa.');
   toast('Rotta via acqua calcolata: verificala sulla carta');
-  S.routing = false; $('bAuto').disabled = false;
+  $('bAuto').disabled = false;
 }
 
 /* ---------- Interfaccia ---------- */
@@ -581,8 +594,10 @@ function renderRoute() {
     html += `<div class="leg"><b>${a} → ${b}${S.active && i === S.leg ? ' (in corso)' : ''}</b><span>${fmtAng(brg(w[i - 1], w[i]))}</span><span>${fmtDist(d)}</span>` +
       (isVia ? `<button data-act="delVia" data-i="${i - 1}" aria-label="Elimina tappa ${i}">✕</button>` : '<span></span>') + '</div>';
   }
-  $('legs').innerHTML = w.length > 13 ? `<p class="note">${w.length - 1} tratti</p>` : html;
-  $('bUndo').hidden = !S.undo;
+  if (S.route.path) html = S.route.via.map((p, i) =>
+    `<div class="leg"><b>Tappa ${i + 1}</b><span></span><span></span><button data-act="delVia" data-i="${i}" aria-label="Elimina tappa ${i + 1}">✕</button></div>`).join('');
+  $('legs').innerHTML = !S.route.path && w.length > 13 ? `<p class="note">${w.length - 1} tratti</p>` : html;
+  $('bUndo').hidden = !S.route.path;
   const bad = routeConflicts();
   $('sum').innerHTML = w.length > 1
     ? `<span>Totale ${fmtDist(tot)}</span><span>Durata ${fmtDur(tot / (S.set.plan / KN))}</span>` + (bad ? `<span class="wr">${bad} ostacoli vicino alla rotta</span>` : '')
@@ -630,7 +645,7 @@ function pick(type) {
   $('pickBar').hidden = false;
   $('pickTxt').textContent = { start: 'Tocca la carta: PARTENZA', via: 'Tocca la carta: TAPPE (poi Fine)', dest: 'Tocca la carta: DESTINAZIONE', hazard: 'Tocca la carta: SECCA / OSTACOLO' }[type];
 }
-function endPick() { S.pick = null; $('pickBar').hidden = true; if (!S.tab) openSheet('rotta'); }
+function endPick() { S.pick = null; $('pickBar').hidden = true; if (!S.tab) openSheet('rotta'); autoSchedule(); }
 $('pickDone').onclick = endPick;
 /* pannello: tocco sulla maniglia = abbassa/alza; trascina giù = abbassa (e se già abbassato chiude), su = alza */
 let swY = null, swDy = 0, swMoved = false;
@@ -705,7 +720,7 @@ $('fileIn').addEventListener('change', async e => {
     const pts = nodes.map(n => ({ lat: +n.getAttribute('lat'), lng: +n.getAttribute('lon') })).filter(p => isFinite(p.lat) && isFinite(p.lng));
     if (pts.length < 2) { toast('Il file non contiene una rotta valida'); return; }
     stopNav();
-    S.route = { start: pts[0], via: pts.slice(1, -1), dest: pts[pts.length - 1] };
+    S.route = { start: pts[0], via: [], dest: pts[pts.length - 1], path: pts.slice(1, -1) };
     routeChanged(); map.fitBounds(routeLine.getBounds().pad(0.2)); toast('Rotta importata');
   } catch (err) { toast('Impossibile leggere il file GPX'); }
   e.target.value = '';
@@ -760,16 +775,17 @@ document.addEventListener('click', e => {
     case 'pickVia': pick('via'); break;
     case 'pickHazard': pick('hazard'); break;
     case 'ctx': map.closePopup(); place(d.k, S.ctx); if (d.k !== 'hazard') { openSheet('rotta'); } break;
-    case 'delVia': S.route.via.splice(i, 1); routeChanged(); break;
+    case 'delVia': S.route.via.splice(i, 1); editRoute(); break;
     case 'reverse': {
       stopNav();
-      const s = S.route.start; S.route.start = S.route.dest; S.route.dest = s; S.route.via.reverse(); routeChanged(); break;
+      const s = S.route.start; S.route.start = S.route.dest; S.route.dest = s; S.route.via.reverse(); if (S.route.path) S.route.path.reverse(); routeChanged(); break;
     }
-    case 'clear': stopNav(); S.route = { start: null, via: [], dest: null }; routeChanged(); break;
+    case 'clear': stopNav(); clearTimeout(autoT); autoSeq++; S.route = { start: null, via: [], dest: null, path: null }; autoMsg(''); routeChanged(); break;
     case 'useRes': { const r = S.results[i]; place(d.k, r); map.setView([r.lat, r.lng], Math.max(map.getZoom(), 12)); break; }
     case 'goRes': { const r = S.results[i]; map.setView([r.lat, r.lng], 13); S.set.follow = false; saveSet(); fabs(); break; }
     case 'loadRoute': stopNav(); S.route = JSON.parse(JSON.stringify(S.saved[i].route)); routeChanged();
-      if (wps().length > 1) map.fitBounds(routeLine.getBounds().pad(0.2)); break;
+      if (wps().length > 1) map.fitBounds(routeLine.getBounds().pad(0.2));
+      if (!S.route.path) autoSchedule(); break;
     case 'delRoute': S.saved.splice(i, 1); store.set('routes', S.saved); renderRoute(); break;
     case 'gpxOut': if (wps().length) download('rotta.gpx', gpxText(false)); else toast('Nessuna rotta da esportare'); break;
     case 'gpxIn': $('fileIn').click(); break;
@@ -777,7 +793,7 @@ document.addEventListener('click', e => {
     case 'trackClear': S.track = []; S.trip = { dist: 0, t0: null, max: 0 }; trackLine.setLatLngs([]); store.set('track', []); store.set('trip', S.trip); toast('Traccia azzerata'); ui(); break;
     case 'anchor': setAnchor(); break;
     case 'autoRoute': autoRoute(); break;
-    case 'undoRoute': if (S.undo) { stopNav(); S.route = S.undo; S.undo = null; routeChanged(); autoMsg(''); toast('Rotta precedente ripristinata'); } break;
+    case 'undoRoute': autoSeq++; if (S.active) stopNav(); S.route.path = null; autoMsg('Rotta in linea retta: tocca "Ricalcola" per tornare alla rotta via acqua.'); routeChanged(); break;
     case 'delHaz': S.hazards = S.hazards.filter(h => h.id !== d.id); clearAl('h' + d.id); store.set('hazards', S.hazards); map.closePopup(); drawHazards(); routeCheck(); renderHaz(); renderRoute(); break;
     case 'goHaz': { const h = S.hazards.find(x => x.id === d.id); if (h) { map.setView([h.lat, h.lng], 15); S.set.follow = false; saveSet(); fabs(); } break; }
     case 'dismiss': SN.set(d.id, Date.now() + 60000); clearAl(d.id); break;
@@ -844,5 +860,7 @@ drawHazards(); drawRoute(); renderRoute(); renderHaz(); fabs(); ui();
 if (wps().length > 1 && !store.get('view', null)) map.fitBounds(routeLine.getBounds().pad(0.2));
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* offline mode non disponibile */ });
 startGps();
+if (S.route.path === undefined) S.route.path = null;
+if (!S.route.path) autoSchedule();
 if (!wps().length) setTimeout(() => openSheet('rotta'), 400);
 })();
