@@ -222,7 +222,10 @@ function place(type, ll) {
   else if (type === 'hazard') { addHazard(p); return; }
   editRoute();
 }
-function editRoute() { S.route.path = null; autoMsg(''); routeChanged(); autoSchedule(); }
+function editRoute() {
+  S.route.path = null; S.route.blocked = !!(S.route.start && S.route.dest);
+  autoMsg(S.route.blocked ? 'Calcolo della rotta nei canali…' : ''); routeChanged(); autoSchedule();
+}
 function routeChanged() {
   persistRoute();
   const w = wps();
@@ -231,7 +234,7 @@ function routeChanged() {
 }
 function drawRoute() {
   const w = wps();
-  routeLine.setLatLngs(w.map(p => [p.lat, p.lng]));
+  routeLine.setLatLngs(S.route.blocked ? [] : w.map(p => [p.lat, p.lng]));
   wpLayer.clearLayers();
   const items = [];
   if (S.route.start) items.push({ role: 'start', p: S.route.start, label: 'P' });
@@ -266,6 +269,7 @@ function routeCheck() {
 function startNav() {
   const w = wps();
   if (w.length < 2) { toast('Imposta partenza e destinazione'); return; }
+  if (S.route.blocked) { toast('Nessuna rotta sicura calcolata: aggiungi una tappa lungo il canale'); return; }
   audio();
   S.active = true; S.leg = 1; S.legFrom = null;
   if (S.pos && dist(S.pos, w[0]) > S.set.arr * 3) S.legFrom = { lat: S.pos.lat, lng: S.pos.lng };
@@ -480,29 +484,122 @@ async function loadGrid(a, b, k, n) {
       autoMsg(`Tratto ${k}/${n}: scarico la carta ${++done}/${nx * ny}`);
     }
   };
-  const [lines] = await Promise.all([fetchWaterways(box), ...[0, 1, 2, 3].map(work)]);
+  const [nr] = await Promise.allSettled([fetchNautical(box), Promise.all([0, 1, 2, 3].map(work))]);
   if (failed > nx * ny * 0.15) throw new Error('Carta non scaricata: serve la connessione a Internet');
-  autoMsg(`Tratto ${k}/${n}: calcolo il percorso…`);
+  if (nr.status === 'rejected') throw nr.reason;
+  const nautical = nr.value;
+  autoMsg(`Tratto ${k}/${n}: calcolo il percorso nei canali…`);
   await new Promise(r => setTimeout(r, 30));
-  return Water.makeGrid(ctx.getImageData(0, 0, W, H).data, W, H, box, lines);
+  const rgba = ctx.getImageData(0, 0, W, H).data;
+  const extra = rasterNautical(ctx, W, H, box, nautical);
+  const g = Water.makeGrid(rgba, W, H, box, extra);
+  g.info = nautical.info;
+  return g;
 }
-/* Fiumi e canali da OpenStreetMap (Overpass): tengono continui i corsi d'acqua sotto i ponti
-   e dove la carta li disegna male. Se il servizio non risponde si usa solo la carta. */
-async function fetchWaterways(box) {
+
+/* Dati nautici da OpenStreetMap / OpenSeaMap (Overpass):
+   - canali: waterway=river|canal|fairway|tidal_channel|dock e seamark:type=fairway
+   - briccole e boe laterali: seamark:type=beacon_lateral|buoy_lateral
+   - zone dove si naviga solo nei canali: water=lagoon, barene e velme (wetland tidalflat/saltmarsh), natural=shoal
+   Senza questi dati il calcolo non è sicuro, quindi un errore di download ferma il calcolo. */
+async function fetchNautical(box) {
   const b = Water.boxBounds(box), bb = [b.s, b.w, b.n, b.e].map(v => v.toFixed(5)).join(',');
-  const q = `[out:json][timeout:20];way["waterway"~"^(river|canal|fairway|tidal_channel|dock)$"]["tunnel"!="culvert"]["boat"!="no"](${bb});out geom;`;
-  try {
-    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 20000);
-    const r = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-    clearTimeout(to);
-    if (!r.ok) return [];
-    const j = await r.json();
-    return (j.elements || []).filter(e => e.geometry).map(e => e.geometry.map(p => ({ lat: p.lat, lng: p.lon })));
-  } catch (e) { return []; }
+  const q = `[out:json][timeout:30];(` +
+    `way["waterway"~"^(river|canal|fairway|tidal_channel|dock)$"]["tunnel"!="culvert"]["boat"!="no"](${bb});` +
+    `way["seamark:type"="fairway"](${bb});relation["seamark:type"="fairway"](${bb});` +
+    `node["seamark:type"~"^(beacon_lateral|buoy_lateral)$"](${bb});` +
+    `way["water"="lagoon"](${bb});relation["water"="lagoon"](${bb});` +
+    `way["natural"="wetland"]["wetland"~"^(tidalflat|saltmarsh)$"](${bb});relation["natural"="wetland"]["wetland"~"^(tidalflat|saltmarsh)$"](${bb});` +
+    `way["natural"="shoal"](${bb});relation["natural"="shoal"](${bb});` +
+    `);out geom;`;
+  let j = null;
+  for (const url of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+    try {
+      const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 35000);
+      const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+      clearTimeout(to);
+      if (r.ok) { j = await r.json(); break; }
+    } catch (e) { /* prova il server successivo */ }
+  }
+  if (!j) throw new Error('Dati dei canali e delle briccole non scaricati (server OpenStreetMap occupato). Riprova tra poco');
+  const ll = g => g.map(p => ({ lat: p.lat, lng: p.lon }));
+  const out = { lines: [], corridorAreas: [], restrictAreas: [], beacons: [], info: { canali: 0, segnali: 0, lagune: 0 } };
+  const rings = rel => joinRings((rel.members || []).filter(m => m.type === 'way' && m.geometry).map(m => ll(m.geometry)));
+  (j.elements || []).forEach(e => {
+    const t = e.tags || {};
+    if (e.type === 'node') { out.beacons.push({ lat: e.lat, lng: e.lon }); out.info.segnali++; return; }
+    const isRestrict = t.water === 'lagoon' || t.natural === 'wetland' || t.natural === 'shoal';
+    const isFairway = t['seamark:type'] === 'fairway';
+    if (e.type === 'relation') {
+      if (isRestrict) { out.restrictAreas.push(...rings(e)); if (t.water === 'lagoon') out.info.lagune++; }
+      else if (isFairway) { out.corridorAreas.push(...rings(e)); out.info.canali++; }
+      return;
+    }
+    if (!e.geometry) return;
+    const pts = ll(e.geometry), closed = pts.length > 3 && pts[0].lat === pts[pts.length - 1].lat && pts[0].lng === pts[pts.length - 1].lng;
+    if (isRestrict) { if (closed) { out.restrictAreas.push(pts); if (t.water === 'lagoon') out.info.lagune++; } return; }
+    if (isFairway && closed) { out.corridorAreas.push(pts); out.info.canali++; return; }
+    out.lines.push(pts); out.info.canali++;
+  });
+  return out;
 }
+/* Unisce i tratti di un multipoligono OSM in anelli chiusi. */
+function joinRings(ways) {
+  const same = (a, b) => a.lat === b.lat && a.lng === b.lng, res = [];
+  const left = ways.map(w => w.slice());
+  while (left.length) {
+    let ring = left.shift();
+    for (let grew = true; grew && !same(ring[0], ring[ring.length - 1]);) {
+      grew = false;
+      for (let i = 0; i < left.length; i++) {
+        const w = left[i], end = ring[ring.length - 1], start = ring[0];
+        if (same(end, w[0])) ring = ring.concat(w.slice(1));
+        else if (same(end, w[w.length - 1])) ring = ring.concat(w.slice(0, -1).reverse());
+        else if (same(start, w[w.length - 1])) ring = w.slice(0, -1).concat(ring);
+        else if (same(start, w[0])) ring = w.slice(1).reverse().concat(ring);
+        else continue;
+        left.splice(i, 1); grew = true; break;
+      }
+    }
+    if (ring.length > 2) res.push(ring);
+  }
+  return res;
+}
+/* Disegna i dati nautici sulla griglia: zone vietate fuori canale e corridoi navigabili. */
+function rasterNautical(ctx, W, H, box, nd) {
+  const ox = box.tx0 * Water.TILE, oy = box.ty0 * Water.TILE;
+  const P = p => [Water.lon2px(p.lng, box.z) - ox, Water.lat2px(p.lat, box.z) - oy];
+  const bb = Water.boxBounds(box), mpp = 156543.03392 * Math.cos((bb.s + bb.n) / 2 * Math.PI / 180) / 2 ** box.z;
+  const read = () => { const d = ctx.getImageData(0, 0, W, H).data, m = new Uint8Array(W * H); for (let i = 0; i < m.length; i++) m[i] = d[i * 4 + 3] > 96 ? 1 : 0; return m; };
+  // zone vietate fuori canale
+  ctx.clearRect(0, 0, W, H);
+  let restrict = null;
+  if (nd.restrictAreas.length) { ctx.fillStyle = '#000'; ctx.beginPath(); nd.restrictAreas.forEach(r => { r.forEach((p, i) => { const [x, y] = P(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); }); ctx.fill('evenodd'); restrict = read(); }
+  // corridoi navigabili
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#000'; ctx.fillStyle = '#000'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(3, 30 / mpp);
+  nd.lines.forEach(l => { ctx.beginPath(); l.forEach((p, i) => { const [x, y] = P(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); });
+  nd.corridorAreas.forEach(r => { ctx.beginPath(); r.forEach((p, i) => { const [x, y] = P(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.fill(); });
+  // briccole e boe laterali: il canale passa tra segnali vicini (entro 180 m)
+  const bc = nd.beacons, LINK = 180;
+  ctx.lineWidth = Math.max(3, 24 / mpp);
+  for (let i = 0; i < bc.length; i++) {
+    const [x, y] = P(bc[i]);
+    ctx.beginPath(); ctx.arc(x, y, Math.max(2, 20 / mpp), 0, 2 * Math.PI); ctx.fill();
+    for (let k = i + 1; k < bc.length; k++) if (dist(bc[i], bc[k]) < LINK) {
+      const [x2, y2] = P(bc[k]); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+  }
+  const corridor = (nd.lines.length || nd.corridorAreas.length || bc.length) ? read() : null;
+  ctx.clearRect(0, 0, W, H);
+  return { restrict, corridor };
+}
+
 /* Calcolo automatico: parte da solo quando partenza, tappe o destinazione cambiano.
-   Le tappe dell'utente restano in S.route.via; il percorso calcolato va in S.route.path. */
+   Le tappe dell'utente restano in S.route.via; il percorso calcolato va in S.route.path.
+   Finché non c'è una rotta verificata, sulla carta non viene tracciata nessuna linea. */
 let autoT = 0, autoSeq = 0;
 function autoSchedule() {
   clearTimeout(autoT);
@@ -510,43 +607,60 @@ function autoSchedule() {
   autoT = setTimeout(autoRoute, 600);
 }
 async function autoRoute() {
-  const w = userPts();
+  const w = userPts().map(p => ({ lat: p.lat, lng: p.lng }));
   if (w.length < 2) { toast('Imposta partenza e destinazione'); return; }
-  const seq = ++autoSeq;
+  const seq = ++autoSeq, MOVE_MAX = 600;
   $('bAuto').disabled = true;
   S.grids = []; showWater(false);
-  const pts = [w[0]];
+  const legs = [], moved = [], info = { canali: 0, segnali: 0, lagune: 0 };
+  const name = i => i === 0 ? 'La partenza' : i === w.length - 1 ? "L'arrivo" : `La tappa ${i}`;
   try {
     for (let k = 1; k < w.length; k++) {
-      const a = w[k - 1], b = w[k], n = w.length - 1;
-      const g = await loadGrid(a, b, k, n);
+      const n = w.length - 1;
+      const g = await loadGrid(w[k - 1], w[k], k, n);
       if (seq !== autoSeq) return;
       S.grids.push(g);
-      const s = Water.snap(g, a), t = Water.snap(g, b);
-      if (s < 0) throw new Error(`Tratto ${k}: il punto di partenza è troppo lontano dall'acqua`);
-      if (t < 0) throw new Error(`Tratto ${k}: il punto di arrivo è troppo lontano dall'acqua`);
-      const path = Water.astar(g, s, t);
-      if (!path) throw new Error(`Tratto ${k}: nessun passaggio via acqua sulla carta. Metti una tappa in acqua lungo il percorso voluto`);
-      Water.simplify(g, path).forEach(i => pts.push(Water.cellLL(g, i)));
-      pts.push(b);
+      Object.keys(info).forEach(x => { info[x] = Math.max(info[x], g.info[x]); });
+      const ends = [k - 1, k].map(idx => {
+        const own = Water.cellOf(g, w[idx]);
+        if (own >= 0 && g.d[own]) return own;
+        const sn = Water.snap(g, w[idx]);
+        if (sn < 0) throw new Error(`${name(idx)} è lontana da acque navigabili`);
+        const np = Water.cellLL(g, sn), dd = dist(w[idx], np);
+        if (dd > MOVE_MAX) throw new Error(`${name(idx)} è a ${fmtDist(dd)} dal canale navigabile più vicino: spostala in un canale segnato`);
+        w[idx] = np; if (!moved.includes(idx)) moved.push(idx);
+        return sn;
+      });
+      const path = Water.astar(g, ends[0], ends[1]);
+      if (!path) throw new Error(`Tratto ${k}: nessun passaggio nei canali navigabili dei dati OpenStreetMap/OpenSeaMap. Aggiungi una tappa lungo il canale che vuoi seguire`);
+      const cells = Water.simplify(g, path);
+      const bad = Water.verify(g, cells);
+      if (bad) throw new Error(`Tratto ${k}: verifica fallita, un segmento esce dalle acque navigabili`);
+      legs.push(cells.map(i => Water.cellLL(g, i)));
     }
   } catch (e) {
     if (seq !== autoSeq) return;
-    const m = (e.message || 'Calcolo non riuscito') + '. Per ora la rotta è mostrata in linea retta.';
-    autoMsg(m + (S.grids.length ? ' Tocca "Mostra acqua riconosciuta" per vedere quale acqua ha trovato.' : '')); toast('Rotta via acqua non calcolata');
-    showWater(false);
-    $('bAuto').disabled = false; return;
+    S.route.path = null; S.route.blocked = true; routeChanged();
+    autoMsg('Nessuna rotta sicura: ' + (e.message || 'calcolo non riuscito') + '.' +
+      (S.grids.length ? ' Tocca "Mostra acque navigabili" per vedere i canali trovati.' : ''));
+    toast('Rotta non calcolata');
+    showWater(false); $('bAuto').disabled = false; return;
   }
   if (seq !== autoSeq) return;
+  const pts = [w[0]];
+  legs.forEach((leg, k) => { pts.push(...leg.slice(1, -1), w[k + 1]); });
   const clean = pts.filter((p, i) => i === 0 || i === pts.length - 1 || dist(p, pts[i - 1]) > 15);
   if (S.active) stopNav();
-  S.route.path = clean.slice(1, -1);
+  S.route.start = w[0]; S.route.via = w.slice(1, -1); S.route.dest = w[w.length - 1];
+  S.route.path = clean.slice(1, -1); S.route.blocked = false;
   routeChanged();
   map.fitBounds(routeLine.getBounds().pad(0.15));
   if (S.tab) minSheet(true);
   showWater(false);
-  autoMsg('Rotta calcolata sulle zone d\'acqua della carta, che non indica le profondità: controlla che segua i canali segnati. Per cambiare passaggio aggiungi una tappa.');
-  toast('Rotta via acqua calcolata: verificala sulla carta');
+  const mv = moved.length ? ' ' + moved.map(name).join(', ') + (moved.length > 1 ? ' sono state spostate' : ' è stata spostata') + ' nel punto navigabile più vicino.' : '';
+  autoMsg(`Rotta calcolata nei canali (${info.canali} canali, ${info.segnali} briccole/boe, ${info.lagune ? 'laguna riconosciuta' : 'nessuna laguna nei dati'}).${mv} ` +
+    'I dati OpenStreetMap/OpenSeaMap non indicano le profondità e possono essere incompleti: verifica sempre con i segnalamenti in acqua.');
+  toast('Rotta calcolata nei canali: verificala sulla carta');
   $('bAuto').disabled = false;
 }
 
@@ -565,7 +679,7 @@ function showWater(on) {
     });
     waterLayer.addTo(map);
   } else map.removeLayer(waterLayer);
-  $('bWater').textContent = on ? 'Nascondi acqua riconosciuta' : 'Mostra acqua riconosciuta';
+  $('bWater').textContent = on ? 'Nascondi acque navigabili' : 'Mostra acque navigabili';
   $('bWater').hidden = !S.grids.length;
   S.waterOn = on;
 }
@@ -636,9 +750,9 @@ function renderRoute() {
   if (S.route.path) html = S.route.via.map((p, i) =>
     `<div class="leg"><b>Tappa ${i + 1}</b><span></span><span></span><button data-act="delVia" data-i="${i}" aria-label="Elimina tappa ${i + 1}">✕</button></div>`).join('');
   $('legs').innerHTML = !S.route.path && w.length > 13 ? `<p class="note">${w.length - 1} tratti</p>` : html;
-  $('bUndo').hidden = !S.route.path;
+  $('bUndo').hidden = true;
   const bad = routeConflicts();
-  $('sum').innerHTML = w.length > 1
+  $('sum').innerHTML = S.route.blocked ? '<span class="wr">Rotta non tracciata: vedi il messaggio sopra</span>' : w.length > 1
     ? `<span>Totale ${fmtDist(tot)}</span><span>Durata ${fmtDur(tot / (S.set.plan / KN))}</span>` + (bad ? `<span class="wr">${bad} ostacoli vicino alla rotta</span>` : '')
     : '<span class="note">Scegli partenza e destinazione sulla carta, con il GPS o cercando un luogo.</span>';
   $('sPlan').value = S.set.plan;
@@ -824,7 +938,7 @@ document.addEventListener('click', e => {
     case 'goRes': { const r = S.results[i]; map.setView([r.lat, r.lng], 13); S.set.follow = false; saveSet(); fabs(); break; }
     case 'loadRoute': stopNav(); S.route = JSON.parse(JSON.stringify(S.saved[i].route)); routeChanged();
       if (wps().length > 1) map.fitBounds(routeLine.getBounds().pad(0.2));
-      if (!S.route.path) autoSchedule(); break;
+      if (!S.route.path) { S.route.blocked = true; routeChanged(); autoSchedule(); } break;
     case 'delRoute': S.saved.splice(i, 1); store.set('routes', S.saved); renderRoute(); break;
     case 'gpxOut': if (wps().length) download('rotta.gpx', gpxText(false)); else toast('Nessuna rotta da esportare'); break;
     case 'gpxIn': $('fileIn').click(); break;
@@ -833,7 +947,6 @@ document.addEventListener('click', e => {
     case 'anchor': setAnchor(); break;
     case 'autoRoute': autoRoute(); break;
     case 'water': showWater(!S.waterOn); if (S.waterOn && S.grids.length) minSheet(true); break;
-    case 'undoRoute': autoSeq++; if (S.active) stopNav(); S.route.path = null; autoMsg('Rotta in linea retta: tocca "Ricalcola" per tornare alla rotta via acqua.'); routeChanged(); break;
     case 'delHaz': S.hazards = S.hazards.filter(h => h.id !== d.id); clearAl('h' + d.id); store.set('hazards', S.hazards); map.closePopup(); drawHazards(); routeCheck(); renderHaz(); renderRoute(); break;
     case 'goHaz': { const h = S.hazards.find(x => x.id === d.id); if (h) { map.setView([h.lat, h.lng], 15); S.set.follow = false; saveSet(); fabs(); } break; }
     case 'dismiss': SN.set(d.id, Date.now() + 60000); clearAl(d.id); break;
@@ -901,6 +1014,6 @@ if (wps().length > 1 && !store.get('view', null)) map.fitBounds(routeLine.getBou
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* offline mode non disponibile */ });
 startGps();
 if (S.route.path === undefined) S.route.path = null;
-if (!S.route.path) autoSchedule();
+if (!S.route.path && S.route.start && S.route.dest) { S.route.blocked = true; drawRoute(); renderRoute(); autoSchedule(); }
 if (!wps().length) setTimeout(() => openSheet('rotta'), 400);
 })();
