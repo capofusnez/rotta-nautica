@@ -100,7 +100,7 @@ const map = L.map('map', { zoomControl: false, worldCopyJump: true, maxZoom: 19 
   .setView(S.view.c, S.view.z);
 map.attributionControl.setPosition('bottomleft');
 const base = {
-  osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, zIndex: 1, attribution: '© OpenStreetMap' }),
+  osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, zIndex: 1, crossOrigin: true, attribution: '© OpenStreetMap' }),
   sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, zIndex: 1, attribution: 'Esri' })
 };
 const sea = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, zIndex: 3, attribution: 'OpenSeaMap' });
@@ -233,12 +233,15 @@ function drawRoute() {
   wpLayer.clearLayers();
   const items = [];
   if (S.route.start) items.push({ role: 'start', p: S.route.start, label: 'P' });
-  S.route.via.forEach((p, i) => items.push({ role: 'via', idx: i, p, label: String(i + 1) }));
+  const mini = S.route.via.length > 15;
+  S.route.via.forEach((p, i) => items.push({ role: 'via', idx: i, p, label: String(i + 1), mini }));
   if (S.route.dest) items.push({ role: 'dest', p: S.route.dest, label: 'D' });
   items.forEach(it => {
     const m = L.marker([it.p.lat, it.p.lng], {
       draggable: true,
-      icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13], html: `<div class="wp ${it.role}">${it.label}</div>` })
+      icon: it.mini
+        ? L.divIcon({ className: '', iconSize: [12, 12], iconAnchor: [6, 6], html: '<div class="wp via mini"></div>' })
+        : L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13], html: `<div class="wp ${it.role}">${it.label}</div>` })
     }).addTo(wpLayer);
     m.on('dragend', () => {
       const ll = m.getLatLng(), np = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) };
@@ -451,6 +454,70 @@ async function fetchWx() {
   }
 }
 
+/* ---------- Rotta automatica via acqua (vedi water.js) ---------- */
+function autoMsg(t) { $('autoMsg').textContent = t; $('autoMsg').hidden = !t; }
+async function loadGrid(a, b, k, n) {
+  const box = Water.tileBox([a, b]);
+  if (!box) throw new Error(`Tratto ${k} troppo lungo: aggiungi una tappa a metà strada`);
+  const nx = box.tx1 - box.tx0 + 1, ny = box.ty1 - box.ty0 + 1, W = nx * Water.TILE, H = ny * Water.TILE;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  const jobs = [];
+  for (let y = box.ty0; y <= box.ty1; y++) for (let x = box.tx0; x <= box.tx1; x++) jobs.push([x, y]);
+  let done = 0, failed = 0;
+  const work = async () => {
+    while (jobs.length) {
+      const [x, y] = jobs.shift();
+      try {
+        const r = await fetch(`https://tile.openstreetmap.org/${box.z}/${x}/${y}.png`, { mode: 'cors' });
+        if (!r.ok) throw new Error(r.status);
+        const bm = await createImageBitmap(await r.blob());
+        ctx.drawImage(bm, (x - box.tx0) * Water.TILE, (y - box.ty0) * Water.TILE);
+        if (bm.close) bm.close();
+      } catch (e) { failed++; }
+      autoMsg(`Tratto ${k}/${n}: scarico la carta ${++done}/${nx * ny}`);
+    }
+  };
+  await Promise.all([0, 1, 2, 3].map(work));
+  if (failed > nx * ny * 0.15) throw new Error('Carta non scaricata: serve la connessione a Internet');
+  autoMsg(`Tratto ${k}/${n}: calcolo il percorso…`);
+  await new Promise(r => setTimeout(r, 30));
+  return Water.makeGrid(ctx.getImageData(0, 0, W, H).data, W, H, box);
+}
+async function autoRoute() {
+  const w = wps();
+  if (w.length < 2) { toast('Imposta partenza e destinazione'); return; }
+  if (S.routing) return;
+  S.routing = true; $('bAuto').disabled = true;
+  const before = JSON.parse(JSON.stringify(S.route)), pts = [w[0]];
+  try {
+    for (let k = 1; k < w.length; k++) {
+      const a = w[k - 1], b = w[k], n = w.length - 1;
+      const g = await loadGrid(a, b, k, n);
+      const s = Water.snap(g, a), t = Water.snap(g, b);
+      if (s < 0) throw new Error(`Tratto ${k}: il punto di partenza è troppo lontano dall'acqua`);
+      if (t < 0) throw new Error(`Tratto ${k}: il punto di arrivo è troppo lontano dall'acqua`);
+      const path = Water.astar(g, s, t);
+      if (!path) throw new Error(`Tratto ${k}: nessun passaggio via acqua sulla carta. Metti una tappa in acqua lungo il percorso voluto`);
+      Water.simplify(g, path).forEach(i => pts.push(Water.cellLL(g, i)));
+      pts.push(b);
+    }
+  } catch (e) {
+    autoMsg(e.message || 'Calcolo non riuscito'); toast(e.message || 'Calcolo non riuscito');
+    S.routing = false; $('bAuto').disabled = false; return;
+  }
+  const clean = pts.filter((p, i) => i === 0 || i === pts.length - 1 || dist(p, pts[i - 1]) > 15);
+  stopNav();
+  S.undo = before;
+  S.route = { start: w[0], via: clean.slice(1, -1), dest: w[w.length - 1] };
+  routeChanged();
+  map.fitBounds(routeLine.getBounds().pad(0.15));
+  minSheet(true);
+  autoMsg('Rotta calcolata sulle zone d\'acqua della carta, che non indica le profondità: controlla che segua i canali segnati e trascina i punti dove serve.');
+  toast('Rotta via acqua calcolata: verificala sulla carta');
+  S.routing = false; $('bAuto').disabled = false;
+}
+
 /* ---------- Interfaccia ---------- */
 const GRID = [['sog', 'SOG nodi'], ['cog', 'COG'], ['brg', 'BRG al punto'], ['dtw', 'DTW'], ['xte', 'XTE'], ['vmg', 'VMG nodi'],
   ['ttg', 'TTG punto'], ['eta', 'ETA punto'], ['rem', 'Distanza rimanente'], ['fin', 'Arrivo finale'], ['pos', 'Posizione', 1],
@@ -514,7 +581,8 @@ function renderRoute() {
     html += `<div class="leg"><b>${a} → ${b}${S.active && i === S.leg ? ' (in corso)' : ''}</b><span>${fmtAng(brg(w[i - 1], w[i]))}</span><span>${fmtDist(d)}</span>` +
       (isVia ? `<button data-act="delVia" data-i="${i - 1}" aria-label="Elimina tappa ${i}">✕</button>` : '<span></span>') + '</div>';
   }
-  $('legs').innerHTML = html;
+  $('legs').innerHTML = w.length > 13 ? `<p class="note">${w.length - 1} tratti</p>` : html;
+  $('bUndo').hidden = !S.undo;
   const bad = routeConflicts();
   $('sum').innerHTML = w.length > 1
     ? `<span>Totale ${fmtDist(tot)}</span><span>Durata ${fmtDur(tot / (S.set.plan / KN))}</span>` + (bad ? `<span class="wr">${bad} ostacoli vicino alla rotta</span>` : '')
@@ -708,6 +776,8 @@ document.addEventListener('click', e => {
     case 'trackGpx': if (S.track.length) download('traccia.gpx', gpxText(true)); else toast('Traccia vuota'); break;
     case 'trackClear': S.track = []; S.trip = { dist: 0, t0: null, max: 0 }; trackLine.setLatLngs([]); store.set('track', []); store.set('trip', S.trip); toast('Traccia azzerata'); ui(); break;
     case 'anchor': setAnchor(); break;
+    case 'autoRoute': autoRoute(); break;
+    case 'undoRoute': if (S.undo) { stopNav(); S.route = S.undo; S.undo = null; routeChanged(); autoMsg(''); toast('Rotta precedente ripristinata'); } break;
     case 'delHaz': S.hazards = S.hazards.filter(h => h.id !== d.id); clearAl('h' + d.id); store.set('hazards', S.hazards); map.closePopup(); drawHazards(); routeCheck(); renderHaz(); renderRoute(); break;
     case 'goHaz': { const h = S.hazards.find(x => x.id === d.id); if (h) { map.setView([h.lat, h.lng], 15); S.set.follow = false; saveSet(); fabs(); } break; }
     case 'dismiss': SN.set(d.id, Date.now() + 60000); clearAl(d.id); break;

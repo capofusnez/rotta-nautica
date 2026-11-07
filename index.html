@@ -143,6 +143,7 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 .wp{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:700 12px var(--mono);
   color:#fff;background:#7b1fa2;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)}
 .wp.start{background:#2e9e4f}.wp.dest{background:#d32f2f}
+.wp.mini{width:12px;height:12px;font-size:0;border-width:2px}
 .hz{width:24px;height:24px;display:grid;place-items:center;background:#d32f2f;color:#fff;font:700 15px/1 system-ui;
   border:2px solid #fff;transform:rotate(45deg);border-radius:4px}
 .hz i{transform:rotate(-45deg);font-style:normal}
@@ -189,6 +190,9 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
       <div class="btns"><button data-act="startGps">Posizione GPS</button><button data-act="pickStart">Sulla carta</button></div></div>
     <div class="pt"><label>Destinazione</label><span class="val" id="tDest">non impostata</span>
       <div class="btns"><button data-act="pickDest">Sulla carta</button><button data-act="pickVia">+ Tappa</button></div></div>
+    <div class="btns"><button data-act="autoRoute" id="bAuto">Calcola rotta via acqua</button><button data-act="undoRoute" id="bUndo" hidden>Annulla calcolo</button></div>
+    <p class="note" id="autoMsg" hidden></p>
+    <p class="note">Il calcolo segue mare, laguna, fiumi e canali disegnati sulla carta. Per scegliere il passaggio (es. via mare o via canali) metti una tappa lungo il percorso voluto.</p>
     <div id="legs"></div>
     <div class="sum" id="sum"></div>
     <label class="inl">Velocità prevista <input id="sPlan" type="number" min="0.5" max="40" step="0.5"> nodi</label>
@@ -243,6 +247,7 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 </nav>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="water.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

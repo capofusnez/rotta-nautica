@@ -1,7 +1,7 @@
 /* Service worker: l'app e le tiles della carta già viste restano disponibili senza rete. */
-const SHELL_CACHE = 'rn-shell-v3';
-const TILE_CACHE = 'rn-tiles';
-const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const SHELL_CACHE = 'rn-shell-v4';
+const TILE_CACHE = 'rn-tiles-v2';
+const SHELL = ['./', 'index.html', 'app.js', 'water.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 const EXTERNAL = /(tile\.openstreetmap\.org|tiles\.openseamap\.org|server\.arcgisonline\.com|ows\.emodnet-bathymetry\.eu|unpkg\.com)$/;
 const MAX_TILES = 4000;
 let puts = 0;
@@ -32,7 +32,8 @@ self.addEventListener('fetch', e => {
   if (EXTERNAL.test(url.hostname)) {
     e.respondWith(caches.open(TILE_CACHE).then(async cache => {
       const hit = await cache.match(req);
-      if (hit) return hit;
+      /* una tile salvata senza CORS non può essere letta dal calcolo della rotta */
+      if (hit && !(hit.type === 'opaque' && req.mode === 'cors')) return hit;
       try {
         const res = await fetch(req);
         if (res.ok || res.type === 'opaque') { cache.put(req, res.clone()); trim(cache); }
