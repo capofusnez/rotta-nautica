@@ -65,13 +65,21 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 @media (prefers-reduced-motion:reduce){.al.bad{animation:none}}
 
 #fabs{position:fixed;z-index:890;right:max(10px,env(safe-area-inset-right,0px));
-  top:calc(env(safe-area-inset-top,0px) + 100px);display:flex;flex-direction:column;gap:8px}
-.fab{width:58px;min-height:46px;padding:4px 2px;font-size:11px;font-weight:700;letter-spacing:.04em;
+  top:calc(env(safe-area-inset-top,0px) + 100px);display:flex;flex-direction:column;gap:7px;
+  max-height:calc(100% - 190px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));overflow-y:auto;scrollbar-width:none}
+.fab{width:58px;min-height:42px;padding:4px 2px;font-size:10.5px;font-weight:700;letter-spacing:.03em;
   background:color-mix(in srgb,var(--panel) 94%,transparent)}
 .fab.on{border-color:var(--acc);color:var(--acc)}
 .fab.ok{border-color:var(--ok);color:var(--ok)}
 .fab.search{border-color:var(--warn);color:var(--warn)}
 .fab.mob{background:var(--bad);border-color:var(--bad);color:#fff}
+.fab.rep{background:var(--warn);border-color:var(--warn);color:#241a00}
+.repgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.repgrid button{min-height:54px;text-align:left;font-weight:600}
+.rep{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:700 13px var(--mono);
+  background:#f59e0b;color:#241a00;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.rep.blk{background:#dc2626;color:#fff}
+.bcn{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.6)}
 
 #pickBar{position:fixed;z-index:940;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));
   bottom:calc(66px + env(safe-area-inset-bottom,0px));display:flex;justify-content:space-between;align-items:center;gap:8px;
@@ -81,7 +89,7 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
   bottom:calc(130px + env(safe-area-inset-bottom,0px));max-width:88vw;background:var(--panel2);border:1px solid var(--line);
   padding:9px 14px;border-radius:10px;text-align:center}
 
-#tabs{position:fixed;z-index:960;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(4,1fr);
+#tabs{position:fixed;z-index:960;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,1fr);
   padding:0 max(0px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(0px,env(safe-area-inset-left,0px));
   background:var(--panel);border-top:1px solid var(--line)}
 #tabs button{border:0;border-radius:0;background:transparent;min-height:56px;font-weight:600;color:var(--mut)}
@@ -158,6 +166,7 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
   <button id="bFollow" class="fab" aria-label="Centra la carta sulla barca">SEGUI</button>
   <button id="bNight" class="fab" aria-label="Modalità notte">NOTTE</button>
   <button id="bMute" class="fab" aria-label="Audio allarmi">AUDIO</button>
+  <button id="bRep" class="fab rep" aria-label="Segnala un pericolo o un'informazione">SEGNALA</button>
   <button id="bMob" class="fab mob" aria-label="Uomo in mare">MOB</button>
 </div>
 
@@ -170,6 +179,8 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
       <div class="btns"><button data-act="startGps">Posizione GPS</button><button data-act="pickStart">Sulla carta</button></div></div>
     <div class="pt"><label>Destinazione</label><span class="val" id="tDest">non impostata</span>
       <div class="btns"><button data-act="pickDest">Sulla carta</button><button data-act="pickVia">+ Tappa</button></div></div>
+    <button id="bAuto" class="primary" data-act="auto">Calcola rotta automatica</button>
+    <p class="note" id="autoMsg">Calcola un percorso sull'acqua tra partenza e destinazione: segue i canali, evita la terra e gli ostacoli segnati, e tiene conto dei limiti di velocità. Verificalo sempre prima di partire.</p>
     <form id="fSearch" class="search"><input id="q" type="search" placeholder="Cerca porto, luogo o lat, lon" enterkeyhint="search" autocomplete="off"><button>Cerca</button></form>
     <div id="results"></div>
     <div id="legs"></div>
@@ -207,10 +218,46 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
     <p class="note">Le secche segnate qui generano un allarme se la prua le raggiunge entro 5 minuti o se la rotta ci passa vicino. Tieni premuto sulla carta per un menu rapido.</p>
   </div>
 
+  <div class="pane" id="p-canali" hidden>
+    <h4>Velocità nei canali</h4>
+    <div class="form"><label>Limite se non indicato <span><input id="sChv" type="number" step="0.5" min="0.5"> nodi</span></label></div>
+    <p class="note">Imposta i limiti reali della tua zona: i dati OpenStreetMap spesso non li riportano. I canali e le zone che disegni valgono più dei dati automatici.</p>
+    <h4>Canali disegnati da te</h4>
+    <div class="form">
+      <label>Nome <input id="cName" placeholder="es. Canale Baseleghe" autocomplete="off"></label>
+      <label>Limite <span><input id="cLim" type="number" step="0.5" min="0.5"> nodi</span></label>
+    </div>
+    <button data-act="pickChan">Disegna canale sulla carta</button>
+    <div id="chList"></div>
+    <h4>Zone di velocità (porti, ingressi)</h4>
+    <div class="form">
+      <label>Nome <input id="zName" placeholder="es. Ingresso porto" autocomplete="off"></label>
+      <label>Limite <span><input id="zLim" type="number" step="0.5" min="0.5" value="3"> nodi</span></label>
+      <label>Raggio <span><input id="zR" type="number" step="25" min="25" value="200"> m</span></label>
+    </div>
+    <button data-act="pickZone">Segna zona sulla carta</button>
+    <div id="zList"></div>
+    <h4>Dati da OpenStreetMap</h4>
+    <p class="note" id="osmInfo"></p>
+    <h4>Condividi con altri naviganti</h4>
+    <div class="btns"><button data-act="dataOut">Esporta dati</button><button data-act="dataIn">Importa dati</button></div>
+    <input id="fileData" type="file" accept=".json,application/json" hidden>
+  </div>
+
+  <div class="pane" id="p-segnala" hidden>
+    <h4>Cosa vuoi segnalare?</h4>
+    <div class="repgrid" id="repGrid"></div>
+    <p class="note">La segnalazione viene messa nella tua posizione GPS, o al centro della carta se il GPS non c'è. Scade da sola dopo qualche ora o giorno, a seconda del tipo.</p>
+    <h4>Segnalazioni attive</h4>
+    <div id="rList"></div>
+  </div>
+
   <div class="pane" id="p-mappa" hidden>
     <div class="seg"><label><input type="radio" name="base" value="osm"> Carta</label><label><input type="radio" name="base" value="sat"> Satellite</label></div>
     <label class="chk"><input type="checkbox" id="lSea"> Segnali nautici (OpenSeaMap)</label>
     <label class="chk"><input type="checkbox" id="lBathy"> Profondità (EMODnet, indicativa)</label>
+    <label class="chk"><input type="checkbox" id="lCh"> Mostra canali e zone di velocità</label>
+    <label class="chk"><input type="checkbox" id="lBea"> Mostra briccole e segnali (OpenStreetMap)</label>
     <label class="chk"><input type="checkbox" id="lTrack"> Mostra la traccia percorsa</label>
     <div class="btns"><button data-act="trackClear">Azzera traccia e statistiche</button><button data-act="trackGpx">Esporta traccia GPX</button></div>
     <p class="note">Le zone di carta già visualizzate restano disponibili anche senza rete. Prima di partire scorri la carta sulla zona di navigazione, a vari livelli di zoom.</p>
@@ -222,10 +269,12 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
   <button data-t="rotta">Rotta</button>
   <button data-t="dati">Dati</button>
   <button data-t="avvisi">Avvisi</button>
+  <button data-t="canali">Canali</button>
   <button data-t="mappa">Carta</button>
 </nav>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="routing.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
