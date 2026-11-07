@@ -481,7 +481,8 @@ async function loadGrid(a, b, k, n) {
         ctx.drawImage(bm, (x - box.tx0) * Water.TILE, (y - box.ty0) * Water.TILE);
         if (bm.close) bm.close();
       } catch (e) { failed++; }
-      autoMsg(`Tratto ${k}/${n}: scarico la carta ${++done}/${nx * ny}`);
+      autoMsg(++done < nx * ny ? `Tratto ${k}/${n}: scarico la carta ${done}/${nx * ny}`
+        : `Tratto ${k}/${n}: scarico canali e briccole da OpenStreetMap (vicino alla laguna può richiedere fino a un minuto)…`);
     }
   };
   const [nr] = await Promise.allSettled([fetchNautical(box), Promise.all([0, 1, 2, 3].map(work))]);
@@ -504,25 +505,41 @@ async function loadGrid(a, b, k, n) {
    Senza questi dati il calcolo non è sicuro, quindi un errore di download ferma il calcolo. */
 async function fetchNautical(box) {
   const b = Water.boxBounds(box), bb = [b.s, b.w, b.n, b.e].map(v => v.toFixed(5)).join(',');
-  const q = `[out:json][timeout:30];(` +
+  const q = `[out:json][timeout:90];(` +
     `way["waterway"~"^(river|canal|fairway|tidal_channel|dock)$"]["tunnel"!="culvert"]["boat"!="no"](${bb});` +
     `way["seamark:type"="fairway"](${bb});relation["seamark:type"="fairway"](${bb});` +
     `node["seamark:type"~"^(beacon_lateral|buoy_lateral)$"](${bb});` +
     `way["water"="lagoon"](${bb});relation["water"="lagoon"](${bb});` +
     `way["natural"="wetland"]["wetland"~"^(tidalflat|saltmarsh)$"](${bb});relation["natural"="wetland"]["wetland"~"^(tidalflat|saltmarsh)$"](${bb});` +
     `way["natural"="shoal"](${bb});relation["natural"="shoal"](${bb});` +
-    `);out geom;`;
-  let j = null;
-  for (const url of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+    `);out tags geom qt;`;
+  /* I dati già scaricati restano sul telefono per 14 giorni: il ricalcolo è immediato e funziona anche senza rete. */
+  const key = 'https://rotta-nautica.local/nautical?v1&' + bb, MAXAGE = 14 * 864e5;
+  let j = null, cache = null;
+  try { cache = await caches.open('rn-nautical'); } catch (e) { /* cache non disponibile */ }
+  if (cache) {
     try {
-      const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 35000);
+      const hit = await cache.match(key);
+      if (hit && Date.now() - +hit.headers.get('x-saved') < MAXAGE) j = await hit.json();
+    } catch (e) { /* ignora */ }
+  }
+  for (const url of j ? [] : ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+    try {
+      const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 100000);
       const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal,
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+      const txt = r.ok ? await r.text() : '';
       clearTimeout(to);
-      if (r.ok) { j = await r.json(); break; }
+      if (!txt) continue;
+      const data = JSON.parse(txt);
+      /* una risposta interrotta dal server è incompleta: potrebbe mancare la laguna, quindi non è sicura */
+      if (data.remark && /error|timed out|out of memory/i.test(data.remark)) continue;
+      j = data;
+      if (cache) cache.put(key, new Response(txt, { headers: { 'Content-Type': 'application/json', 'x-saved': String(Date.now()) } })).catch(() => {});
+      break;
     } catch (e) { /* prova il server successivo */ }
   }
-  if (!j) throw new Error('Dati dei canali e delle briccole non scaricati (server OpenStreetMap occupato). Riprova tra poco');
+  if (!j) throw new Error('Dati dei canali e delle briccole non scaricati: il server OpenStreetMap è occupato o manca la rete. Tocca "Ricalcola rotta" tra poco');
   const ll = g => g.map(p => ({ lat: p.lat, lng: p.lon }));
   const out = { lines: [], corridorAreas: [], restrictAreas: [], beacons: [], info: { canali: 0, segnali: 0, lagune: 0 } };
   const rings = rel => joinRings((rel.members || []).filter(m => m.type === 'way' && m.geometry).map(m => ll(m.geometry)));
