@@ -190,10 +190,10 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
       <div class="btns"><button data-act="startGps">Posizione GPS</button><button data-act="pickStart">Sulla carta</button></div></div>
     <div class="pt"><label>Destinazione</label><span class="val" id="tDest">non impostata</span>
       <div class="btns"><button data-act="pickDest">Sulla carta</button><button data-act="pickVia">+ Tappa</button></div></div>
-    <div class="btns"><button data-act="autoRoute" id="bAuto">Ricalcola via acqua</button><button data-act="undoRoute" id="bUndo" hidden>Usa linea retta</button></div>
-    <div class="btns"><button data-act="water" id="bWater" hidden>Mostra acqua riconosciuta</button></div>
+    <div class="btns"><button data-act="autoRoute" id="bAuto">Ricalcola rotta</button><span id="bUndo" hidden></span></div>
+    <div class="btns"><button data-act="water" id="bWater" hidden>Mostra acque navigabili</button></div>
     <p class="note" id="autoMsg" hidden></p>
-    <p class="note">La rotta si calcola da sola seguendo mare, laguna, fiumi e canali della carta. Per scegliere il passaggio (es. via mare o via canali) aggiungi una tappa lungo il percorso voluto.</p>
+    <p class="note">La rotta si calcola da sola: in laguna e nei fiumi segue solo i canali e le briccole presenti nei dati OpenStreetMap/OpenSeaMap, in mare si tiene lontana dalla costa. Per scegliere il passaggio (es. via mare o via canali) aggiungi una tappa lungo il percorso voluto.</p>
     <div id="legs"></div>
     <div class="sum" id="sum"></div>
     <label class="inl">Velocità prevista <input id="sPlan" type="number" min="0.5" max="40" step="0.5"> nodi</label>
