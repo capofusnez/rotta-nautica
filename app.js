@@ -78,8 +78,7 @@ function fmtClock(ms) {
 
 /* ---------- Stato ---------- */
 const DEF = { xte: 0.1, arr: 80, spd: 0, wind: 25, hz: 300, plan: 5, anc: 40,
-  mute: false, night: false, base: 'osm', sea: true, bathy: false, track: true, follow: true,
-  chv: 5, ch: true, bea: true };
+  mute: false, night: false, base: 'osm', sea: true, bathy: false, track: true, follow: true };
 const S = {
   set: Object.assign({}, DEF, store.get('set', {})),
   route: store.get('route', { start: null, via: [], dest: null }),
@@ -91,12 +90,7 @@ const S = {
   pos: null, sogS: null, active: false, leg: 1, legFrom: null,
   pick: null, anchor: null, mob: null, wx: null, wxT: 0,
   sim: null, simBackup: null, watch: null, gpsOn: false, lastFix: 0, centered: false,
-  tab: null, results: [], ctx: null, mobTap: 0,
-  userCh: store.get('userCh', []).map(c => Object.assign(c, { user: true })),
-  osmCh: store.get('osmCh', []),
-  zones: store.get('zones', []),
-  reports: store.get('reports', []),
-  beacons: [], draft: [], pickTab: null, auto: false, cver: 0, chAll: [], rt: null
+  tab: null, results: [], ctx: null, mobTap: 0
 };
 const wps = () => [S.route.start, ...S.route.via, S.route.dest].filter(Boolean);
 const legFrom = w => (S.leg === 1 && S.legFrom) ? S.legFrom : w[S.leg - 1];
@@ -123,12 +117,6 @@ const wpLayer = L.layerGroup().addTo(map);
 const hzLayer = L.layerGroup().addTo(map);
 const ancLayer = L.layerGroup().addTo(map);
 const mobLayer = L.layerGroup().addTo(map);
-const chLayer = L.layerGroup().addTo(map);
-const osmLayer = L.layerGroup().addTo(map);
-const zoneLayer = L.layerGroup().addTo(map);
-const repLayer = L.layerGroup().addTo(map);
-const beaconLayer = L.layerGroup().addTo(map);
-const draftLine = L.polyline([], { color: '#00e5ff', weight: 4, dashArray: '6 6' }).addTo(map);
 const boat = L.marker([0, 0], {
   icon: L.divIcon({
     className: '', iconSize: [34, 44], iconAnchor: [17, 22],
@@ -139,10 +127,8 @@ const boat = L.marker([0, 0], {
 map.on('moveend', () => store.set('view', { c: [map.getCenter().lat, map.getCenter().lng], z: map.getZoom() }));
 map.on('dragstart', () => { if (S.set.follow) { S.set.follow = false; saveSet(); fabs(); } });
 map.on('click', e => {
-  if (!S.pick) return;
+  if (!S.pick) { if (S.tab) closeSheet(); return; }
   const t = S.pick;
-  if (t === 'chan') { S.draft.push({ lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) }); draftLine.setLatLngs(S.draft.map(p => [p.lat, p.lng])); return; }
-  if (t === 'zone') { addZone(e.latlng); endPick(); return; }
   place(t, e.latlng);
   if (t === 'start' && !S.route.dest) pick('dest');
   else if (t !== 'via') endPick();
@@ -161,8 +147,6 @@ function applyLayers() {
   if (S.set.sea) { if (!map.hasLayer(sea)) sea.addTo(map); } else map.removeLayer(sea);
   if (S.set.bathy) { if (!map.hasLayer(bathy)) bathy.addTo(map); } else map.removeLayer(bathy);
   if (S.set.track) { if (!map.hasLayer(trackLine)) trackLine.addTo(map); } else map.removeLayer(trackLine);
-  [chLayer, osmLayer, zoneLayer].forEach(l => { if (S.set.ch) { if (!map.hasLayer(l)) l.addTo(map); } else map.removeLayer(l); });
-  if (S.set.bea) { if (!map.hasLayer(beaconLayer)) beaconLayer.addTo(map); } else map.removeLayer(beaconLayer);
 }
 function applyNight() {
   document.body.classList.toggle('night', !!S.set.night);
@@ -265,7 +249,7 @@ function drawRoute() {
 }
 function routeCheck() {
   const w = wps(), bad = [];
-  dangers().forEach(h => {
+  S.hazards.forEach(h => {
     for (let i = 1; i < w.length; i++) {
       const d = segDist(h, w[i - 1], w[i]);
       if (d < h.r) { bad.push({ h, d }); break; }
@@ -357,15 +341,6 @@ function nav() {
     if (!S.mob) for (let i = S.leg + 1; i < w.length; i++) rem += dist(w[i - 1], w[i]);
     N.rem = rem;
     N.eta = Date.now() + rem / (sp / KN) * 1000;
-    if (!S.mob && S.active && w.length > S.leg) {
-      const rt = routeTimes(w);
-      if (rt.legs.some(l => l.vmin < S.set.plan - 0.05)) {
-        const cur = rt.legs[S.leg - 1], part = cur ? cur.t * Math.min(1, N.dtw / Math.max(cur.d, 1)) : 0;
-        let t = part;
-        for (let i = S.leg; i < rt.legs.length; i++) t += rt.legs[i].t;
-        N.eta = Date.now() + t * 1000; N.ttg = part;
-      }
-    }
   }
   return N;
 }
@@ -437,8 +412,8 @@ function checks() {
     }
   } else clearAl('xte');
 
-  dangers().forEach(h => {
-    const id = h.aid, d = dist(p, h);
+  S.hazards.forEach(h => {
+    const id = 'h' + h.id, d = dist(p, h);
     if (d < h.r) { raise(id, `${h.name}: a ${fmtDist(d)}, PERICOLO`, 'bad'); return; }
     let hit = 0;
     if (p.sog > 0.8 && isFinite(p.cog)) {
@@ -447,8 +422,7 @@ function checks() {
     if (hit) raise(id, `${h.name} sulla prua tra circa ${hit} min`, 'warn'); else clearAl(id);
   });
 
-  const lm = limitHere(p);
-  if (lm && p.sog > lm.v + 0.3) raise('spd', `Velocità ${p.sog.toFixed(1)} nodi: limite ${lm.v} (${lm.why})`, 'warn'); else clearAl('spd');
+  if (S.set.spd > 0 && p.sog > S.set.spd) raise('spd', `Velocità ${p.sog.toFixed(1)} nodi sopra il limite di ${S.set.spd}`, 'warn'); else clearAl('spd');
   if (S.anchor) {
     const d = dist(p, S.anchor);
     if (d > S.anchor.r) raise('anchor', `Ancora che borda: ${fmtDist(d)} dal punto`, 'bad'); else clearAl('anchor');
@@ -480,7 +454,7 @@ async function fetchWx() {
 /* ---------- Interfaccia ---------- */
 const GRID = [['sog', 'SOG nodi'], ['cog', 'COG'], ['brg', 'BRG al punto'], ['dtw', 'DTW'], ['xte', 'XTE'], ['vmg', 'VMG nodi'],
   ['ttg', 'TTG punto'], ['eta', 'ETA punto'], ['rem', 'Distanza rimanente'], ['fin', 'Arrivo finale'], ['pos', 'Posizione', 1],
-  ['lim', 'Limite velocità'], ['trip', 'Percorso'], ['time', 'Tempo'], ['avg', 'Media nodi'], ['max', 'Max nodi'], ['acc', 'Precisione GPS'],
+  ['trip', 'Percorso'], ['time', 'Tempo'], ['avg', 'Media nodi'], ['max', 'Max nodi'], ['acc', 'Precisione GPS'],
   ['wind', 'Vento'], ['gust', 'Raffica'], ['wave', 'Onda'], ['pres', 'Pressione'], ['anc', 'Deriva ancora'], ['utc', 'Ora UTC']];
 $('grid').innerHTML = GRID.map(g => `<div class="g${g[2] ? ' w' : ''}"><span class="lbl">${g[1]}</span><b id="d-${g[0]}">--</b></div>`).join('');
 const setD = (id, v) => { const e = $('d-' + id); if (e) e.textContent = v; };
@@ -505,8 +479,6 @@ function ui() {
   setD('xte', N.xte != null ? (N.xte >= 0 ? 'D ' : 'S ') + fmtDist(Math.abs(N.xte)) : '--');
   setD('vmg', f(N.vmg, 1)); setD('ttg', fmtDur(N.ttg)); setD('eta', N.eta ? fmtClock(N.eta) : '--');
   setD('rem', fmtDist(N.rem)); setD('fin', N.eta && S.active ? fmtClock(N.eta) : '--');
-  const lmt = p ? limitHere(p) : null;
-  setD('lim', lmt ? `${lmt.v} kn (${lmt.why})` : 'nessuno');
   setD('pos', fmtPos(p)); setD('trip', fmtDist(S.trip.dist)); setD('time', fmtDur(el));
   setD('avg', isFinite(el) && el > 30 ? (S.trip.dist / el * KN).toFixed(1) : '--');
   setD('max', S.trip.max.toFixed(1)); setD('acc', p && p.acc != null ? '±' + Math.round(p.acc) + ' m' : '--');
@@ -534,19 +506,18 @@ function renderRoute() {
   const w = wps(), st = S.route.start, de = S.route.dest;
   $('tStart').textContent = st ? fmtPos(st) : 'non impostata';
   $('tDest').textContent = de ? fmtPos(de) : 'non impostata';
-  let html = '', tot = 0, totT = 0;
-  const rt = w.length > 1 ? routeTimes(w) : { legs: [] };
+  let html = '', tot = 0;
   for (let i = 1; i < w.length; i++) {
-    const d = dist(w[i - 1], w[i]); tot += d; totT += rt.legs[i - 1].t;
+    const d = dist(w[i - 1], w[i]); tot += d;
     const a = i === 1 ? 'P' : String(i - 1), b = i === w.length - 1 ? 'D' : String(i);
-    const isVia = i < w.length - 1, vm = rt.legs[i - 1].vmin;
-    html += `<div class="leg"><b>${a} → ${b}${vm < S.set.plan - 0.05 ? ' · max ' + vm.toFixed(1) + ' kn' : ''}${S.active && i === S.leg ? ' (in corso)' : ''}</b><span>${fmtAng(brg(w[i - 1], w[i]))}</span><span>${fmtDist(d)}</span>` +
+    const isVia = i < w.length - 1;
+    html += `<div class="leg"><b>${a} → ${b}${S.active && i === S.leg ? ' (in corso)' : ''}</b><span>${fmtAng(brg(w[i - 1], w[i]))}</span><span>${fmtDist(d)}</span>` +
       (isVia ? `<button data-act="delVia" data-i="${i - 1}" aria-label="Elimina tappa ${i}">✕</button>` : '<span></span>') + '</div>';
   }
   $('legs').innerHTML = html;
   const bad = routeConflicts();
   $('sum').innerHTML = w.length > 1
-    ? `<span>Totale ${fmtDist(tot)}</span><span>Durata ${fmtDur(totT)}</span><span>${w.length - 1} prue</span>` + (bad ? `<span class="wr">${bad} ostacoli vicino alla rotta</span>` : '')
+    ? `<span>Totale ${fmtDist(tot)}</span><span>Durata ${fmtDur(tot / (S.set.plan / KN))}</span>` + (bad ? `<span class="wr">${bad} ostacoli vicino alla rotta</span>` : '')
     : '<span class="note">Scegli partenza e destinazione sulla carta, con il GPS o cercando un luogo.</span>';
   $('sPlan').value = S.set.plan;
   $('saved').innerHTML = S.saved.map((r, i) =>
@@ -559,7 +530,7 @@ function renderRoute() {
 }
 function routeConflicts() {
   const w = wps(); let n = 0;
-  dangers().forEach(h => { for (let i = 1; i < w.length; i++) if (segDist(h, w[i - 1], w[i]) < h.r) { n++; break; } });
+  S.hazards.forEach(h => { for (let i = 1; i < w.length; i++) if (segDist(h, w[i - 1], w[i]) < h.r) { n++; break; } });
   return n;
 }
 function renderHaz() {
@@ -575,8 +546,6 @@ function openSheet(t) {
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   if (t === 'rotta') renderRoute();
   if (t === 'avvisi') renderHaz();
-  if (t === 'canali') renderCh();
-  if (t === 'segnala') renderRep();
   ui();
 }
 function closeSheet() {
@@ -586,16 +555,13 @@ function closeSheet() {
 document.querySelectorAll('#tabs button').forEach(b => { b.onclick = () => { S.tab === b.dataset.t ? closeSheet() : openSheet(b.dataset.t); }; });
 
 function pick(type) {
-  S.pick = type; S.draft = []; draftLine.setLatLngs([]); S.pickTab = S.tab || 'rotta'; closeSheet(); map.closePopup();
+  S.pick = type; closeSheet(); map.closePopup();
   $('pickBar').hidden = false;
-  $('pickTxt').textContent = { start: 'Tocca la carta: PARTENZA', via: 'Tocca la carta: TAPPE (poi Fine)', dest: 'Tocca la carta: DESTINAZIONE', hazard: 'Tocca la carta: SECCA / OSTACOLO',
-    chan: 'Tocca i punti lungo la mezzeria del canale (poi Fine)', zone: 'Tocca il centro della zona di velocità' }[type];
+  $('pickTxt').textContent = { start: 'Tocca la carta: PARTENZA', via: 'Tocca la carta: TAPPE (poi Fine)', dest: 'Tocca la carta: DESTINAZIONE', hazard: 'Tocca la carta: SECCA / OSTACOLO' }[type];
 }
-function endPick() {
-  S.pick = null; $('pickBar').hidden = true; S.draft = []; draftLine.setLatLngs([]);
-  if (!S.tab) openSheet(S.pickTab || 'rotta');
-}
-$('pickDone').onclick = () => { if (S.pick === 'chan') finalizeChannel(); else endPick(); };
+function endPick() { S.pick = null; $('pickBar').hidden = true; if (!S.tab) openSheet('rotta'); }
+$('pickDone').onclick = endPick;
+$('sheetClose').onclick = closeSheet;
 
 /* ---------- Ricerca luoghi ---------- */
 $('fSearch').addEventListener('submit', async e => {
@@ -629,9 +595,9 @@ function gpxText(withTrack) {
   }
   return s + '</gpx>';
 }
-function download(name, text, mime) {
+function download(name, text) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: mime || 'application/gpx+xml' }));
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/gpx+xml' }));
   a.download = name; document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
 }
@@ -718,19 +684,6 @@ document.addEventListener('click', e => {
     case 'delHaz': S.hazards = S.hazards.filter(h => h.id !== d.id); clearAl('h' + d.id); store.set('hazards', S.hazards); map.closePopup(); drawHazards(); routeCheck(); renderHaz(); renderRoute(); break;
     case 'goHaz': { const h = S.hazards.find(x => x.id === d.id); if (h) { map.setView([h.lat, h.lng], 15); S.set.follow = false; saveSet(); fabs(); } break; }
     case 'dismiss': SN.set(d.id, Date.now() + 60000); clearAl(d.id); break;
-    case 'auto': autoRoute(); break;
-    case 'pickChan': pick('chan'); break;
-    case 'pickZone': pick('zone'); break;
-    case 'delCh': S.userCh = S.userCh.filter(c => c.id !== d.id); persistCh(); map.closePopup(); drawChannels(); renderCh(); renderRoute(); break;
-    case 'goCh': { const c = S.userCh.find(x => x.id === d.id); if (c) { map.fitBounds(L.latLngBounds(c.pts.map(p => [p.lat, p.lng])).pad(.3)); S.set.follow = false; saveSet(); fabs(); } break; }
-    case 'delZone': S.zones = S.zones.filter(z => z.id !== d.id); persistZones(); map.closePopup(); drawZones(); renderCh(); renderRoute(); break;
-    case 'goZone': { const z = S.zones.find(x => x.id === d.id); if (z) { map.setView([z.lat, z.lng], 15); S.set.follow = false; saveSet(); fabs(); } break; }
-    case 'rep': addReport(d.k); break;
-    case 'repOk': confirmReport(d.id, true); break;
-    case 'repNo': confirmReport(d.id, false); break;
-    case 'goRep': { const r = S.reports.find(x => x.id === d.id); if (r) { map.setView([r.lat, r.lng], 15); S.set.follow = false; saveSet(); fabs(); } break; }
-    case 'dataOut': exportData(); break;
-    case 'dataIn': $('fileData').click(); break;
   }
 });
 
@@ -753,7 +706,7 @@ $('fSave').addEventListener('submit', e => {
 });
 
 /* impostazioni */
-const FIELDS = { sXte: 'xte', sArr: 'arr', sSpd: 'spd', sWind: 'wind', sHz: 'hz', sAnc: 'anc', sPlan: 'plan', sChv: 'chv' };
+const FIELDS = { sXte: 'xte', sArr: 'arr', sSpd: 'spd', sWind: 'wind', sHz: 'hz', sAnc: 'anc', sPlan: 'plan' };
 Object.keys(FIELDS).forEach(id => {
   const el = $(id); el.value = S.set[FIELDS[id]];
   el.addEventListener('input', () => {
@@ -765,227 +718,10 @@ document.querySelectorAll('input[name=base]').forEach(r => {
   r.checked = r.value === S.set.base;
   r.addEventListener('change', () => { S.set.base = r.value; saveSet(); applyLayers(); });
 });
-[['lSea', 'sea'], ['lBathy', 'bathy'], ['lTrack', 'track'], ['lCh', 'ch'], ['lBea', 'bea']].forEach(([id, k]) => {
+[['lSea', 'sea'], ['lBathy', 'bathy'], ['lTrack', 'track']].forEach(([id, k]) => {
   $(id).checked = !!S.set[k];
   $(id).addEventListener('change', () => { S.set[k] = $(id).checked; saveSet(); applyLayers(); });
 });
-
-/* ---------- Canali, zone di velocità, limiti ---------- */
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-const strip = arr => arr.map(c => { const o = Object.assign({}, c); delete o.bb; return o; });
-const persistCh = () => { store.set('userCh', strip(S.userCh)); chChanged(); };
-const persistZones = () => { store.set('zones', S.zones); chChanged(); };
-function persistOsm() {
-  const data = S.osmCh.map(c => ({ name: c.name, limit: c.limit, pts: c.pts.map(p => ({ lat: +(+p.lat).toFixed(5), lng: +(+p.lng).toFixed(5) })) }));
-  try { if (JSON.stringify(data).length < 1200000) store.set('osmCh', data); } catch (e) { /* troppo grande */ }
-}
-function chChanged() {
-  S.cver++;
-  S.chAll = Router.prep([...S.userCh, ...S.osmCh]);
-}
-function limitHere(p) {
-  const l = Router.limitAt(p, S.chAll, S.zones);
-  let v = S.set.spd > 0 ? S.set.spd : 0, why = 'limite impostato';
-  if (l && (!v || l.v < v)) { v = l.v; why = l.why; }
-  return v ? { v, why } : null;
-}
-function routeTimes(w) {
-  const key = w.map(p => p.lat + ',' + p.lng).join(';') + '|' + S.cver + '|' + S.set.plan;
-  if (S.rt && S.rt.key === key) return S.rt;
-  const legs = [];
-  for (let i = 1; i < w.length; i++) legs.push(Router.legTime(w[i - 1], w[i], S.chAll, S.zones, S.set.plan));
-  S.rt = { key, legs };
-  return S.rt;
-}
-
-function drawChannels() {
-  chLayer.clearLayers(); osmLayer.clearLayers();
-  S.userCh.forEach(c => {
-    const el = document.createElement('div');
-    el.className = 'ctx';
-    el.innerHTML = `<b>${esc(c.name)}</b><span>limite ${c.limit} nodi</span><button data-act="delCh" data-id="${esc(c.id)}">Elimina</button>`;
-    L.polyline(c.pts.map(p => [p.lat, p.lng]), { color: '#00e5ff', weight: 5, opacity: .75 }).bindPopup(el).addTo(chLayer);
-  });
-  S.osmCh.forEach(c => L.polyline(c.pts.map(p => [p.lat, p.lng]), { color: '#3fd0d9', weight: 2, opacity: .7, dashArray: '4 5', interactive: false }).addTo(osmLayer));
-}
-function drawBeacons() {
-  beaconLayer.clearLayers();
-  const col = { red: '#e53935', green: '#43a047', yellow: '#fdd835', grey: '#9e9e9e' };
-  S.beacons.forEach(b => {
-    const m = L.marker([b.lat, b.lng], { icon: L.divIcon({ className: '', iconSize: [12, 12], iconAnchor: [6, 6], html: `<div class="bcn" style="background:${col[b.color] || col.grey}"></div>` }), keyboard: false }).addTo(beaconLayer);
-    if (b.name) m.bindTooltip(esc(b.name));
-  });
-}
-function drawZones() {
-  zoneLayer.clearLayers();
-  S.zones.forEach(z => {
-    const el = document.createElement('div');
-    el.className = 'ctx';
-    el.innerHTML = `<b>${esc(z.name)}</b><span>limite ${z.limit} nodi, raggio ${z.r} m</span><button data-act="delZone" data-id="${esc(z.id)}">Elimina</button>`;
-    L.circle([z.lat, z.lng], { radius: z.r, color: '#f59e0b', weight: 2, fillColor: '#f59e0b', fillOpacity: .12, dashArray: '6 4' }).bindPopup(el).addTo(zoneLayer);
-  });
-}
-function addZone(ll) {
-  const lim = parseFloat($('zLim').value) || S.set.chv, r = parseFloat($('zR').value) || 200;
-  S.zones.push({ id: uid(), name: $('zName').value.trim() || 'Zona ' + (S.zones.length + 1), lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6), r, limit: lim });
-  $('zName').value = '';
-  persistZones(); drawZones(); renderCh(); renderRoute(); toast('Zona di velocità segnata');
-}
-function finalizeChannel() {
-  if (S.draft.length < 2) { toast('Servono almeno 2 punti'); return; }
-  const lim = parseFloat($('cLim').value) || S.set.chv;
-  S.userCh.push({ id: uid(), name: $('cName').value.trim() || 'Canale ' + (S.userCh.length + 1), limit: lim, pts: S.draft.slice(), user: true });
-  $('cName').value = '';
-  persistCh(); drawChannels(); endPick(); renderCh(); renderRoute(); toast('Canale salvato');
-}
-function renderCh() {
-  $('sChv').value = S.set.chv;
-  if (!$('cLim').value) $('cLim').value = S.set.chv;
-  $('chList').innerHTML = S.userCh.map(c =>
-    `<div class="row" style="grid-template-columns:1fr auto auto auto"><b>${esc(c.name)}</b><span>${c.limit} kn</span><button data-act="goCh" data-id="${esc(c.id)}">Vai</button><button data-act="delCh" data-id="${esc(c.id)}" aria-label="Elimina">✕</button></div>`).join('')
-    || '<p class="note">Nessun canale disegnato.</p>';
-  $('zList').innerHTML = S.zones.map(z =>
-    `<div class="row" style="grid-template-columns:1fr auto auto auto"><b>${esc(z.name)}</b><span>${z.limit} kn</span><button data-act="goZone" data-id="${esc(z.id)}">Vai</button><button data-act="delZone" data-id="${esc(z.id)}" aria-label="Elimina">✕</button></div>`).join('')
-    || '<p class="note">Nessuna zona di velocità.</p>';
-  $('osmInfo').textContent = S.osmCh.length || S.beacons.length
-    ? `${S.osmCh.length} tratti di canale e ${S.beacons.length} segnali dalla zona dell'ultimo calcolo.`
-    : 'Nessun dato scaricato: arrivano quando calcoli una rotta automatica, con la rete attiva.';
-}
-
-/* ---------- Segnalazioni dei naviganti ---------- */
-const REP = {
-  detriti: { l: 'Detriti / tronco', c: 'D', ttl: 12, r: 150, block: 0 },
-  secca: { l: 'Secca / basso fondale', c: 'S', ttl: 720, r: 200, block: 1 },
-  briccola: { l: 'Briccola danneggiata', c: 'B', ttl: 720, r: 100, block: 0 },
-  lavori: { l: 'Lavori / draga', c: 'L', ttl: 168, r: 250, block: 0 },
-  controllo: { l: 'Controllo', c: 'C', ttl: 3, r: 300, block: 0 },
-  onda: { l: 'Moto ondoso / traffico', c: 'T', ttl: 3, r: 400, block: 0 },
-  chiuso: { l: 'Canale chiuso', c: 'X', ttl: 168, r: 100, block: 1 },
-  altro: { l: 'Altro pericolo', c: '!', ttl: 24, r: 150, block: 0 }
-};
-$('repGrid').innerHTML = Object.keys(REP).map(k => `<button data-act="rep" data-k="${k}"><b>${REP[k].c}</b>  ${REP[k].l}</button>`).join('');
-const repActive = r => REP[r.type] && Date.now() - r.t < REP[r.type].ttl * 3600e3;
-const persistRep = () => store.set('reports', S.reports);
-function fmtAgo(ms) {
-  const m = Math.round((Date.now() - ms) / 60000);
-  if (m < 1) return 'ora';
-  if (m < 60) return m + ' min fa';
-  const h = Math.round(m / 60);
-  return h < 48 ? h + ' h fa' : Math.round(h / 24) + ' giorni fa';
-}
-/* tutto ciò che va evitato: ostacoli segnati e segnalazioni ancora valide */
-function dangers() {
-  return [
-    ...S.hazards.map(h => ({ aid: 'h' + h.id, name: h.name, lat: h.lat, lng: h.lng, r: h.r })),
-    ...S.reports.filter(repActive).map(r => ({ aid: 'r' + r.id, name: REP[r.type].l, lat: r.lat, lng: r.lng, r: REP[r.type].r }))
-  ];
-}
-function blocksList() {
-  return [
-    ...S.hazards.map(h => ({ lat: h.lat, lng: h.lng, r: h.r })),
-    ...S.reports.filter(r => repActive(r) && REP[r.type].block).map(r => ({ lat: r.lat, lng: r.lng, r: REP[r.type].r }))
-  ];
-}
-function drawReports() {
-  repLayer.clearLayers();
-  S.reports.filter(repActive).forEach(r => {
-    const t = REP[r.type];
-    const m = L.marker([r.lat, r.lng], { icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13], html: `<div class="rep${t.block ? ' blk' : ''}">${t.c}</div>` }) }).addTo(repLayer);
-    const el = document.createElement('div');
-    el.className = 'ctx';
-    el.innerHTML = `<b>${esc(t.l)}</b><span>segnalato ${fmtAgo(r.t)}, ${r.n} ${r.n === 1 ? 'conferma' : 'conferme'}</span>` +
-      `<button data-act="repOk" data-id="${esc(r.id)}">Ancora presente</button><button data-act="repNo" data-id="${esc(r.id)}">Non c'è più</button>`;
-    m.bindPopup(el);
-  });
-}
-function addReport(type) {
-  if (!REP[type]) return;
-  const p = S.pos || map.getCenter();
-  S.reports.push({ id: uid(), type, lat: +p.lat.toFixed(6), lng: +p.lng.toFixed(6), t: Date.now(), n: 1 });
-  persistRep(); drawReports(); routeCheck(); closeSheet();
-  toast(REP[type].l + ' segnalato' + (S.pos ? '' : ' al centro della carta'));
-}
-function confirmReport(id, still) {
-  const r = S.reports.find(x => x.id === id); if (!r) return;
-  if (still) { r.t = Date.now(); r.n++; toast('Conferma registrata'); }
-  else { S.reports = S.reports.filter(x => x.id !== id); clearAl('r' + id); toast('Segnalazione rimossa'); }
-  persistRep(); drawReports(); routeCheck(); map.closePopup(); if (S.tab === 'segnala') renderRep();
-}
-function purgeReports() {
-  const keep = S.reports.filter(repActive);
-  if (keep.length !== S.reports.length) {
-    S.reports.filter(r => !repActive(r)).forEach(r => clearAl('r' + r.id));
-    S.reports = keep; persistRep(); drawReports();
-  }
-}
-function renderRep() {
-  const list = S.reports.filter(repActive).sort((a, b) => b.t - a.t);
-  $('rList').innerHTML = list.map(r =>
-    `<div class="row" style="grid-template-columns:1fr auto auto"><b>${esc(REP[r.type].l)}<br><span class="note">${fmtAgo(r.t)}${S.pos ? ', a ' + fmtDist(dist(S.pos, r)) : ''}</span></b><button data-act="goRep" data-id="${esc(r.id)}">Vai</button><button data-act="repNo" data-id="${esc(r.id)}" aria-label="Non c'è più">✕</button></div>`).join('')
-    || '<p class="note">Nessuna segnalazione attiva.</p>';
-}
-
-/* ---------- Esporta e importa dati condivisibili ---------- */
-function exportData() {
-  const data = { v: 1, t: Date.now(), reports: S.reports.filter(repActive), channels: strip(S.userCh), zones: S.zones, hazards: S.hazards };
-  download('rotta-nautica-dati.json', JSON.stringify(data), 'application/json');
-}
-$('fileData').addEventListener('change', async e => {
-  const f = e.target.files[0]; if (!f) return;
-  try {
-    const d = JSON.parse(await f.text());
-    const merge = (mine, theirs) => { let n = 0; (theirs || []).forEach(x => { if (x && x.id && !mine.some(y => y.id === x.id)) { mine.push(x); n++; } }); return n; };
-    const nr = merge(S.reports, (d.reports || []).filter(r => REP[r.type] && isFinite(r.lat) && isFinite(r.lng) && isFinite(r.t)));
-    const nc = merge(S.userCh, (d.channels || []).filter(c => c.pts && c.pts.length > 1).map(c => Object.assign(c, { user: true })));
-    const nz = merge(S.zones, d.zones);
-    const nh = merge(S.hazards, d.hazards);
-    persistRep(); persistCh(); persistZones(); store.set('hazards', S.hazards);
-    drawReports(); drawChannels(); drawZones(); drawHazards(); routeCheck(); renderCh(); renderRoute();
-    toast(`Importati: ${nr} segnalazioni, ${nc} canali, ${nz} zone, ${nh} ostacoli`);
-  } catch (err) { toast('File non valido'); }
-  e.target.value = '';
-});
-
-/* ---------- Rotta automatica ---------- */
-async function autoRoute() {
-  const a = S.route.start, b = S.route.dest, msg = t => { $('autoMsg').textContent = t; };
-  if (!a || !b) { toast('Imposta partenza e destinazione'); return; }
-  if (S.auto) return;
-  S.auto = true; $('bAuto').disabled = true;
-  try {
-    if (!navigator.onLine) throw new Error('Serve la connessione per calcolare la rotta. Una rotta già calcolata resta salvata.');
-    const g = Router.plan(a, b);
-    msg('Scarico canali e briccole…');
-    let osm = null, mk = null;
-    try { osm = await Router.fetchOverpass(g.bbox, S.set.chv); } catch (e) { osm = null; }
-    msg('Leggo la carta…');
-    try { mk = await Router.loadTileMask(g, msg); } catch (e) { mk = null; }
-    if (osm) { S.osmCh = osm.channels; S.beacons = osm.beacons; persistOsm(); drawBeacons(); }
-    chChanged(); drawChannels();
-    const useMask = !!(mk && mk.ok);
-    msg('Calcolo la rotta…');
-    await new Promise(r => setTimeout(r, 30));
-    const res = Router.route(g, { water: useMask ? mk.water : null, channels: S.chAll, blocks: blocksList(), cruise: S.set.plan });
-    if (!res) throw new Error(useMask
-      ? 'Nessun percorso in acqua trovato. Controlla partenza e destinazione, oppure disegna i canali che mancano.'
-      : 'Carta non leggibile e nessun canale che colleghi i due punti. Disegna i canali o riprova con più rete.');
-    S.route.via = res.via.map(p => ({ lat: +p.lat.toFixed(6), lng: +p.lng.toFixed(6) }));
-    stopNav(); routeChanged();
-    if (wps().length > 1) map.fitBounds(routeLine.getBounds().pad(0.2));
-    const w = wps(), rt = routeTimes(w);
-    const tot = rt.legs.reduce((s, l) => s + l.d, 0), tt = rt.legs.reduce((s, l) => s + l.t, 0);
-    msg(`${w.length - 1} prue, ${fmtDist(tot)}, circa ${fmtDur(tt)}. ` +
-      (useMask ? `${Math.round(res.stats.chanShare * 100)}% su canali noti.` : 'Calcolata solo sui canali noti: la carta non era leggibile.') +
-      (res.stats.startSnap > 100 || res.stats.destSnap > 100 ? ' Partenza o destinazione non sono in acqua: il primo o l\'ultimo tratto va controllato a mano.' : '') +
-      ' Verifica la rotta prima di partire.');
-    toast('Rotta calcolata');
-  } catch (e) {
-    msg(e.message || 'Errore nel calcolo'); toast(e.message || 'Errore nel calcolo');
-  } finally {
-    S.auto = false; $('bAuto').disabled = false;
-  }
-}
-$('bRep').onclick = () => { S.tab === 'segnala' ? closeSheet() : openSheet('segnala'); };
 
 /* ---------- Ciclo a 1 Hz ---------- */
 setInterval(() => {
@@ -995,7 +731,6 @@ setInterval(() => {
   if (S.pos && Date.now() - S.wxT > 600000) fetchWx();
   ui(); fabs();
 }, 1000);
-setInterval(() => { purgeReports(); if (S.tab === 'segnala') renderRep(); }, 60000);
 setInterval(() => {
   store.set('track', S.track.slice(-3000).map(p => [+p.lat.toFixed(6), +p.lng.toFixed(6), p.t]));
   store.set('trip', S.trip);
@@ -1008,8 +743,7 @@ window.addEventListener('pagehide', () => {
 /* ---------- Avvio ---------- */
 applyLayers(); applyNight();
 trackLine.setLatLngs(S.track.map(p => [p.lat, p.lng]));
-chChanged(); purgeReports();
-drawHazards(); drawChannels(); drawZones(); drawReports(); drawRoute(); renderRoute(); renderHaz(); fabs(); ui();
+drawHazards(); drawRoute(); renderRoute(); renderHaz(); fabs(); ui();
 if (wps().length > 1 && !store.get('view', null)) map.fitBounds(routeLine.getBounds().pad(0.2));
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* offline mode non disponibile */ });
 startGps();
