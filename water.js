@@ -6,7 +6,7 @@
    NB: la carta non conosce le profondità. La rotta va sempre verificata. */
 (function (root) {
   const TILE = 256, RAD = Math.PI / 180, DEG = 180 / Math.PI, SQ2 = Math.SQRT2;
-  const CFG = { maxTiles: 90, closeR: 1, clear: 8, clearK: 3, snapR: 300 };
+  const CFG = { maxTiles: 90, closeR: 0, clear: 8, clearM: 120, clearK: 3, snapR: 300 };
 
   const lon2px = (lng, z) => (lng + 180) / 360 * TILE * 2 ** z;
   const lat2px = (lat, z) => { const s = Math.sin(lat * RAD); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * TILE * 2 ** z; };
@@ -121,11 +121,28 @@
     return d;
   }
 
-  function makeGrid(rgba, W, H, box, lines) {
-    const m = waterMask(rgba, W * H);
-    if (box && lines && lines.length) drawLines(m, W, H, box, lines);
+  /* Griglia navigabile.
+     extra.restrict: zone dove si naviga SOLO nei canali (laguna, barene, velme, secche): 1 = vietato fuori canale.
+     extra.corridor: canali navigabili (corsi d'acqua, fairway, allineamenti di briccole): 1 = navigabile.
+     Navigabile = (acqua sulla carta e non in zona vietata) oppure dentro un canale. */
+  function makeGrid(rgba, W, H, box, extra) {
+    const m = waterMask(rgba, W * H), R = extra && extra.restrict, C = extra && extra.corridor;
+    if (R || C) for (let i = 0; i < m.length; i++) m[i] = (m[i] && !(R && R[i])) || (C && C[i]) ? 1 : 0;
     const w = close(m, W, H, CFG.closeR);
-    return { z: box ? box.z : 0, ox: box ? box.tx0 * TILE : 0, oy: box ? box.ty0 * TILE : 0, W, H, d: landDist(w, W, H) };
+    const g = { z: box ? box.z : 0, ox: box ? box.tx0 * TILE : 0, oy: box ? box.ty0 * TILE : 0, W, H, d: landDist(w, W, H) };
+    g.mpp = box ? 156543.03392 * Math.cos(px2lat(g.oy + H / 2, g.z) * RAD) / 2 ** g.z : 10;
+    g.clear = Math.max(3, Math.min(30, Math.round(CFG.clearM / g.mpp)));
+    return g;
+  }
+  /* Indice della cella sotto un punto, -1 se fuori dalla griglia. */
+  function cellOf(g, p) {
+    const [x, y] = toCell(g, p);
+    return x < 0 || y < 0 || x >= g.W || y >= g.H ? -1 : y * g.W + x;
+  }
+  /* Verifica finale: ogni segmento della polilinea deve restare interamente in acqua navigabile. */
+  function verify(g, cells) {
+    for (let k = 1; k < cells.length; k++) if (!los(g, cells[k - 1], cells[k], 1)) return k;
+    return 0;
   }
 
   const toCell = (g, p) => [Math.floor(lon2px(p.lng, g.z) - g.ox), Math.floor(lat2px(p.lat, g.z) - g.oy)];
@@ -184,7 +201,7 @@
       return top;
     };
     const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
-    const C = CFG.clear, K = CFG.clearK;
+    const C = g.clear || CFG.clear, K = CFG.clearK;
     gs[s] = 0; push(s, h(s));
     let found = s === t;
     while (hi.length && !found) {
@@ -243,5 +260,5 @@
     return out;
   }
 
-  root.Water = { CFG, TILE, tileBox, boxBounds, gridBounds, makeGrid, snap, snapXY, astar, simplify, cellLL, landDist, close, waterMask };
+  root.Water = { CFG, TILE, lon2px, lat2px, tileBox, boxBounds, gridBounds, makeGrid, cellOf, verify, snap, snapXY, astar, simplify, cellLL, landDist, close, waterMask };
 })(typeof window !== 'undefined' ? window : globalThis);
