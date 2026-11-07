@@ -6,7 +6,7 @@
    NB: la carta non conosce le profondità. La rotta va sempre verificata. */
 (function (root) {
   const TILE = 256, RAD = Math.PI / 180, DEG = 180 / Math.PI, SQ2 = Math.SQRT2;
-  const CFG = { maxTiles: 90, closeR: 2, clear: 8, clearK: 3, snapR: 300 };
+  const CFG = { maxTiles: 90, closeR: 0, clear: 8, clearK: 3, snapR: 300 };
 
   const lon2px = (lng, z) => (lng + 180) / 360 * TILE * 2 ** z;
   const lat2px = (lat, z) => { const s = Math.sin(lat * RAD); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * TILE * 2 ** z; };
@@ -17,7 +17,7 @@
   function tileBox(pts) {
     let la0 = Infinity, la1 = -Infinity, lo0 = Infinity, lo1 = -Infinity;
     pts.forEach(p => { la0 = Math.min(la0, p.lat); la1 = Math.max(la1, p.lat); lo0 = Math.min(lo0, p.lng); lo1 = Math.max(lo1, p.lng); });
-    const pLat = Math.max((la1 - la0) * 0.4, 0.02), pLng = Math.max((lo1 - lo0) * 0.4, 0.03);
+    const pLat = Math.max((la1 - la0) * 0.3, 0.012), pLng = Math.max((lo1 - lo0) * 0.3, 0.018);
     la0 -= pLat; la1 += pLat; lo0 -= pLng; lo1 += pLng;
     for (let z = 15; z >= 13; z--) {
       const tx0 = Math.floor(lon2px(lo0, z) / TILE), tx1 = Math.floor(lon2px(lo1, z) / TILE);
@@ -220,9 +220,11 @@
     for (;;) {
       if (d[y0 * W + x0] < minD) return false;
       if (x0 === x1 && y0 === y1) return true;
-      const e2 = 2 * err;
-      if (e2 >= dy) { err += dy; x0 += sx; }
-      if (e2 <= dx) { err += dx; y0 += sy; }
+      const e2 = 2 * err, mx = e2 >= dy, my = e2 <= dx;
+      /* passo in diagonale: controlla anche le due celle d'angolo, per non scavalcare strisce di terra sottili */
+      if (mx && my && (d[y0 * W + x0 + sx] < minD || d[(y0 + sy) * W + x0] < minD)) return false;
+      if (mx) { err += dy; x0 += sx; }
+      if (my) { err += dx; y0 += sy; }
     }
   }
   /* Riduce il percorso a poche tappe, senza avvicinarsi a riva più del percorso originale. */
