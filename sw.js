@@ -1,5 +1,5 @@
 /* Service worker: l'app e le tiles della carta già viste restano disponibili senza rete. */
-const SHELL_CACHE = 'rn-shell-v2';
+const SHELL_CACHE = 'rn-shell-v3';
 const TILE_CACHE = 'rn-tiles';
 const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 const EXTERNAL = /(tile\.openstreetmap\.org|tiles\.openseamap\.org|server\.arcgisonline\.com|ows\.emodnet-bathymetry\.eu|unpkg\.com)$/;

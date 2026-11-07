@@ -93,9 +93,16 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
   background:var(--panel);border-top:1px solid var(--line);border-radius:14px 14px 0 0;
   padding:0 max(12px,env(safe-area-inset-right,0px)) 12px max(12px,env(safe-area-inset-left,0px));
   box-shadow:0 -6px 24px rgba(0,0,0,.35)}
-#sheetClose{position:sticky;top:0;z-index:1;display:block;width:calc(100% + 24px);margin:0 -12px 6px;min-height:28px;padding:0;
-  border:0;border-radius:14px 14px 0 0;background:var(--panel)}
-#sheetClose::before{content:"";display:block;width:44px;height:5px;margin:auto;border-radius:3px;background:var(--line)}
+#sheet.drag{transition:none}
+#sheet{transition:max-height .2s ease,transform .2s ease;touch-action:pan-y}
+#sheetClose{position:sticky;top:0;z-index:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  width:calc(100% + 24px);margin:0 -12px 6px;min-height:40px;padding:7px 0 4px;
+  border:0;border-radius:14px 14px 0 0;background:var(--panel);touch-action:none}
+#sheetClose::before{content:"";display:block;width:44px;height:5px;border-radius:3px;background:var(--line)}
+#sheetTitle{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+#sheet.min{max-height:40px;overflow:hidden}
+#sheet.min .pane{visibility:hidden}
+.leaflet-tile-pane .bathy{filter:grayscale(1) sepia(1) hue-rotate(175deg) saturate(2.8) brightness(.95)}
 .pane{display:flex;flex-direction:column;gap:8px}
 @media (orientation:landscape) and (max-height:500px){
   #sheet{max-height:60dvh;right:auto;width:min(420px,55vw);border-radius:0 14px 0 0}
@@ -174,14 +181,14 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 <div id="toast" hidden></div>
 
 <section id="sheet" hidden>
-  <button id="sheetClose" aria-label="Chiudi pannello"></button>
+  <button id="sheetClose" aria-label="Abbassa o alza il pannello"><span id="sheetTitle"></span></button>
   <div class="pane" id="p-rotta" hidden>
+    <form id="fSearch" class="search"><input id="q" type="search" placeholder="Cerca porto, luogo o lat, lon" enterkeyhint="search" autocomplete="off"><button>Cerca</button></form>
+    <div id="results"></div>
     <div class="pt"><label>Partenza</label><span class="val" id="tStart">non impostata</span>
       <div class="btns"><button data-act="startGps">Posizione GPS</button><button data-act="pickStart">Sulla carta</button></div></div>
     <div class="pt"><label>Destinazione</label><span class="val" id="tDest">non impostata</span>
       <div class="btns"><button data-act="pickDest">Sulla carta</button><button data-act="pickVia">+ Tappa</button></div></div>
-    <form id="fSearch" class="search"><input id="q" type="search" placeholder="Cerca porto, luogo o lat, lon" enterkeyhint="search" autocomplete="off"><button>Cerca</button></form>
-    <div id="results"></div>
     <div id="legs"></div>
     <div class="sum" id="sum"></div>
     <label class="inl">Velocità prevista <input id="sPlan" type="number" min="0.5" max="40" step="0.5"> nodi</label>

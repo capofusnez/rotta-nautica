@@ -105,7 +105,7 @@ const base = {
 };
 const sea = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, zIndex: 3, attribution: 'OpenSeaMap' });
 const bathy = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
-  layers: 'emodnet:mean_multicolour', format: 'image/png', transparent: true, opacity: 0.55, zIndex: 2, attribution: 'EMODnet Bathymetry'
+  layers: 'emodnet:mean_multicolour', format: 'image/png', transparent: true, opacity: 0.6, zIndex: 2, className: 'bathy', attribution: 'EMODnet Bathymetry'
 });
 
 const routeLine = L.polyline([], { color: '#e254ff', weight: 4, opacity: .85, dashArray: '10 8' }).addTo(map);
@@ -127,7 +127,7 @@ const boat = L.marker([0, 0], {
 map.on('moveend', () => store.set('view', { c: [map.getCenter().lat, map.getCenter().lng], z: map.getZoom() }));
 map.on('dragstart', () => { if (S.set.follow) { S.set.follow = false; saveSet(); fabs(); } });
 map.on('click', e => {
-  if (!S.pick) { if (S.tab) closeSheet(); return; }
+  if (!S.pick) { if (S.tab) minSheet(true); return; }
   const t = S.pick;
   place(t, e.latlng);
   if (t === 'start' && !S.route.dest) pick('dest');
@@ -540,8 +540,11 @@ function renderHaz() {
   $('bAnchor').textContent = S.anchor ? 'Ritira ancora (allarme attivo)' : 'Getta ancora qui';
 }
 
+const TITLES = { rotta: 'Rotta', dati: 'Dati', avvisi: 'Avvisi', mappa: 'Carta' };
+function minSheet(on) { $('sheet').classList.toggle('min', on); if (!on) $('sheet').scrollTop = 0; }
 function openSheet(t) {
-  S.tab = t; $('sheet').hidden = false;
+  S.tab = t; $('sheet').hidden = false; minSheet(false);
+  $('sheetTitle').textContent = TITLES[t] || '';
   document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + t; });
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   if (t === 'rotta') renderRoute();
@@ -549,7 +552,7 @@ function openSheet(t) {
   ui();
 }
 function closeSheet() {
-  S.tab = null; $('sheet').hidden = true;
+  S.tab = null; $('sheet').hidden = true; $('sheet').classList.remove('min');
   document.querySelectorAll('#tabs button').forEach(b => b.classList.remove('on'));
 }
 document.querySelectorAll('#tabs button').forEach(b => { b.onclick = () => { S.tab === b.dataset.t ? closeSheet() : openSheet(b.dataset.t); }; });
@@ -561,7 +564,31 @@ function pick(type) {
 }
 function endPick() { S.pick = null; $('pickBar').hidden = true; if (!S.tab) openSheet('rotta'); }
 $('pickDone').onclick = endPick;
-$('sheetClose').onclick = closeSheet;
+/* pannello: tocco sulla maniglia = abbassa/alza; trascina giù = abbassa (e se già abbassato chiude), su = alza */
+let swY = null, swDy = 0, swMoved = false;
+$('sheetClose').onclick = () => { if (swMoved) { swMoved = false; return; } minSheet(!$('sheet').classList.contains('min')); };
+$('sheet').addEventListener('touchstart', e => {
+  const sh = $('sheet');
+  if (e.target.closest('#sheetClose') || sh.scrollTop <= 0 || sh.classList.contains('min')) { swY = e.touches[0].clientY; swDy = 0; }
+  else swY = null;
+}, { passive: true });
+$('sheet').addEventListener('touchmove', e => {
+  if (swY == null) return;
+  const sh = $('sheet'); swDy = e.touches[0].clientY - swY;
+  if (swDy > 0 && (sh.scrollTop <= 0 || e.target.closest('#sheetClose'))) {
+    e.preventDefault(); sh.classList.add('drag'); sh.style.transform = `translateY(${swDy}px)`;
+  } else if (swDy < 0 && !sh.classList.contains('min')) { swY = null; }
+}, { passive: false });
+$('sheet').addEventListener('touchend', () => {
+  if (swY == null) return;
+  const sh = $('sheet'), wasMin = sh.classList.contains('min');
+  sh.classList.remove('drag'); sh.style.transform = '';
+  if (Math.abs(swDy) > 10) swMoved = true;
+  if (swDy > 60) { if (wasMin) closeSheet(); else minSheet(true); }
+  else if (swDy < -30 && wasMin) minSheet(false);
+  swY = null;
+  setTimeout(() => { swMoved = false; }, 350);
+});
 
 /* ---------- Ricerca luoghi ---------- */
 $('fSearch').addEventListener('submit', async e => {
