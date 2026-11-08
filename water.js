@@ -121,13 +121,23 @@
     return d;
   }
 
-  /* Griglia navigabile.
-     extra.restrict: zone dove si naviga SOLO nei canali (laguna, barene, velme, secche): 1 = vietato fuori canale.
-     extra.corridor: canali navigabili (corsi d'acqua, fairway, allineamenti di briccole): 1 = navigabile.
-     Navigabile = (acqua sulla carta e non in zona vietata) oppure dentro un canale. */
+  /* Griglia navigabile. Maschere in extra (1 = presente):
+     restrict: laguna, barene, velme, secche mappate -> si naviga solo nei canali
+     zone:     area attorno a briccole e segnali di canale -> si naviga solo sull'asse del canale
+     axis:     asse del canale tra i segnali (valido sull'acqua e sulle zone lagunari, mai sulla terra)
+     ext:      prolungamento dell'asse verso le acque libere (solo su acqua libera)
+     lines:    corsi d'acqua mappati (fiumi, canali): restano navigabili anche sotto i ponti
+     barrier:  file di segnali dello stesso lato, non attraversabili
+     nogo:     pali, pericoli isolati, scogli, relitti */
   function makeGrid(rgba, W, H, box, extra) {
-    const m = waterMask(rgba, W * H), R = extra && extra.restrict, C = extra && extra.corridor;
-    if (R || C) for (let i = 0; i < m.length; i++) m[i] = (m[i] && !(R && R[i])) || (C && C[i]) ? 1 : 0;
+    const m = waterMask(rgba, W * H), X = extra || {};
+    const R = X.restrict, Z = X.zone, A = X.axis, E = X.ext, Ln = X.lines, B = X.barrier, N = X.nogo;
+    if (R || Z || A || E || Ln || B || N) for (let i = 0; i < m.length; i++) {
+      const water = m[i], r = R && R[i];
+      let ok = (water && !r && !(Z && Z[i])) || (Ln && Ln[i]) || (A && A[i] && (water || r)) || (E && E[i] && water && !r);
+      if ((B && B[i]) || (N && N[i])) ok = false;
+      m[i] = ok ? 1 : 0;
+    }
     const w = close(m, W, H, CFG.closeR);
     const g = { z: box ? box.z : 0, ox: box ? box.tx0 * TILE : 0, oy: box ? box.ty0 * TILE : 0, W, H, d: landDist(w, W, H) };
     g.mpp = box ? 156543.03392 * Math.cos(px2lat(g.oy + H / 2, g.z) * RAD) / 2 ** g.z : 10;
