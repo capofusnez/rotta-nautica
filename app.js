@@ -52,6 +52,7 @@ function segDist(p, a, b) {
 }
 
 const pad2 = n => String(n).padStart(2, '0');
+const num1 = v => String(+(+v).toFixed(1)).replace('.', ',');
 function fmtDist(m) {
   if (!isFinite(m)) return '--';
   if (m < 370) return Math.round(m) + ' m';
@@ -80,7 +81,7 @@ function fmtClock(ms) {
 }
 
 /* ---------- Stato ---------- */
-const DEF = { xte: 0.1, arr: 80, spd: 0, wind: 25, hz: 300, plan: 5, anc: 40, coast: 300,
+const DEF = { xte: 0.1, arr: 80, spd: 0, wind: 25, hz: 300, plan: 5, anc: 40, coast: 300, draft: 1, ukc: 0.5, enc: true,
   mute: false, night: false, base: 'osm', sea: true, bathy: false, track: true, follow: true };
 const S = {
   set: Object.assign({}, DEF, store.get('set', {})),
@@ -152,6 +153,19 @@ function applyLayers() {
   if (S.set.bathy) { if (!map.hasLayer(bathy)) bathy.addTo(map); } else map.removeLayer(bathy);
   if (S.set.track) { if (!map.hasLayer(trackLine)) trackLine.addTo(map); } else map.removeLayer(trackLine);
   seamarkInspector.refresh();
+  encView.render();
+}
+/* carte ENC ufficiali (enc.js): importate sul telefono, se il file manca l'app funziona lo stesso */
+let encView = { render() {} };
+try { if (window.ENC) encView = ENC.attach(map, { isOn: () => S.set.enc, need: () => S.set.draft + S.set.ukc, isPicking: () => !!S.pick }); }
+catch (e) { console.error(e); }
+function encStatus() {
+  if (!$('encStatus')) return;
+  const i = window.ENC && ENC.info();
+  $('encStatus').textContent = i
+    ? `${i.cells} celle caricate (${i.editions.slice(0, 4).join(', ')}${i.cells > 4 ? '…' : ''}). Profondità colorate per pescaggio ${S.set.draft} m + margine ${S.set.ukc} m.`
+    : 'Nessuna carta ENC caricata: il calcolo usa i dati OpenStreetMap/OpenSeaMap.';
+  $('bEncClear').hidden = !i;
 }
 /* scheda dei segnali (seamarks.js): se il file manca l'app funziona lo stesso */
 let seamarkInspector = { refresh() {} };
@@ -506,8 +520,18 @@ async function loadGrid(a, b, k, n) {
   const nx = box.tx1 - box.tx0 + 1, ny = box.ty1 - box.ty0 + 1, W = nx * Water.TILE, H = ny * Water.TILE;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d', { willReadFrequently: true });
+  /* carte ENC ufficiali, se importate: dove coprono tutta la zona non serve scaricare nulla (funziona anche senza rete) */
+  let enc = null;
+  if (window.ENC && ENC.loaded()) {
+    busy.set(`Tratto ${k}/${n}: leggo le carte ENC…`, k, 0.05);
+    await yieldUI();
+    const ox = box.tx0 * Water.TILE, oy = box.ty0 * Water.TILE, bb = Water.boxBounds(box);
+    const mpp = 156543.03392 * Math.cos((bb.s + bb.n) / 2 * Math.PI / 180) / 2 ** box.z;
+    enc = ENC.routingMasks(bb, W, H, p => [Water.lon2px(p.lng, box.z) - ox, Water.lat2px(p.lat, box.z) - oy], mpp, S.set.draft + S.set.ukc);
+  }
+  const encFull = enc && enc.fraction > 0.999;
   const jobs = [];
-  for (let y = box.ty0; y <= box.ty1; y++) for (let x = box.tx0; x <= box.tx1; x++) jobs.push([x, y]);
+  if (!encFull) for (let y = box.ty0; y <= box.ty1; y++) for (let x = box.tx0; x <= box.tx1; x++) jobs.push([x, y]);
   let done = 0, failed = 0;
   const work = async () => {
     while (jobs.length) {
@@ -526,19 +550,23 @@ async function loadGrid(a, b, k, n) {
   let nautTxt = 'canali e briccole…', nautFrac = 0;
   function show() {
     const tiles = done < nx * ny ? `carta ${Math.round(done / (nx * ny) * 100)}%` : 'carta ✓';
+    if (encFull) return;
     busy.set(`Tratto ${k}/${n}: ${tiles} · ${nautTxt}`, k, 0.65 * (0.4 * done / (nx * ny) + 0.6 * nautFrac));
   }
   const report = (t, f) => { nautTxt = t; nautFrac = f; show(); };
-  const [nr] = await Promise.allSettled([fetchNautical(box, report), Promise.all([0, 1, 2, 3].map(work))]);
-  if (failed > nx * ny * 0.15) throw new Error('Carta non scaricata: serve la connessione a Internet');
+  const EMPTY = { lines: [], corridorAreas: [], restrictAreas: [], nodes: [], info: { canali: 0, segnali: 0, coppie: 0, lagune: 0 } };
+  const [nr] = encFull ? [{ status: 'fulfilled', value: EMPTY }]
+    : await Promise.allSettled([fetchNautical(box, report), Promise.all([0, 1, 2, 3].map(work))]);
+  if (!encFull && failed > nx * ny * 0.15) throw new Error('Carta non scaricata: serve la connessione a Internet');
   if (nr.status === 'rejected') throw nr.reason;
   const nautical = nr.value;
   busy.set(`Tratto ${k}/${n}: riconosco canali, briccole e acque navigabili…`, k, 0.7);
   await yieldUI();
   const rgba = ctx.getImageData(0, 0, W, H).data;
   const extra = rasterNautical(ctx, W, H, box, nautical);
+  if (enc) extra.enc = enc;
   const g = Water.makeGrid(rgba, W, H, box, extra);
-  g.info = nautical.info; g.ch = extra.ch;
+  g.info = nautical.info; g.ch = extra.ch; g.enc = enc ? { fraction: enc.fraction, cells: enc.cells } : null;
   return g;
 }
 
@@ -739,6 +767,7 @@ async function autoRoute() {
   finally { ovRouting = Math.max(0, Math.min(ovRouting, before)); if (!ovRouting) seamarkInspector.refresh(); }
 }
 async function autoRouteRun() {
+  if (window.ENC && ENC.whenReady) await ENC.whenReady();
   const w = userPts().map(p => ({ lat: p.lat, lng: p.lng }));
   if (w.length < 2) { toast('Imposta partenza e destinazione'); return; }
   const seq = ++autoSeq, MOVE_MAX = 600;
@@ -760,9 +789,10 @@ async function autoRouteRun() {
         const own = Water.cellOf(g, w[idx]);
         if (own >= 0 && g.d[own]) return own;
         const sn = Water.snap(g, w[idx]);
-        if (sn < 0) throw new Error(`${name(idx)} è lontana da acque navigabili`);
+        if (sn < 0) throw new Error(g.enc ? `${name(idx)}: secondo le carte ENC non c'è acqua profonda almeno ${num1(S.set.draft + S.set.ukc)} m (pescaggio + margine) nelle vicinanze`
+          : `${name(idx)}: nessuna acqua navigabile nelle vicinanze`);
         const np = Water.cellLL(g, sn), dd = dist(w[idx], np);
-        if (dd > MOVE_MAX) throw new Error(`${name(idx)} è a ${fmtDist(dd)} dal canale navigabile più vicino: spostala in un canale segnato`);
+        if (dd > MOVE_MAX) throw new Error(`${name(idx)}: il punto navigabile più vicino è a ${fmtDist(dd)}${g.enc ? ` (profondità almeno ${num1(S.set.draft + S.set.ukc)} m)` : ''}. Sposta il punto in un canale`);
         w[idx] = np; if (!moved.includes(idx)) moved.push(idx);
         return sn;
       });
@@ -770,7 +800,8 @@ async function autoRouteRun() {
       await yieldUI();
       if (seq !== autoSeq) return;
       const path = Water.astar(g, ends[0], ends[1]);
-      if (!path) throw new Error(`Tratto ${k}: nessun passaggio nei canali navigabili dei dati OpenStreetMap/OpenSeaMap. Aggiungi una tappa lungo il canale che vuoi seguire`);
+      if (!path) throw new Error(g.enc ? `Tratto ${k}: secondo le carte ENC non esiste un passaggio con almeno ${num1(S.set.draft + S.set.ukc)} m di profondità (pescaggio ${num1(S.set.draft)} m + margine ${num1(S.set.ukc)} m)`
+        : `Tratto ${k}: nessun passaggio nei canali navigabili dei dati OpenStreetMap/OpenSeaMap. Aggiungi una tappa lungo il canale che vuoi seguire`);
       const cells = Water.simplify(g, path);
       const bad = Water.verify(g, cells);
       if (bad) throw new Error(`Tratto ${k}: verifica fallita, un segmento esce dalle acque navigabili`);
@@ -796,8 +827,14 @@ async function autoRouteRun() {
   if (S.tab) minSheet(true);
   showWater(false);
   const mv = moved.length ? ' ' + moved.map(name).join(', ') + (moved.length > 1 ? ' sono state spostate' : ' è stata spostata') + ' nel punto navigabile più vicino.' : '';
-  autoMsg(`Rotta calcolata (${info.canali} canali mappati, ${info.segnali} briccole e segnali di canale, ${info.coppie} sezioni di canale riconosciute, ${info.lagune ? 'laguna riconosciuta' : 'nessuna laguna nei dati'}).${mv} ` +
-    'I dati OpenStreetMap/OpenSeaMap non indicano le profondità e possono essere incompleti: verifica sempre con i segnalamenti in acqua.');
+  const encUsed = S.grids.filter(g => g.enc).map(g => g.enc), encAll = encUsed.length === S.grids.length && encUsed.every(e => e.fraction > 0.999);
+  const encCells = [...new Set(encUsed.flatMap(e => e.cells))].join(', ');
+  const osmTxt = `${info.canali} canali mappati, ${info.segnali} briccole e segnali di canale, ${info.coppie} sezioni di canale riconosciute, ${info.lagune ? 'laguna riconosciuta' : 'nessuna laguna nei dati'}`;
+  autoMsg(encAll
+    ? `Rotta calcolata con le carte ENC ufficiali (${encCells}): passa solo dove la profondità è almeno ${num1(S.set.draft + S.set.ukc)} m (pescaggio ${num1(S.set.draft)} m + margine ${num1(S.set.ukc)} m) e lontano da terra, opere e ostacoli.${mv} Verifica che le celle siano aggiornate con gli ultimi Avvisi ai Naviganti.`
+    : encUsed.length
+      ? `Rotta calcolata con le carte ENC (${encCells}) dove disponibili e con OpenStreetMap/OpenSeaMap altrove (${osmTxt}).${mv} Fuori dalle ENC le profondità non sono note: verifica con i segnalamenti in acqua.`
+      : `Rotta calcolata (${osmTxt}).${mv} I dati OpenStreetMap/OpenSeaMap non indicano le profondità e possono essere incompleti: verifica sempre con i segnalamenti in acqua.`);
   let tot = 0; for (let i = 1; i < clean.length; i++) tot += dist(clean[i - 1], clean[i]);
   busy.done(`Rotta calcolata: ${fmtDist(tot)}, circa ${fmtDur(tot / (S.set.plan / KN))} a ${S.set.plan} nodi. Verificala sulla carta.`);
   $('bAuto').disabled = false;
@@ -1081,6 +1118,8 @@ document.addEventListener('click', e => {
       stopNav();
       const s = S.route.start; S.route.start = S.route.dest; S.route.dest = s; S.route.via.reverse(); if (S.route.path) S.route.path.reverse(); routeChanged(); break;
     }
+    case 'encImport': $('encFile').click(); break;
+    case 'encClear': if (window.ENC) ENC.clear().then(() => { encStatus(); encView.render(); toast('Carte ENC rimosse'); if (S.route.start && S.route.dest) editRoute(); }); break;
     case 'cancelRoute': clearTimeout(autoT); autoSeq++; busy.fail('Calcolo annullato. Tocca "Ricalcola rotta" nella scheda Rotta per riprovare.'); $('bAuto').disabled = false; autoMsg('Calcolo annullato.'); break;
     case 'closeBusy': busy.hide(); break;
     case 'clear': stopNav(); clearTimeout(autoT); autoSeq++; busy.hide(); S.route = { start: null, via: [], dest: null, path: null }; autoMsg(''); routeChanged(); break;
@@ -1121,16 +1160,29 @@ $('fSave').addEventListener('submit', e => {
   store.set('routes', S.saved); $('rName').value = ''; renderRoute(); toast('Rotta salvata');
 });
 
+if ($('encFile')) $('encFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f || !window.ENC) return;
+  toast('Importo le carte ENC…');
+  try {
+    const i = await ENC.importFile(f);
+    encStatus(); S.set.enc = true; $('lEnc').checked = true; saveSet(); encView.render();
+    toast(`Carte ENC importate: ${i.cells} celle`);
+    if (S.route.start && S.route.dest) editRoute();
+  } catch (err) { toast('Importazione non riuscita: ' + (err.message || err)); }
+});
+
 /* impostazioni */
 let coastT = 0;
-const FIELDS = { sXte: 'xte', sArr: 'arr', sSpd: 'spd', sWind: 'wind', sHz: 'hz', sAnc: 'anc', sPlan: 'plan', sCoast: 'coast' };
-Object.keys(FIELDS).forEach(id => {
+const FIELDS = { sXte: 'xte', sArr: 'arr', sSpd: 'spd', sWind: 'wind', sHz: 'hz', sAnc: 'anc', sPlan: 'plan', sCoast: 'coast', sDraft: 'draft', sUkc: 'ukc' };
+Object.keys(FIELDS).filter(id => $(id)).forEach(id => {
   const el = $(id); el.value = S.set[FIELDS[id]];
   el.addEventListener('input', () => {
     const v = parseFloat(el.value);
     if (isFinite(v)) {
       S.set[FIELDS[id]] = v; saveSet(); if (id === 'sPlan') renderRoute();
-      if (id === 'sCoast' && S.route.start && S.route.dest) { clearTimeout(coastT); coastT = setTimeout(editRoute, 1200); }
+      if (/^(sCoast|sDraft|sUkc)$/.test(id) && S.route.start && S.route.dest) { clearTimeout(coastT); coastT = setTimeout(editRoute, 1200); }
+      if (/^(sDraft|sUkc)$/.test(id)) encView.render();
     }
   });
 });
@@ -1138,7 +1190,7 @@ document.querySelectorAll('input[name=base]').forEach(r => {
   r.checked = r.value === S.set.base;
   r.addEventListener('change', () => { S.set.base = r.value; saveSet(); applyLayers(); });
 });
-[['lSea', 'sea'], ['lBathy', 'bathy'], ['lTrack', 'track']].forEach(([id, k]) => {
+[['lSea', 'sea'], ['lBathy', 'bathy'], ['lTrack', 'track'], ['lEnc', 'enc']].filter(([id]) => $(id)).forEach(([id, k]) => {
   $(id).checked = !!S.set[k];
   $(id).addEventListener('change', () => { S.set[k] = $(id).checked; saveSet(); applyLayers(); });
 });
@@ -1172,6 +1224,7 @@ if ('serviceWorker' in navigator) {
   else navigator.serviceWorker.register('sw.js').catch(() => { /* offline mode non disponibile */ });
 }
 window.rnStarted = true;
+if (window.ENC) ENC.load().then(() => { encStatus(); encView.render(); }); else encStatus();
 startGps();
 if (S.route.path === undefined) S.route.path = null;
 if (!S.route.path && S.route.start && S.route.dest) { S.route.blocked = true; drawRoute(); renderRoute(); autoSchedule(); }

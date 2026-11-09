@@ -132,8 +132,14 @@
   function makeGrid(rgba, W, H, box, extra) {
     const m = waterMask(rgba, W * H), X = extra || {};
     const R = X.restrict, Z = X.zone, A = X.axis, E = X.ext, Ln = X.lines, B = X.barrier, N = X.nogo;
-    const coastPx = landDist(m, W, H);   // distanza dalla riva vera (terra della carta), in pixel
-    if (R || Z || A || E || Ln || B || N) for (let i = 0; i < m.length; i++) {
+    /* ENC (S-57): dove c'è copertura decidono solo le carte ufficiali (profondità >= pescaggio + margine,
+       niente terra, opere od ostacoli). Fuori copertura vale il metodo con OpenStreetMap/OpenSeaMap. */
+    const EN = X.enc, EC = EN && EN.cov;
+    let raw = m;
+    if (EC) { raw = new Uint8Array(m); for (let i = 0; i < raw.length; i++) if (EC[i]) raw[i] = EN.wet[i]; }
+    const coastPx = landDist(raw, W, H);   // distanza dalla riva vera, in pixel
+    if (R || Z || A || E || Ln || B || N || EC) for (let i = 0; i < m.length; i++) {
+      if (EC && EC[i]) { m[i] = EN.ok[i] ? 1 : 0; continue; }
       const water = m[i], r = R && R[i];
       let ok = (water && !r && !(Z && Z[i])) || (Ln && Ln[i]) || (A && A[i] && (water || r)) || (E && E[i] && water && !r);
       if ((B && B[i]) || (N && N[i])) ok = false;
@@ -147,8 +153,9 @@
     const coastM = X.coastM != null ? X.coastM : CFG.coastM, lim = coastM / g.mpp;
     g.buf = new Uint8Array(W * H);
     if (coastM > 0) for (let i = 0; i < g.buf.length; i++)
-      if (g.d[i] && coastPx[i] < lim && !((A && A[i]) || (E && E[i]) || (Ln && Ln[i]))) g.buf[i] = 1;
+      if (g.d[i] && coastPx[i] < lim && !((A && A[i]) || (E && E[i]) || (Ln && Ln[i]) || (EN && EN.pref && EN.pref[i]))) g.buf[i] = 1;
     g.coastM = coastM;
+    g.pref = EN && EN.pref ? EN.pref : null;   // rotte raccomandate e allineamenti ENC: percorso preferito
     return g;
   }
   /* Indice della cella sotto un punto, -1 se fuori dalla griglia. */
@@ -234,7 +241,7 @@
         if (!d[j] || closed[j]) continue;
         if (k > 3 && (!d[y * W + nx] || !d[ny * W + x])) continue;
         const m = Math.min(d[i], d[j]);
-        const ng = gs[i] + (k > 3 ? SQ2 : 1) * (1 + K * Math.max(0, C - m) / C) * (g.buf && g.buf[j] ? CFG.coastK : 1);
+        const ng = gs[i] + (k > 3 ? SQ2 : 1) * (1 + K * Math.max(0, C - m) / C) * (g.buf && g.buf[j] ? CFG.coastK : 1) * (g.pref && !g.pref[j] ? 1.5 : 1);
         if (ng < gs[j]) { gs[j] = ng; par[j] = i; push(j, ng + h(j)); }
       }
     }

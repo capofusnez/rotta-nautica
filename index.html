@@ -180,6 +180,7 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 .sm table{border-collapse:collapse;width:100%}
 .sm td{padding:1px 4px;border-top:1px solid #eef3f5;word-break:break-all;font-family:var(--mono)}
 .sm .smw{margin:6px 0 0;font-size:11px;color:#8a6d1a}
+.sm hr{border:0;border-top:2px solid #c7d6dd;margin:8px 0}
 .ctx button{min-height:40px}
 </style>
 </head>
@@ -249,6 +250,8 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
       <label>Raffica di vento (0 = off) <span><input id="sWind" type="number" step="1" min="0"> nodi</span></label>
       <label>Raggio di sicurezza ostacoli <span><input id="sHz" type="number" step="25" min="25"> m</span></label>
       <label>Distanza minima dalla costa (0 = off) <span><input id="sCoast" type="number" step="50" min="0"> m</span></label>
+      <label>Pescaggio della barca (carte ENC) <span><input id="sDraft" type="number" step="0.1" min="0"> m</span></label>
+      <label>Margine sotto la chiglia (carte ENC) <span><input id="sUkc" type="number" step="0.1" min="0"> m</span></label>
     </div>
     <h4>Allarme ancora</h4>
     <div class="form"><label>Raggio di deriva <span><input id="sAnc" type="number" step="5" min="10"> m</span></label></div>
@@ -264,6 +267,12 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
     <label class="chk"><input type="checkbox" id="lSea"> Segnali nautici (OpenSeaMap): toccali per vedere la scheda</label>
     <label class="chk"><input type="checkbox" id="lBathy"> Profondità (EMODnet, indicativa)</label>
     <label class="chk"><input type="checkbox" id="lTrack"> Mostra la traccia percorsa</label>
+    <h4>Carte ENC ufficiali (S-57)</h4>
+    <p class="note" id="encStatus">Nessuna carta ENC caricata.</p>
+    <label class="chk"><input type="checkbox" id="lEnc"> Mostra le carte ENC (profondità, costa, segnali)</label>
+    <div class="btns"><button data-act="encImport">Importa pacchetto ENC</button><button data-act="encClear" id="bEncClear" hidden>Rimuovi carte ENC</button></div>
+    <input id="encFile" type="file" accept=".json,application/json" hidden>
+    <p class="note">Il pacchetto si crea sul computer dalle celle S-57 (.000) con lo script <code>tools/enc2rotta.py</code>. Resta salvato solo su questo telefono. Dove ci sono le ENC, la rotta passa solo dove la profondità supera pescaggio + margine.</p>
     <div class="btns"><button data-act="trackClear">Azzera traccia e statistiche</button><button data-act="trackGpx">Esporta traccia GPX</button></div>
     <p class="note">Le zone di carta già visualizzate restano disponibili anche senza rete. Prima di partire scorri la carta sulla zona di navigazione, a vari livelli di zoom.</p>
     <p class="note warn">Ausilio alla navigazione. Non sostituisce carte ufficiali, strumenti di bordo, bollettini meteo e buona condotta marinaresca. Le profondità e le secche mostrate possono essere incomplete.</p>
@@ -296,6 +305,7 @@ window.addEventListener('error', function (e) { if (!window.rnStarted) window.rn
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="water.js"></script>
 <script src="channels.js"></script>
+<script src="enc.js"></script>
 <script src="seamarks.js"></script>
 <script src="app.js"></script>
 </body>
