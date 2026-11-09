@@ -2,20 +2,21 @@
 /* Geometria dei canali segnalati (briccole, pali, mede e boe laterali).
    Dai segnali ricava:
    - l'ASSE del canale: punti medi tra segnali posti uno di fronte all'altro, collegati lungo il canale;
-   - i PROLUNGAMENTI dell'asse alle due estremità, per entrare e uscire dal canale;
-   - le BARRIERE: le file di segnali dello stesso lato, che la rotta non può attraversare;
-   - la ZONA CANALIZZATA: l'area attorno ai segnali, dove si naviga solo sull'asse del canale;
+   - le FILE di segnali (riconosciute dall'allineamento), che diventano BARRIERE invalicabili;
+   - le FASCE ESTERNE: il lato di ogni fila opposto al canale, dove non si naviga;
+     così nel canale si entra e si esce solo dalle estremità;
    - gli OSTACOLI: pericoli isolati, scogli, relitti e i pali stessi.
    Tutte le distanze sono in metri. */
 (function (root) {
   const RAD = Math.PI / 180;
   const CFG = {
-    rowMax: 220,        // distanza massima tra segnali consecutivi della stessa fila
+    rowMax: 320,        // distanza massima tra briccole consecutive della stessa fila
+    rowMaxSided: 900,   // distanza massima tra mede/boe laterali consecutive dello stesso lato
     sideMax: 600,       // larghezza massima di un canale con segnali rossi/verdi
     plainMax: 400,      // larghezza massima di un canale con briccole senza colore
     axisMax: 400,       // distanza massima tra due punti dell'asse consecutivi
-    zoneR: 300,         // raggio della zona canalizzata attorno a ogni segnale
-    extra: 80,          // prolungamento dell'asse oltre la zona canalizzata
+    band: 120,          // larghezza della fascia vietata sul lato esterno di ogni fila
+    endStub: 150,       // raccordo dell'asse oltre le estremità del canale
     axisW: [16, 80],    // larghezza minima e massima della fascia navigabile sull'asse
     postR: 8,           // distanza minima da un palo
     dangerR: 40         // distanza minima da un pericolo isolato, scoglio o relitto
@@ -58,7 +59,7 @@
   function analyze(nodes, cfg) {
     const C = Object.assign({}, CFG, cfg || {});
     const { marks, dangers, posts } = classify(nodes);
-    const out = { axis: [], ext: [], barrier: [], zone: [], nogo: [], pairs: 0, marks: marks.length };
+    const out = { axis: [], ext: [], barrier: [], zone: [], band: [], nogo: [], pairs: 0, rows: 0, marks: marks.length };
     dangers.forEach(p => out.nogo.push({ p, r: C.dangerR }));
     posts.concat(marks).forEach(p => out.nogo.push({ p, r: C.postR }));
     if (!marks.length) return out;
@@ -70,10 +71,11 @@
     const kx = 111320 * Math.cos(la * RAD), ky = 110540;
     const M = marks.map(m => ({ x: (m.lng - lo) * kx, y: (m.lat - la) * ky, side: m.side }));
     const back = (x, y) => ({ lat: la + y / ky, lng: lo + x / kx });
-    const d2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
     const unit = (dx, dy) => { const l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
+    const rowMax = m => m.side ? C.rowMaxSided : C.rowMax;
 
-    /* indice spaziale a celle per trovare in fretta i vicini */
+    /* indice spaziale a celle */
     const CELL = 300, grid = new Map(), key = (i, j) => i + ',' + j;
     M.forEach((m, i) => { const k = key(Math.floor(m.x / CELL), Math.floor(m.y / CELL)); (grid.get(k) || grid.set(k, []).get(k)).push(i); });
     const near = (m, r) => {
@@ -81,56 +83,91 @@
       for (let i = ci - n; i <= ci + n; i++) for (let j = cj - n; j <= cj + n; j++) (grid.get(key(i, j)) || []).forEach(k => res.push(k));
       return res;
     };
+    const sameRowOk = (m, o) => !(m.side && o.side && m.side !== o.side) && !(!!m.side !== !!o.side);
 
-    /* direzione della fila: verso il segnale più vicino dello stesso lato (o qualsiasi, se senza colore) */
+    /* 1. FILE: ogni segnale sta nella fila dei due vicini con cui è allineato (angolo vicino a 180°).
+          Con briccole distanziate lungo la fila quanto tra le due file, "il più vicino" non basta. */
+    const cand = M.map((m, i) => near(m, rowMax(m)).filter(k => k !== i && sameRowOk(m, M[k]) && dist(m, M[k]) <= rowMax(m) && dist(m, M[k]) > 5));
+    const nb = M.map(() => []);
     M.forEach((m, i) => {
-      let best = -1, bd = C.rowMax ** 2;
-      near(m, C.rowMax).forEach(k => {
+      let best = null, bs = Infinity;
+      const c = cand[i];
+      for (let a = 0; a < c.length; a++) for (let b = a + 1; b < c.length; b++) {
+        const A = M[c[a]], B = M[c[b]];
+        const ua = unit(A.x - m.x, A.y - m.y), ub = unit(B.x - m.x, B.y - m.y);
+        const cos = ua[0] * ub[0] + ua[1] * ub[1];           // -1 = perfettamente allineati
+        if (cos > -0.87) continue;                           // angolo minore di ~150°
+        const da = dist(m, A), db = dist(m, B);
+        if (Math.max(da, db) > 2.2 * Math.min(da, db)) continue;   // spaziatura troppo diversa
+        const sc = da + db + 200 * (1 + cos);
+        if (sc < bs) { bs = sc; best = [c[a], c[b]]; }
+      }
+      if (best) nb[i] = best;
+    });
+    /* estremità della fila: un solo vicino, che a sua volta la riconosce come vicina */
+    M.forEach((m, i) => {
+      if (nb[i].length) return;
+      let best = -1, bd = Infinity;
+      cand[i].forEach(k => { if (nb[k].includes(i) && dist(m, M[k]) < bd) { bd = dist(m, M[k]); best = k; } });
+      if (best >= 0) nb[i] = [best];
+    });
+    /* collegamenti di fila reciproci */
+    const edges = [], eSet = new Set();
+    M.forEach((m, i) => nb[i].forEach(k => {
+      if (!nb[k].includes(i)) return;
+      const id = Math.min(i, k) + '-' + Math.max(i, k);
+      if (eSet.has(id)) return;
+      eSet.add(id); edges.push([i, k]);
+    }));
+    const deg = M.map(() => 0);
+    edges.forEach(([i, k]) => { deg[i]++; deg[k]++; });
+    M.forEach((m, i) => {
+      const r = nb[i].filter(k => nb[k].includes(i));
+      m.u = r.length === 2 ? unit(M[r[1]].x - M[r[0]].x, M[r[1]].y - M[r[0]].y) : r.length === 1 ? unit(M[r[0]].x - m.x, M[r[0]].y - m.y) : null;
+      m.row = r;
+    });
+    /* identificativo di fila (componenti connesse) */
+    const rowId = M.map(() => -1); let nRows = 0;
+    M.forEach((m, i) => {
+      if (rowId[i] >= 0 || !deg[i]) return;
+      const st = [i]; rowId[i] = nRows;
+      while (st.length) { const j = st.pop(); M[j].row.forEach(k => { if (rowId[k] < 0) { rowId[k] = nRows; st.push(k); } }); }
+      nRows++;
+    });
+    out.rows = nRows;
+
+    /* 2. COPPIE trasversali: segnale di fronte, su un'altra fila, di traverso e con fila parallela */
+    const pairs = [], seen = new Set(), partner = M.map(() => -1);
+    M.forEach((m, i) => {
+      if (!m.u) return;
+      const maxW = m.side ? C.sideMax : C.plainMax;
+      let best = -1, bd = maxW;
+      near(m, maxW).forEach(k => {
         if (k === i) return;
         const o = M[k];
-        if (m.side && o.side !== m.side) return;
-        const dd = d2(m, o);
-        if (dd < bd) { bd = dd; best = k; }
-      });
-      m.row = best;
-      m.u = best >= 0 ? unit(M[best].x - m.x, M[best].y - m.y) : null;
-    });
-
-    /* coppie trasversali: rosso con verde, oppure briccole una di fronte all'altra */
-    const pairs = [], seen = new Set();
-    M.forEach((m, i) => {
-      const maxW = m.side ? C.sideMax : C.plainMax;
-      let best = -1, bd = maxW ** 2;
-      near(m, maxW).forEach(k => {
-        if (k === i || k === m.row) return;
-        const o = M[k];
+        if (rowId[k] >= 0 && rowId[k] === rowId[i]) return;
         if (m.side && o.side && o.side === m.side) return;
-        if (!m.side && o.side) return;
-        const dd = d2(m, o);
-        if (dd >= bd || dd < 15 * 15) return;
+        if (!!m.side !== !!o.side) return;
+        const dd = dist(m, o);
+        if (dd >= bd || dd < 15) return;
         const v = unit(o.x - m.x, o.y - m.y);
-        if (!(m.side && o.side)) {
-          /* senza colore: il compagno deve stare di traverso rispetto alla fila */
-          if (!m.u) return;
-          if (Math.abs(v[0] * m.u[0] + v[1] * m.u[1]) > 0.5) return;
-          if (o.u && Math.abs(o.u[0] * m.u[0] + o.u[1] * m.u[1]) < 0.7) return;
-        }
+        if (Math.abs(v[0] * m.u[0] + v[1] * m.u[1]) > 0.55) return;          // non di traverso
+        if (o.u && Math.abs(o.u[0] * m.u[0] + o.u[1] * m.u[1]) < 0.7) return; // file non parallele
         bd = dd; best = k;
       });
       if (best < 0) return;
+      partner[i] = best;
       const id = Math.min(i, best) + '-' + Math.max(i, best);
       if (seen.has(id)) return;
       seen.add(id);
-      const o = M[best], w = Math.sqrt(bd);
-      const c = unit(o.x - m.x, o.y - m.y);
-      /* direzione del canale: lungo la fila, oppure perpendicolare alla coppia */
+      const o = M[best], c = unit(o.x - m.x, o.y - m.y);
       let d = m.u || o.u || [-c[1], c[0]];
       if (Math.abs(d[0] * c[0] + d[1] * c[1]) > 0.8) d = [-c[1], c[0]];
-      pairs.push({ x: (m.x + o.x) / 2, y: (m.y + o.y) / 2, w, d, a: i, b: best });
+      pairs.push({ x: (m.x + o.x) / 2, y: (m.y + o.y) / 2, w: bd, d, a: i, b: best });
     });
     out.pairs = pairs.length;
 
-    /* asse: ogni punto medio si collega al più vicino avanti e al più vicino indietro lungo il canale */
+    /* 3. ASSE del canale: punti medi collegati lungo il canale; curve strette con il punto più vicino */
     const axisSegs = [];
     pairs.forEach((p, i) => {
       p.fwd = p.bwd = false;
@@ -140,19 +177,12 @@
           if (k === i) return;
           const dx = q.x - p.x, dy = q.y - p.y, dd = dx * dx + dy * dy;
           if (dd >= bd || dd < 1) return;
-          const l = Math.sqrt(dd), dot = (dx * p.d[0] + dy * p.d[1]) / l;
-          if (dot * sg < 0.6) return;
+          if ((dx * p.d[0] + dy * p.d[1]) / Math.sqrt(dd) * sg < 0.6) return;
           bd = dd; best = k;
         });
-        if (best >= 0) {
-          sg > 0 ? (p.fwd = true) : (p.bwd = true);
-          const q = pairs[best];
-          axisSegs.push([p, q, Math.min(p.w, q.w)]);
-        }
+        if (best >= 0) { sg > 0 ? (p.fwd = true) : (p.bwd = true); axisSegs.push([p, pairs[best], Math.min(p.w, pairs[best].w)]); }
       });
     });
-    /* curve secche e incroci: un punto dell'asse rimasto senza continuazione si collega al più vicino entro 250 m,
-       qualunque sia la direzione. I prolungamenti verso l'esterno restano decisi dai collegamenti "dritti". */
     const linked = new Set(axisSegs.map(([p, q]) => pairs.indexOf(p) + '-' + pairs.indexOf(q)));
     pairs.forEach((p, i) => {
       if (p.fwd && p.bwd) return;
@@ -167,39 +197,28 @@
     out.axisSegs = axisSegs.length;
     const axW = w => Math.max(C.axisW[0], Math.min(C.axisW[1], w * 0.5));
     axisSegs.forEach(([p, q, w]) => out.axis.push({ a: back(p.x, p.y), b: back(q.x, q.y), w: axW(w) }));
-    /* punti isolati e estremità: fascia trasversale tra i due segnali e prolungamento verso l'esterno */
-    const L = C.zoneR + C.extra;
     pairs.forEach(p => {
       out.axis.push({ a: back(p.x, p.y), b: back(p.x, p.y), w: axW(p.w) });
-      /* prolungamento: i primi 150 m valgono come asse (anche dentro la laguna, per raccordarsi a bocche e canali),
-         il resto solo in acqua libera */
-      const S = Math.min(L, 150);
+      /* raccordo alle estremità del canale (150 m), anche dentro la laguna */
       [[!p.fwd, 1], [!p.bwd, -1]].forEach(([free, sg]) => {
-        if (!free) return;
-        out.axis.push({ a: back(p.x, p.y), b: back(p.x + sg * p.d[0] * S, p.y + sg * p.d[1] * S), w: axW(p.w) });
-        out.ext.push({ a: back(p.x, p.y), b: back(p.x + sg * p.d[0] * L, p.y + sg * p.d[1] * L), w: axW(p.w) });
+        if (free) out.axis.push({ a: back(p.x, p.y), b: back(p.x + sg * p.d[0] * C.endStub, p.y + sg * p.d[1] * C.endStub), w: axW(p.w) });
       });
     });
 
-    /* barriere: fila di segnali dello stesso lato, salvo dove taglierebbe l'asse */
-    const cross = (p1, p2, p3, p4) => {
-      const o = (a, b, c) => Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
-      return o(p1, p2, p3) !== o(p1, p2, p4) && o(p3, p4, p1) !== o(p3, p4, p2);
-    };
-    const bseen = new Set();
-    M.forEach((m, i) => {
-      if (m.row < 0) return;
-      const o = M[m.row];
-      if (!m.side && !o.side && (!m.u || !o.u)) return;
-      const id = Math.min(i, m.row) + '-' + Math.max(i, m.row);
-      if (bseen.has(id)) return;
-      bseen.add(id);
-      if (axisSegs.some(([p, q]) => cross(m, o, p, q))) return;
-      if (pairs.some(p => (p.a === i && p.b === m.row) || (p.b === i && p.a === m.row))) return;
-      out.barrier.push({ a: back(m.x, m.y), b: back(o.x, o.y) });
-    });
+    /* 4. BARRIERE: ogni fila è invalicabile */
+    edges.forEach(([i, k]) => out.barrier.push({ a: back(M[i].x, M[i].y), b: back(M[k].x, M[k].y) }));
 
-    marks.forEach(m => out.zone.push({ p: { lat: m.lat, lng: m.lng }, r: C.zoneR }));
+    /* 5. FASCE ESTERNE: sul lato della fila opposto al canale (dove di solito c'è la secca) non si naviga.
+          Così nel canale si entra e si esce solo dalle estremità. Le file senza fila opposta hanno solo la barriera. */
+    edges.forEach(([i, k]) => {
+      const A = M[i], B = M[k], u = unit(B.x - A.x, B.y - A.y), n = [-u[1], u[0]];
+      const inner = [i, k].map(j => partner[j]).filter(j => j >= 0).map(j => Math.sign((M[j].x - A.x) * n[0] + (M[j].y - A.y) * n[1]));
+      if (!inner.length) return;
+      const sgn = inner.reduce((s, v) => s + v, 0);
+      if (!sgn) return;
+      const o = -Math.sign(sgn) * C.band;          // verso l'esterno
+      out.band.push([back(A.x, A.y), back(B.x, B.y), back(B.x + n[0] * o, B.y + n[1] * o), back(A.x + n[0] * o, A.y + n[1] * o)]);
+    });
     return out;
   }
 
@@ -221,6 +240,18 @@
       }
     };
     prims.zone.forEach(z => seg(res.zone, z.p, z.p, z.r / mpp));
+    (prims.band || []).forEach(q => {
+      const P = q.map(toPx), xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+      const x0 = Math.max(0, Math.floor(Math.min(...xs))), x1 = Math.min(W - 1, Math.ceil(Math.max(...xs)));
+      const y0 = Math.max(0, Math.floor(Math.min(...ys))), y1 = Math.min(H - 1, Math.ceil(Math.max(...ys)));
+      const cr = (a, b, x, y) => (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]);
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const px = x + 0.5, py = y + 0.5;
+        let pos = 0, neg = 0;
+        for (let k = 0; k < 4; k++) { const c = cr(P[k], P[(k + 1) % 4], px, py); if (c > 0) pos++; else if (c < 0) neg++; }
+        if (!pos || !neg) res.zone[y * W + x] = 1;
+      }
+    });
     prims.axis.forEach(s => seg(res.axis, s.a, s.b, Math.max(1.5, s.w / 2 / mpp)));
     prims.ext.forEach(s => seg(res.ext, s.a, s.b, Math.max(1.5, s.w / 2 / mpp)));
     prims.barrier.forEach(s => seg(res.barrier, s.a, s.b, 0.75));
