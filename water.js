@@ -292,5 +292,32 @@
     return out;
   }
 
-  root.Water = { CFG, TILE, lon2px, lat2px, tileBox, boxBounds, gridBounds, makeGrid, cellOf, verify, snap, snapXY, astar, simplify, cellLL, landDist, close, waterMask };
+  /* Calcolo completo di un tratto: griglia, aggancio di partenza e arrivo all'acqua, A*, semplificazione, verifica.
+     Usato dal Web Worker (e dalla pagina se il Worker non è disponibile). */
+  function solve(m) {
+    const g = makeGrid(m.rgba, m.W, m.H, m.box, m.extra);
+    const ends = [m.a, m.b].map(p => {
+      const own = cellOf(g, p);
+      if (own >= 0 && g.d[own]) return { i: own, moved: false };
+      return { i: snap(g, p), moved: true };
+    });
+    const res = { id: m.id, z: g.z, ox: g.ox, oy: g.oy, W: g.W, H: g.H, mpp: g.mpp, ends, d: g.d, buf: g.buf };
+    if (ends[0].i >= 0 && ends[1].i >= 0) {
+      const path = astar(g, ends[0].i, ends[1].i);
+      if (path) { res.cells = simplify(g, path); res.bad = verify(g, res.cells); }
+    }
+    return res;
+  }
+
+  root.Water = { CFG, TILE, lon2px, lat2px, tileBox, boxBounds, gridBounds, makeGrid, cellOf, verify, snap, snapXY, astar, simplify, cellLL, landDist, close, waterMask, solve };
+
+  /* Quando il file è caricato come Web Worker risponde alle richieste di calcolo della pagina. */
+  if (typeof importScripts === 'function' && typeof self !== 'undefined' && typeof document === 'undefined') {
+    self.onmessage = e => {
+      try {
+        const r = solve(e.data);
+        self.postMessage(r, [r.d.buffer, r.buf.buffer]);
+      } catch (err) { self.postMessage({ id: e.data && e.data.id, error: String((err && err.message) || err) }); }
+    };
+  }
 })(typeof window !== 'undefined' ? window : globalThis);

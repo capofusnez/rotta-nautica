@@ -151,6 +151,19 @@
         }
       });
     });
+    /* curve secche e incroci: un punto dell'asse rimasto senza continuazione si collega al più vicino entro 250 m,
+       qualunque sia la direzione. I prolungamenti verso l'esterno restano decisi dai collegamenti "dritti". */
+    const linked = new Set(axisSegs.map(([p, q]) => pairs.indexOf(p) + '-' + pairs.indexOf(q)));
+    pairs.forEach((p, i) => {
+      if (p.fwd && p.bwd) return;
+      let best = -1, bd = 250 * 250;
+      pairs.forEach((q, k) => {
+        if (k === i || linked.has(i + '-' + k) || linked.has(k + '-' + i)) return;
+        const dd = (q.x - p.x) ** 2 + (q.y - p.y) ** 2;
+        if (dd < bd) { bd = dd; best = k; }
+      });
+      if (best >= 0) { axisSegs.push([p, pairs[best], Math.min(p.w, pairs[best].w)]); linked.add(i + '-' + best); }
+    });
     out.axisSegs = axisSegs.length;
     const axW = w => Math.max(C.axisW[0], Math.min(C.axisW[1], w * 0.5));
     axisSegs.forEach(([p, q, w]) => out.axis.push({ a: back(p.x, p.y), b: back(q.x, q.y), w: axW(w) }));
@@ -158,8 +171,14 @@
     const L = C.zoneR + C.extra;
     pairs.forEach(p => {
       out.axis.push({ a: back(p.x, p.y), b: back(p.x, p.y), w: axW(p.w) });
-      if (!p.fwd) out.ext.push({ a: back(p.x, p.y), b: back(p.x + p.d[0] * L, p.y + p.d[1] * L), w: axW(p.w) });
-      if (!p.bwd) out.ext.push({ a: back(p.x, p.y), b: back(p.x - p.d[0] * L, p.y - p.d[1] * L), w: axW(p.w) });
+      /* prolungamento: i primi 150 m valgono come asse (anche dentro la laguna, per raccordarsi a bocche e canali),
+         il resto solo in acqua libera */
+      const S = Math.min(L, 150);
+      [[!p.fwd, 1], [!p.bwd, -1]].forEach(([free, sg]) => {
+        if (!free) return;
+        out.axis.push({ a: back(p.x, p.y), b: back(p.x + sg * p.d[0] * S, p.y + sg * p.d[1] * S), w: axW(p.w) });
+        out.ext.push({ a: back(p.x, p.y), b: back(p.x + sg * p.d[0] * L, p.y + sg * p.d[1] * L), w: axW(p.w) });
+      });
     });
 
     /* barriere: fila di segnali dello stesso lato, salvo dove taglierebbe l'asse */

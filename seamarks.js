@@ -184,72 +184,71 @@
 
   function popupHtml(tags, lat, lng) {
     const d = describe(tags);
-    const raw = Object.keys(tags).sort().map(k => `<tr><td>${esc(k)}</td><td>${esc(tags[k])}</td></tr>`).join('');
+    const raw = Object.keys(tags).filter(k => k[0] !== '@' && typeof tags[k] !== 'object').sort().map(k => `<tr><td>${esc(k)}</td><td>${esc(tags[k])}</td></tr>`).join('');
     return `<div class="sm"><b class="smt">${esc(d.title)}</b>` +
       (d.name ? `<div class="smn">${esc(d.name)}</div>` : '') +
       d.rows.map(r => `<div class="smr"><span>${r[0]}</span><div>${r[1]}</div></div>`).join('') +
       `<div class="smr"><span>Posizione</span><div>${lat.toFixed(5)}, ${lng.toFixed(5)}</div></div>` +
       `<details><summary>Dati OpenSeaMap</summary><table>${raw}</table></details>` +
-      `<p class="smw">Dati OpenStreetMap/OpenSeaMap, possono essere incompleti: fanno fede le carte e gli elenchi fari ufficiali.</p></div>`;
+      `<p class="smw">Dati OpenStreetMap/OpenSeaMap dal file locale nautica_locale.geojson: possono essere incompleti o non aggiornati. Fanno fede le carte e gli elenchi fari ufficiali.</p></div>`;
   }
 
-  /* ---------- Livello interattivo sulla carta ---------- */
-  function attach(map, opts) {
-    const layer = L.layerGroup(), tiles = new Map(), drawn = new Set(), Z = 12, MINZOOM = 13;
-    let timer = 0;
-    const tile = (lat, lng) => {
-      const n = 2 ** Z, x = Math.floor((lng + 180) / 360 * n);
-      const s = Math.sin(lat * Math.PI / 180), y = Math.floor((0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n);
-      return [x, y];
-    };
-    const tileBounds = (x, y) => {
-      const n = 2 ** Z, lon = v => v / n * 360 - 180, lat = v => 180 / Math.PI * Math.atan(Math.sinh(Math.PI * (1 - 2 * v / n)));
-      return [lat(y + 1), lon(x), lat(y), lon(x + 1)];
-    };
-    async function load(x, y) {
-      const id = x + '/' + y;
-      if (tiles.has(id)) return tiles.get(id);
-      const pr = (async () => {
-        const bb = tileBounds(x, y).map(v => v.toFixed(5)).join(',');
-        const key = 'https://rotta-nautica.local/seamarks?v1&' + id;
-        let cache = null;
-        try { cache = await caches.open('rn-nautical'); const hit = await cache.match(key);
-          if (hit && Date.now() - +hit.headers.get('x-saved') < 14 * 864e5) return (await hit.json()).elements || []; } catch (e) { /* ignora */ }
-        const q = `[out:json][timeout:60];node["seamark:type"](${bb});out tags qt;`;
-        /* durante il calcolo della rotta le richieste dei segnali aspettano, per non occupare il server */
-        if (opts.paused && opts.paused()) { tiles.delete(id); return []; }
-        try {
-          const txt = await opts.query(q), j = JSON.parse(txt);
-          if (cache) cache.put(key, new Response(txt, { headers: { 'x-saved': String(Date.now()) } })).catch(() => {});
-          return j.elements || [];
-        } catch (e) { tiles.delete(id); return []; }
-      })();
-      tiles.set(id, pr);
-      return pr;
+  /* ---------- Simboli dei segnali (dal file locale) ---------- */
+  const CSS = { red: '#e0262b', green: '#1a9a3a', yellow: '#f2c200', black: '#111', white: '#fff', orange: '#ff8c00', blue: '#2a5bd7', grey: '#8a8a8a', brown: '#7a5230' };
+  function symbol(t) {
+    const type = t['seamark:type'] || (t.man_made === 'dolphin' ? 'pile' : '');
+    const k = s => t['seamark:' + type + ':' + s];
+    const cols = String(k('colour') || '').split(';').filter(Boolean), c0 = CSS[cols[0]];
+    const cat = k('category') || '';
+    const lit = t['seamark:light:colour'] || t['seamark:light:1:colour'] || '';
+    const hasLight = !!(t['seamark:light:character'] || t['seamark:light:1:character'] || lit);
+    const ring = hasLight ? '#c000c0' : '#222';
+    if (/lateral/.test(type)) {
+      const col = cat === 'port' ? CSS.red : cat === 'starboard' ? CSS.green : c0 || '#888';
+      return { radius: /^buoy/.test(type) ? 6.5 : 5.5, color: ring, weight: 2, fillColor: col, fillOpacity: 1 };
     }
-    function add(els) {
-      els.forEach(e => {
-        if (drawn.has(e.id) || !e.tags) return;
-        drawn.add(e.id);
-        const t = e.tags, type = t['seamark:type'] || '';
-        if (/^(cable|pipeline|restricted_area|fairway|recommended_track|production_area|seaplane|anchorage$)/.test(type)) return;
-        L.circleMarker([e.lat, e.lon], { radius: 13, stroke: false, fillColor: '#000', fillOpacity: 0.001, bubblingMouseEvents: false })
+    if (/cardinal/.test(type)) return { radius: 6, color: '#111', weight: 2.5, fillColor: CSS.yellow, fillOpacity: 1 };
+    if (/isolated_danger/.test(type)) return { radius: 6, color: CSS.red, weight: 2.5, fillColor: '#111', fillOpacity: 1 };
+    if (type === 'buoy_safe_water') return { radius: 6, color: '#fff', weight: 2.5, fillColor: CSS.red, fillOpacity: 1 };
+    if (type === 'beacon_safe_water' || type === 'pile') return { radius: 3.5, color: ring, weight: 1.5, fillColor: c0 || CSS.brown, fillOpacity: 1 };
+    if (/special_purpose/.test(type)) return { radius: 4.5, color: ring, weight: 1.5, fillColor: c0 || CSS.yellow, fillOpacity: 1 };
+    if (type === 'light_major') return { radius: 7, color: '#fff', weight: 2, fillColor: '#c000c0', fillOpacity: 1 };
+    if (/^light/.test(type)) return { radius: 4.5, color: '#c000c0', weight: 2, fillColor: CSS[lit.split(';')[0]] || '#e254ff', fillOpacity: 1 };
+    if (/^(rock|wreck|obstruction)$/.test(type)) return { radius: 5, color: '#111', weight: 1.5, dashArray: '2 2', fillOpacity: 0 };
+    return { radius: 3, color: '#444', weight: 1, fillColor: c0 || '#999', fillOpacity: 0.9 };
+  }
+
+  /* ---------- Livello interattivo sulla carta ----------
+     opts.nodes(): Promise con i segnali locali [{id, lat, lng, tags}]. Si disegnano solo quelli visibili. */
+  function attach(map, opts) {
+    if (!map.getPane('smPane')) map.createPane('smPane').style.zIndex = 430;
+    const renderer = L.canvas({ pane: 'smPane', tolerance: 8 }), layer = L.layerGroup(), MINZOOM = 12, MAX = 4000;
+    let nodes = null, timer = 0;
+    function draw() {
+      layer.clearLayers();
+      if (!nodes || !opts.isOn() || map.getZoom() < MINZOOM) { map.removeLayer(layer); return; }
+      const b = map.getBounds().pad(0.2);
+      let n = 0;
+      for (const e of nodes) {
+        if (e.lat < b.getSouth() || e.lat > b.getNorth() || e.lng < b.getWest() || e.lng > b.getEast()) continue;
+        if (++n > MAX) break;
+        L.circleMarker([e.lat, e.lng], Object.assign({ renderer, bubblingMouseEvents: false }, symbol(e.tags)))
           .on('click', ev => {
             if (opts.isPicking && opts.isPicking()) { map.fire('click', { latlng: ev.latlng }); return; }
-            L.popup({ maxWidth: 300, className: 'smpop' }).setLatLng([e.lat, e.lon]).setContent(popupHtml(t, e.lat, e.lon)).openOn(map);
+            L.popup({ maxWidth: 300, className: 'smpop' }).setLatLng([e.lat, e.lng]).setContent(popupHtml(e.tags, e.lat, e.lng)).openOn(map);
           })
           .addTo(layer);
-      });
+      }
+      if (!map.hasLayer(layer)) layer.addTo(map);
     }
     function refresh() {
-      if (!opts.isOn() || map.getZoom() < MINZOOM) { map.removeLayer(layer); return; }
-      if (!map.hasLayer(layer)) layer.addTo(map);
-      const b = map.getBounds(), [x0, y0] = tile(b.getNorth(), b.getWest()), [x1, y1] = tile(b.getSouth(), b.getEast());
-      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) load(x, y).then(add);
+      if (nodes) { draw(); return; }
+      if (!opts.isOn()) return;
+      opts.nodes().then(list => { nodes = list || []; draw(); }).catch(() => { nodes = null; });
     }
-    map.on('moveend zoomend', () => { clearTimeout(timer); timer = setTimeout(refresh, 500); });
+    map.on('moveend zoomend', () => { clearTimeout(timer); timer = setTimeout(refresh, 120); });
     return { refresh };
   }
 
-  root.Seamarks = { parseLight, lightFromTags, lightAbbr, lightText, describe, popupHtml, attach };
+  root.Seamarks = { parseLight, lightFromTags, lightAbbr, lightText, describe, popupHtml, attach, symbol };
 })(typeof window !== 'undefined' ? window : globalThis);
