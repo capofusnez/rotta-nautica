@@ -712,6 +712,7 @@ async function autoRouteRun() {
   const w = userPts().map(p => ({ lat: p.lat, lng: p.lng }));
   if (w.length < 2) { toast('Imposta partenza e destinazione'); return; }
   stopWorker();
+  S.gapTxt = ''; gapLayer.clearLayers();
   const seq = ++autoSeq, MOVE_MAX = 600;
   S.edgeWarn = false;
   $('bAuto').disabled = true;
@@ -742,6 +743,16 @@ async function autoRouteRun() {
         if (dd > MOVE_MAX) throw new Error(`${name(idx)}: il punto navigabile più vicino è a ${fmtDist(dd)}${g.enc ? ` (profondità almeno ${num1(S.set.draft + S.set.ukc)} m)` : ''}. Sposta il punto in un canale`);
         w[idx] = np; if (!moved.includes(idx)) moved.push(idx);
       });
+      if (!res.cells && res.gap) {
+        /* segna sulla carta dove si interrompe il passaggio e mostra le acque navigabili */
+        const ga = Water.cellLL(g, res.gap.a), gb = Water.cellLL(g, res.gap.b), gd = dist(ga, gb);
+        gapLayer.clearLayers();
+        L.polyline([[ga.lat, ga.lng], [gb.lat, gb.lng]], { color: '#ff2d2d', weight: 4, dashArray: '6 6', interactive: false }).addTo(gapLayer);
+        [ga, gb].forEach(p => L.circleMarker([p.lat, p.lng], { radius: 9, color: '#ff2d2d', weight: 3, fillColor: '#fff', fillOpacity: 0.9, interactive: false }).addTo(gapLayer));
+        gapLayer.addTo(map);
+        map.fitBounds(L.latLngBounds([[ga.lat, ga.lng], [gb.lat, gb.lng]]).pad(3));
+        S.gapTxt = ` La rotta si interrompe tra i due cerchi rossi sulla carta (${fmtDist(gd)} senza passaggio): lì nei dati mancano canale o briccole, oppure c'è una zona vietata. Puoi aggiungere una tappa in quel punto, se lo conosci navigabile.`;
+      }
       if (!res.cells) throw new Error(g.enc ? `Tratto ${k}: secondo le carte ENC non esiste un passaggio con almeno ${num1(S.set.draft + S.set.ukc)} m di profondità (pescaggio ${num1(S.set.draft)} m + margine ${num1(S.set.ukc)} m)`
         : `Tratto ${k}: nessun passaggio nei canali navigabili dei dati nautici locali. Aggiungi una tappa lungo il canale che vuoi seguire`);
       if (res.bad) throw new Error(`Tratto ${k}: verifica fallita, un segmento esce dalle acque navigabili`);
@@ -753,8 +764,10 @@ async function autoRouteRun() {
     S.route.path = null; S.route.blocked = true; routeChanged();
     autoMsg('Nessuna rotta sicura: ' + (e.message || 'calcolo non riuscito') + '.' +
       (S.grids.length ? ' Tocca "Mostra acque navigabili" per vedere i canali trovati.' : ''));
-    busy.fail('Rotta non calcolata: ' + (e.message || 'calcolo non riuscito') + '.');
-    showWater(false); $('bAuto').disabled = false; return;
+    busy.fail('Rotta non calcolata: ' + (e.message || 'calcolo non riuscito') + '.' + (S.gapTxt || ''));
+    if (S.gapTxt) { autoMsg($('autoMsg').textContent + S.gapTxt); showWater(true); }
+    if (!S.gapTxt) showWater(false);
+    $('bAuto').disabled = false; return;
   }
   if (seq !== autoSeq) return;
   const pts = [w[0]];
@@ -784,7 +797,7 @@ async function autoRouteRun() {
 
 /* Mostra sulla carta l'acqua riconosciuta dall'ultimo calcolo (in azzurro): utile per capire perché
    una rotta passa da un punto o perché non si trova un passaggio. */
-const waterLayer = L.layerGroup();
+const waterLayer = L.layerGroup(), gapLayer = L.layerGroup();
 function showWater(on) {
   waterLayer.clearLayers();
   if (on && S.grids.length) {
