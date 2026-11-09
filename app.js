@@ -690,7 +690,7 @@ function rasterNautical(ctx, W, H, box, nd) {
   ctx.clearRect(0, 0, W, H);
   // canali segnalati da briccole e segnali laterali (channels.js)
   if (!window.Channels) throw new Error('Manca il file channels.js: aggiorna l\'app');
-  const ch = Channels.analyze(nd.nodes);
+  const ch = Channels.analyze(nd.nodes, null, nd.lines);
   nd.info.segnali = ch.marks; nd.info.coppie = ch.pairs;
   const m = Channels.rasterize(ch, W, H, P, mpp);
   return { restrict, lines, axis: m.axis, ext: m.ext, zone: m.zone, barrier: m.barrier, nogo: m.nogo, ch, coastM: S.set.coast };

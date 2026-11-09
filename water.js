@@ -143,7 +143,8 @@
       const water = m[i], r = R && R[i];
       const z = Z && Z[i];
       let ok = (water && !r && !z) || (Ln && Ln[i] && !z) || (A && A[i] && (water || r)) || (E && E[i] && water && !r);
-      if ((B && B[i]) || (N && N[i])) ok = false;
+      /* una fila di briccole è invalicabile, salvo dove la attraversa un canale mappato (lì c'è il varco); i pali restano ostacoli */
+      if ((B && B[i] && !(Ln && Ln[i])) || (N && N[i])) ok = false;
       m[i] = ok ? 1 : 0;
     }
     const w = close(m, W, H, CFG.closeR);

@@ -17,6 +17,7 @@
     axisMax: 400,       // distanza massima tra due punti dell'asse consecutivi
     band: 120,          // larghezza della fascia vietata sul lato esterno di ogni fila
     endStub: 150,       // raccordo dell'asse oltre le estremità del canale
+    bridge: 500,        // distanza massima per unire la fine di un canale di briccole a un canale mappato
     axisW: [16, 80],    // larghezza minima e massima della fascia navigabile sull'asse
     postR: 8,           // distanza minima da un palo
     dangerR: 40         // distanza minima da un pericolo isolato, scoglio o relitto
@@ -58,7 +59,7 @@
     return { marks, dangers, posts };
   }
 
-  function analyze(nodes, cfg) {
+  function analyze(nodes, cfg, lines) {
     const C = Object.assign({}, CFG, cfg || {});
     const { marks, dangers, posts } = classify(nodes);
     const out = { axis: [], ext: [], barrier: [], zone: [], band: [], nogo: [], pairs: 0, rows: 0, marks: marks.length };
@@ -154,8 +155,8 @@
         if (k === i) return;
         const o = M[k];
         if (close3[i].has(k)) return;   // stessa fila, entro 3 posizioni (non tutta la fila: due file unite a U restano accoppiabili)
-        if (m.side && o.side && o.side === m.side) return;
-        if (!!m.side !== !!o.side) return;
+        if (m.side && o.side && o.side === m.side) return;   // due mede dello stesso lato non formano un canale
+        /* una briccola (senza lato) può stare di fronte a una meda laterale: rive segnate in modo diverso */
         const dd = dist(m, o);
         if (dd >= bd || dd < 15) return;
         const v = unit(o.x - m.x, o.y - m.y);
@@ -203,6 +204,17 @@
       if (best >= 0) { axisSegs.push([p, pairs[best], Math.min(p.w, pairs[best].w)]); linked.add(i + '-' + best); }
     });
     out.axisSegs = axisSegs.length;
+    /* tutta la larghezza del canale tra due coppie consecutive (quadrilatero tra le due file):
+       la rotta può aggirare pali o ostacoli in mezzo al canale; il centro resta preferito dal calcolo */
+    out.chan = [];
+    axisSegs.forEach(([p, q]) => {
+      if (Math.hypot(p.x - q.x, p.y - q.y) > C.axisMax) return;
+      const A1 = M[p.a], A2 = M[p.b];
+      let B1 = M[q.a], B2 = M[q.b];
+      if (Math.hypot(A1.x - B1.x, A1.y - B1.y) + Math.hypot(A2.x - B2.x, A2.y - B2.y) >
+          Math.hypot(A1.x - B2.x, A1.y - B2.y) + Math.hypot(A2.x - B1.x, A2.y - B1.y)) [B1, B2] = [B2, B1];
+      out.chan.push([back(A1.x, A1.y), back(B1.x, B1.y), back(B2.x, B2.y), back(A2.x, A2.y)]);
+    });
     const axW = w => Math.max(C.axisW[0], Math.min(C.axisW[1], w * 0.5));
     axisSegs.forEach(([p, q, w]) => out.axis.push({ a: back(p.x, p.y), b: back(q.x, q.y), w: axW(w) }));
     pairs.forEach(p => {
@@ -213,8 +225,73 @@
       });
     });
 
+    /* 3b. AREA TRA LE FILE: per due file affiancate (rossa e verde, o due file di briccole) il canale è il poligono
+           compreso tra loro, per il tratto in cui corrono vicine. Funziona anche con segnali sfalsati e canali che piegano. */
+    out.chanPoly = [];
+    const chains = new Map();
+    M.forEach((m, i) => {
+      if (rowId[i] < 0 || chains.has(rowId[i])) return;
+      const ids = []; M.forEach((o, j) => { if (rowId[j] === rowId[i]) ids.push(j); });
+      let start = ids.find(j => M[j].row.length < 2);
+      if (start === undefined) return;                       // fila chiusa ad anello: si salta
+      const ord = [start], seenC = new Set([start]);
+      for (let cur = start; ;) { const nx = M[cur].row.find(k => !seenC.has(k)); if (nx === undefined) break; ord.push(nx); seenC.add(nx); cur = nx; }
+      chains.set(rowId[i], ord);
+    });
+    const dPtChain = (P, ch) => {
+      let best = Infinity;
+      for (let k = 0; k < ch.length; k++) {
+        const A = M[ch[k]], B = M[ch[Math.min(k + 1, ch.length - 1)]], dx = B.x - A.x, dy = B.y - A.y, l2 = dx * dx + dy * dy;
+        let t = l2 ? ((P.x - A.x) * dx + (P.y - A.y) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
+        best = Math.min(best, Math.hypot(P.x - A.x - t * dx, P.y - A.y - t * dy));
+      }
+      return best;
+    };
+    const chainPairs = new Set();
+    pairs.forEach(p => { const a = rowId[p.a], b = rowId[p.b]; if (a >= 0 && b >= 0 && a !== b) chainPairs.add(Math.min(a, b) + '-' + Math.max(a, b)); });
+    chainPairs.forEach(key => {
+      const [ia, ib] = key.split('-').map(Number), A = chains.get(ia), B = chains.get(ib);
+      if (!A || !B) return;
+      const maxW = (M[A[0]].side && M[B[0]].side) ? C.sideMax : C.plainMax;
+      const clip = (X, Y) => { const ok = X.map(j => dPtChain(M[j], Y) <= maxW); const f = ok.indexOf(true), l = ok.lastIndexOf(true); return f < 0 ? [] : X.slice(f, l + 1); };
+      const As = clip(A, B); let Bs = clip(B, A);
+      if (As.length + Bs.length < 3 || !As.length || !Bs.length) return;
+      const last = M[As[As.length - 1]];
+      if (Math.hypot(last.x - M[Bs[0]].x, last.y - M[Bs[0]].y) > Math.hypot(last.x - M[Bs[Bs.length - 1]].x, last.y - M[Bs[Bs.length - 1]].y)) Bs = Bs.slice().reverse();
+      out.chanPoly.push(As.concat(Bs).map(j => back(M[j].x, M[j].y)));
+    });
+
     /* 4. BARRIERE: ogni fila è invalicabile */
     edges.forEach(([i, k]) => out.barrier.push({ a: back(M[i].x, M[i].y), b: back(M[k].x, M[k].y) }));
+
+    /* 4b. RACCORDI: dove un canale di briccole finisce e poco più avanti, nella stessa direzione, comincia un canale
+           mappato come linea (es. nella gola di una bocca di porto), i due vengono uniti, se il raccordo non scavalca file. */
+    if (lines && lines.length) {
+      const L2 = lines.map(l => l.map(p => ({ x: (p.lng - lo) * kx, y: (p.lat - la) * ky })));
+      const crossesRow = (P, Q) => edges.some(([i, k]) => {
+        const A = M[i], B = M[k], o = (a, b, c) => Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+        return o(P, Q, A) !== o(P, Q, B) && o(A, B, P) !== o(A, B, Q);
+      });
+      pairs.forEach(p => {
+        [[!p.fwd, 1], [!p.bwd, -1]].forEach(([free, sg]) => {
+          if (!free) return;
+          const dir = [sg * p.d[0], sg * p.d[1]];
+          let best = null, bd = C.bridge;
+          L2.forEach(l => {
+            for (let k = 1; k < l.length; k++) {
+              const A = l[k - 1], B = l[k], dx = B.x - A.x, dy = B.y - A.y, l2 = dx * dx + dy * dy;
+              let t = l2 ? ((p.x - A.x) * dx + (p.y - A.y) * dy) / l2 : 0;
+              t = Math.max(0, Math.min(1, t));
+              const q = { x: A.x + t * dx, y: A.y + t * dy }, vx = q.x - p.x, vy = q.y - p.y, dd = Math.hypot(vx, vy);
+              if (dd >= bd || dd < 1) continue;
+              if ((vx * dir[0] + vy * dir[1]) / dd < 0.5) continue;      // solo in avanti, nella direzione del canale
+              best = q; bd = dd;
+            }
+          });
+          if (best && !crossesRow(p, best)) out.axis.push({ a: back(p.x, p.y), b: back(best.x, best.y), w: Math.max(C.axisW[0], Math.min(C.axisW[1], p.w * 0.5)) });
+        });
+      });
+    }
 
     /* 5. FASCE ESTERNE: sul lato della fila opposto al canale (dove di solito c'è la secca) non si naviga.
           Così nel canale si entra e si esce solo dalle estremità. Le file senza fila opposta hanno solo la barriera. */
@@ -248,7 +325,7 @@
       }
     };
     prims.zone.forEach(z => seg(res.zone, z.p, z.p, z.r / mpp));
-    (prims.band || []).forEach(q => {
+    const quad = (mask, q) => {
       const P = q.map(toPx), xs = P.map(p => p[0]), ys = P.map(p => p[1]);
       const x0 = Math.max(0, Math.floor(Math.min(...xs))), x1 = Math.min(W - 1, Math.ceil(Math.max(...xs)));
       const y0 = Math.max(0, Math.floor(Math.min(...ys))), y1 = Math.min(H - 1, Math.ceil(Math.max(...ys)));
@@ -257,9 +334,22 @@
         const px = x + 0.5, py = y + 0.5;
         let pos = 0, neg = 0;
         for (let k = 0; k < 4; k++) { const c = cr(P[k], P[(k + 1) % 4], px, py); if (c > 0) pos++; else if (c < 0) neg++; }
-        if (!pos || !neg) res.zone[y * W + x] = 1;
+        if (!pos || !neg) mask[y * W + x] = 1;
       }
-    });
+    };
+    const poly = (mask, pts) => {
+      const P = pts.map(toPx);
+      let y0 = Infinity, y1 = -Infinity; P.forEach(p => { y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); });
+      for (let y = Math.max(0, Math.floor(y0)); y <= Math.min(H - 1, Math.ceil(y1)); y++) {
+        const yc = y + 0.5, xs = [];
+        for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const a = P[i], b = P[j]; if ((a[1] > yc) !== (b[1] > yc)) xs.push(a[0] + (yc - a[1]) / (b[1] - a[1]) * (b[0] - a[0])); }
+        xs.sort((a, b) => a - b);
+        for (let k = 0; k + 1 < xs.length; k += 2) for (let x = Math.max(0, Math.ceil(xs[k] - 0.5)); x <= Math.min(W - 1, Math.floor(xs[k + 1] - 0.5)); x++) mask[y * W + x] = 1;
+      }
+    };
+    (prims.chanPoly || []).forEach(pts => poly(res.axis, pts));
+    (prims.band || []).forEach(q => quad(res.zone, q));
+    (prims.chan || []).forEach(q => quad(res.axis, q));
     prims.axis.forEach(s => seg(res.axis, s.a, s.b, Math.max(1.5, s.w / 2 / mpp)));
     prims.ext.forEach(s => seg(res.ext, s.a, s.b, Math.max(1.5, s.w / 2 / mpp)));
     prims.barrier.forEach(s => seg(res.barrier, s.a, s.b, 0.75));
