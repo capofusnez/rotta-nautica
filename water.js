@@ -141,7 +141,8 @@
     if (R || Z || A || E || Ln || B || N || EC) for (let i = 0; i < m.length; i++) {
       if (EC && EC[i]) { m[i] = EN.ok[i] ? 1 : 0; continue; }
       const water = m[i], r = R && R[i];
-      let ok = (water && !r && !(Z && Z[i])) || (Ln && Ln[i]) || (A && A[i] && (water || r)) || (E && E[i] && water && !r);
+      const z = Z && Z[i];
+      let ok = (water && !r && !z) || (Ln && Ln[i] && !z) || (A && A[i] && (water || r)) || (E && E[i] && water && !r);
       if ((B && B[i]) || (N && N[i])) ok = false;
       m[i] = ok ? 1 : 0;
     }
@@ -283,7 +284,8 @@
       let best = i + 1, md = g.d[path[i]], fails = 0;
       for (let j = i + 1; j < path.length; j++) {
         md = Math.min(md, g.d[path[j]]);
-        const nb = losCount(g, path[i], path[j], Math.min(md, 3));
+        /* il tratto dritto deve restare lontano dagli ostacoli quanto il percorso originale (fino a ~120 m) */
+        const nb = losCount(g, path[i], path[j], Math.min(md, g.clear || 3));
         if (nb >= 0 && nb <= pb[j + 1] - pb[i] + 1) { best = j; fails = 0; }
         else if (++fails > 150) break;
       }
