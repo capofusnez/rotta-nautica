@@ -155,7 +155,7 @@ function applyLayers() {
 }
 /* scheda dei segnali (seamarks.js): se il file manca l'app funziona lo stesso */
 let seamarkInspector = { refresh() {} };
-try { if (window.Seamarks) seamarkInspector = Seamarks.attach(map, { isOn: () => S.set.sea, isPicking: () => !!S.pick }); }
+try { if (window.Seamarks) seamarkInspector = Seamarks.attach(map, { isOn: () => S.set.sea, isPicking: () => !!S.pick, paused: () => ovRouting > 0, query: q => overpass(q, { timeoutMs: 25000, rounds: 1, servers: 1, skipIf: () => ovRouting > 0 }) }); }
 catch (e) { console.error(e); }
 function applyNight() {
   document.body.classList.toggle('night', !!S.set.night);
@@ -537,6 +537,50 @@ async function loadGrid(a, b, k, n) {
   return g;
 }
 
+/* Client Overpass condiviso.
+   - una richiesta alla volta (i server pubblici accettano poche richieste contemporanee dallo stesso telefono);
+   - più server: se uno è occupato o non risponde si passa al successivo;
+   - fino a 3 giri di tentativi, con attesa crescente e messaggio visibile. */
+const OVERPASS = [
+  ['Private.coffee', 'https://overpass.private.coffee/api/interpreter'],
+  ['VK Maps', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'],
+  ['overpass-api.de', 'https://overpass-api.de/api/interpreter']
+];
+let ovChain = Promise.resolve(), ovRouting = 0;
+const STATUS = { 400: 'richiesta non valida', 429: 'troppe richieste', 502: 'server non raggiungibile', 503: 'server sovraccarico', 504: 'tempo scaduto sul server' };
+function overpass(q, opt) {
+  opt = opt || {};
+  const run = async () => {
+    if (opt.skipIf && opt.skipIf()) throw new Error('saltata: calcolo rotta in corso');
+    const errs = [], wait = ms => new Promise(r => setTimeout(r, ms));
+    const rounds = opt.rounds || 3;
+    for (let round = 0; round < rounds; round++) {
+      for (const [name, url] of OVERPASS.slice(0, opt.servers || OVERPASS.length)) {
+        if (opt.onWait) opt.onWait(`Scarico canali e briccole da ${name}${round ? ` (tentativo ${round + 1} di ${rounds})` : ''}…`);
+        try {
+          const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), opt.timeoutMs || 90000);
+          const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+          const txt = r.ok ? await r.text() : '';
+          clearTimeout(to);
+          if (!r.ok) { errs.push(`${name}: ${r.status} ${STATUS[r.status] || ''}`.trim()); continue; }
+          const data = JSON.parse(txt);
+          /* una risposta interrotta dal server è incompleta (potrebbe mancare la laguna): non è sicura */
+          if (data.remark && /error|timed out|out of memory/i.test(data.remark)) { errs.push(`${name}: risposta incompleta`); continue; }
+          return txt;
+        } catch (e) { errs.push(`${name}: ${e.name === 'AbortError' ? 'nessuna risposta' : navigator.onLine === false ? 'manca la rete' : 'non raggiungibile'}`); }
+      }
+      if (navigator.onLine === false) break;
+      if (round < rounds - 1) for (let s = (round + 1) * 10; s > 0; s--) { if (opt.onWait) opt.onWait(`Server dei canali occupati, nuovo tentativo tra ${s} s…`); await wait(1000); }
+    }
+    const last = [...new Set(errs)].slice(-3).join('; ');
+    throw new Error('Dati dei canali e delle briccole non scaricati' + (last ? ` (${last})` : '') + '. Tocca "Ricalcola rotta" tra qualche minuto');
+  };
+  const p = ovChain.then(run, run);
+  ovChain = p.catch(() => {});
+  return p;
+}
+
 /* Dati nautici da OpenStreetMap / OpenSeaMap (Overpass):
    - canali: waterway=river|canal|fairway|tidal_channel|dock e seamark:type=fairway
    - segnali di canale: mede e boe laterali, briccole (beacon_safe_water, beacon_special_purpose, pile), fanali rossi/verdi
@@ -563,23 +607,11 @@ async function fetchNautical(box) {
       if (hit && Date.now() - +hit.headers.get('x-saved') < MAXAGE) j = await hit.json();
     } catch (e) { /* ignora */ }
   }
-  for (const url of j ? [] : ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
-    try {
-      const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 100000);
-      const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-      const txt = r.ok ? await r.text() : '';
-      clearTimeout(to);
-      if (!txt) continue;
-      const data = JSON.parse(txt);
-      /* una risposta interrotta dal server è incompleta: potrebbe mancare la laguna, quindi non è sicura */
-      if (data.remark && /error|timed out|out of memory/i.test(data.remark)) continue;
-      j = data;
-      if (cache) cache.put(key, new Response(txt, { headers: { 'Content-Type': 'application/json', 'x-saved': String(Date.now()) } })).catch(() => {});
-      break;
-    } catch (e) { /* prova il server successivo */ }
+  if (!j) {
+    const txt = await overpass(q, { onWait: m => busy.set(m) });
+    j = JSON.parse(txt);
+    if (cache) cache.put(key, new Response(txt, { headers: { 'Content-Type': 'application/json', 'x-saved': String(Date.now()) } })).catch(() => {});
   }
-  if (!j) throw new Error('Dati dei canali e delle briccole non scaricati: il server OpenStreetMap è occupato o manca la rete. Tocca "Ricalcola rotta" tra poco');
   const ll = g => g.map(p => ({ lat: p.lat, lng: p.lon }));
   const out = { lines: [], corridorAreas: [], restrictAreas: [], nodes: [], info: { canali: 0, segnali: 0, coppie: 0, lagune: 0 } };
   const rings = rel => joinRings((rel.members || []).filter(m => m.type === 'way' && m.geometry).map(m => ll(m.geometry)));
@@ -664,11 +696,17 @@ function autoSchedule() {
   busy.start(1); busy.set('Calcolo della rotta…', 1, 0.01);
 }
 async function autoRoute() {
+  const before = ovRouting;
+  try { return await autoRouteRun(); }
+  finally { ovRouting = Math.max(0, Math.min(ovRouting, before)); if (!ovRouting) seamarkInspector.refresh(); }
+}
+async function autoRouteRun() {
   const w = userPts().map(p => ({ lat: p.lat, lng: p.lng }));
   if (w.length < 2) { toast('Imposta partenza e destinazione'); return; }
   const seq = ++autoSeq, MOVE_MAX = 600;
   $('bAuto').disabled = true;
   busy.start(w.length - 1);
+  ovRouting++;
   busy.set(w.length > 2 ? `Calcolo della rotta: ${w.length - 1} tratti…` : 'Calcolo della rotta…', 1, 0.01);
   S.grids = []; showWater(false);
   const legs = [], moved = [], info = { canali: 0, segnali: 0, coppie: 0, lagune: 0 };
