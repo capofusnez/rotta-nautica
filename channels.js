@@ -48,7 +48,8 @@
       const p = { lat: n.lat, lng: n.lng };
       if (DANGER.test(type)) { dangers.push(p); return; }
       const s = side(t);
-      if (CHANNEL.test(type) || (type === 'light_minor' && s)) marks.push(Object.assign(p, { side: s }));
+      /* man_made=dolphin: così sono mappate molte briccole (es. Laguna di Venezia) */
+      if (CHANNEL.test(type) || t.man_made === 'dolphin' || (type === 'light_minor' && s)) marks.push(Object.assign(p, { side: s }));
       else posts.push(p);
     });
     return { marks, dangers, posts };
@@ -150,6 +151,7 @@
         }
       });
     });
+    out.axisSegs = axisSegs.length;
     const axW = w => Math.max(C.axisW[0], Math.min(C.axisW[1], w * 0.5));
     axisSegs.forEach(([p, q, w]) => out.axis.push({ a: back(p.x, p.y), b: back(q.x, q.y), w: axW(w) }));
     /* punti isolati e estremità: fascia trasversale tra i due segnali e prolungamento verso l'esterno */
