@@ -8,6 +8,10 @@ if (typeof L === 'undefined') {
 /* ---------- Utilità ---------- */
 const NM = 1852, R = 6371008.8, RAD = Math.PI / 180, DEG = 180 / Math.PI, KN = 1.943844;
 const $ = id => document.getElementById(id);
+/* I pulsanti laterali e gli avvisi partono sempre subito sotto la barra degli strumenti, qualunque sia la sua altezza. */
+const hudSize = () => { const h = $('hud'); if (h) document.documentElement.style.setProperty('--hudH', h.getBoundingClientRect().bottom + 'px'); };
+hudSize(); window.addEventListener('resize', hudSize);
+if (window.ResizeObserver && $('hud')) new ResizeObserver(hudSize).observe($('hud'));
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = {
   get(k, d) { try { const v = localStorage.getItem('rn.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
@@ -466,6 +470,36 @@ async function fetchWx() {
 
 /* ---------- Rotta automatica via acqua (vedi water.js) ---------- */
 function autoMsg(t) { $('autoMsg').textContent = t; $('autoMsg').hidden = !t; }
+/* Barra di avanzamento del calcolo, sempre visibile sopra le schede (anche a pannello chiuso). */
+const busy = {
+  t0: 0, timer: 0, legs: 1,
+  start(legs) {
+    this.t0 = Date.now(); this.legs = legs || 1;
+    const el = $('routeBusy'); el.className = ''; el.hidden = false;
+    $('rbBar').style.width = '2%'; $('rbBtn').textContent = 'Annulla'; $('rbBtn').dataset.act = 'cancelRoute';
+    clearInterval(this.timer); this.timer = setInterval(() => this.tick(), 1000); this.tick();
+    $('bAuto').textContent = 'Calcolo in corso…';
+  },
+  /* k = tratto (1..n), phase = 0..1 dentro il tratto */
+  set(text, k, phase) {
+    $('rbText').textContent = text;
+    if (k != null) $('rbBar').style.width = Math.max(2, Math.min(100, ((k - 1 + phase) / this.legs) * 100)).toFixed(1) + '%';
+    autoMsg(text);
+  },
+  tick() { $('rbTime').textContent = Math.round((Date.now() - this.t0) / 1000) + ' s'; },
+  stop() { clearInterval(this.timer); $('bAuto').textContent = 'Ricalcola rotta'; },
+  done(text) {
+    this.stop(); const el = $('routeBusy'); el.className = 'ok';
+    $('rbText').textContent = text; $('rbBar').style.width = '100%'; $('rbBtn').textContent = 'OK'; $('rbBtn').dataset.act = 'closeBusy';
+    clearTimeout(this.hideT); this.hideT = setTimeout(() => { if (el.className === 'ok') el.hidden = true; }, 6000);
+  },
+  fail(text) {
+    this.stop(); const el = $('routeBusy'); el.className = 'bad';
+    $('rbText').textContent = text; $('rbBtn').textContent = 'Chiudi'; $('rbBtn').dataset.act = 'closeBusy';
+  },
+  hide() { this.stop(); $('routeBusy').hidden = true; }
+};
+const yieldUI = () => new Promise(r => setTimeout(r, 40));
 async function loadGrid(a, b, k, n) {
   const box = Water.tileBox([a, b]);
   if (!box) throw new Error(`Tratto ${k} troppo lungo: aggiungi una tappa a metà strada`);
@@ -485,16 +519,17 @@ async function loadGrid(a, b, k, n) {
         ctx.drawImage(bm, (x - box.tx0) * Water.TILE, (y - box.ty0) * Water.TILE);
         if (bm.close) bm.close();
       } catch (e) { failed++; }
-      autoMsg(++done < nx * ny ? `Tratto ${k}/${n}: scarico la carta ${done}/${nx * ny}`
-        : `Tratto ${k}/${n}: scarico canali e briccole da OpenStreetMap (vicino alla laguna può richiedere fino a un minuto)…`);
+      ++done;
+      if (done < nx * ny) busy.set(`Tratto ${k}/${n}: scarico la carta (${Math.round(done / (nx * ny) * 100)}%)`, k, 0.45 * done / (nx * ny));
+      else busy.set(`Tratto ${k}/${n}: scarico canali e briccole da OpenStreetMap (vicino alla laguna può richiedere fino a un minuto)…`, k, 0.5);
     }
   };
   const [nr] = await Promise.allSettled([fetchNautical(box), Promise.all([0, 1, 2, 3].map(work))]);
   if (failed > nx * ny * 0.15) throw new Error('Carta non scaricata: serve la connessione a Internet');
   if (nr.status === 'rejected') throw nr.reason;
   const nautical = nr.value;
-  autoMsg(`Tratto ${k}/${n}: calcolo il percorso nei canali…`);
-  await new Promise(r => setTimeout(r, 30));
+  busy.set(`Tratto ${k}/${n}: riconosco canali, briccole e acque navigabili…`, k, 0.7);
+  await yieldUI();
   const rgba = ctx.getImageData(0, 0, W, H).data;
   const extra = rasterNautical(ctx, W, H, box, nautical);
   const g = Water.makeGrid(rgba, W, H, box, extra);
@@ -626,12 +661,15 @@ function autoSchedule() {
   clearTimeout(autoT);
   if (S.pick || !S.route.start || !S.route.dest) return;
   autoT = setTimeout(autoRoute, 600);
+  busy.start(1); busy.set('Calcolo della rotta…', 1, 0.01);
 }
 async function autoRoute() {
   const w = userPts().map(p => ({ lat: p.lat, lng: p.lng }));
   if (w.length < 2) { toast('Imposta partenza e destinazione'); return; }
   const seq = ++autoSeq, MOVE_MAX = 600;
   $('bAuto').disabled = true;
+  busy.start(w.length - 1);
+  busy.set(w.length > 2 ? `Calcolo della rotta: ${w.length - 1} tratti…` : 'Calcolo della rotta…', 1, 0.01);
   S.grids = []; showWater(false);
   const legs = [], moved = [], info = { canali: 0, segnali: 0, coppie: 0, lagune: 0 };
   const name = i => i === 0 ? 'La partenza' : i === w.length - 1 ? "L'arrivo" : `La tappa ${i}`;
@@ -652,6 +690,9 @@ async function autoRoute() {
         w[idx] = np; if (!moved.includes(idx)) moved.push(idx);
         return sn;
       });
+      busy.set(`Tratto ${k}/${n}: cerco il percorso nei canali…`, k, 0.85);
+      await yieldUI();
+      if (seq !== autoSeq) return;
       const path = Water.astar(g, ends[0], ends[1]);
       if (!path) throw new Error(`Tratto ${k}: nessun passaggio nei canali navigabili dei dati OpenStreetMap/OpenSeaMap. Aggiungi una tappa lungo il canale che vuoi seguire`);
       const cells = Water.simplify(g, path);
@@ -664,7 +705,7 @@ async function autoRoute() {
     S.route.path = null; S.route.blocked = true; routeChanged();
     autoMsg('Nessuna rotta sicura: ' + (e.message || 'calcolo non riuscito') + '.' +
       (S.grids.length ? ' Tocca "Mostra acque navigabili" per vedere i canali trovati.' : ''));
-    toast('Rotta non calcolata');
+    busy.fail('Rotta non calcolata: ' + (e.message || 'calcolo non riuscito') + '.');
     showWater(false); $('bAuto').disabled = false; return;
   }
   if (seq !== autoSeq) return;
@@ -681,7 +722,8 @@ async function autoRoute() {
   const mv = moved.length ? ' ' + moved.map(name).join(', ') + (moved.length > 1 ? ' sono state spostate' : ' è stata spostata') + ' nel punto navigabile più vicino.' : '';
   autoMsg(`Rotta calcolata (${info.canali} canali mappati, ${info.segnali} briccole e segnali di canale, ${info.coppie} sezioni di canale riconosciute, ${info.lagune ? 'laguna riconosciuta' : 'nessuna laguna nei dati'}).${mv} ` +
     'I dati OpenStreetMap/OpenSeaMap non indicano le profondità e possono essere incompleti: verifica sempre con i segnalamenti in acqua.');
-  toast('Rotta calcolata nei canali: verificala sulla carta');
+  let tot = 0; for (let i = 1; i < clean.length; i++) tot += dist(clean[i - 1], clean[i]);
+  busy.done(`Rotta calcolata: ${fmtDist(tot)}, circa ${fmtDur(tot / (S.set.plan / KN))} a ${S.set.plan} nodi. Verificala sulla carta.`);
   $('bAuto').disabled = false;
 }
 
@@ -954,7 +996,9 @@ document.addEventListener('click', e => {
       stopNav();
       const s = S.route.start; S.route.start = S.route.dest; S.route.dest = s; S.route.via.reverse(); if (S.route.path) S.route.path.reverse(); routeChanged(); break;
     }
-    case 'clear': stopNav(); clearTimeout(autoT); autoSeq++; S.route = { start: null, via: [], dest: null, path: null }; autoMsg(''); routeChanged(); break;
+    case 'cancelRoute': clearTimeout(autoT); autoSeq++; busy.fail('Calcolo annullato. Tocca "Ricalcola rotta" nella scheda Rotta per riprovare.'); $('bAuto').disabled = false; autoMsg('Calcolo annullato.'); break;
+    case 'closeBusy': busy.hide(); break;
+    case 'clear': stopNav(); clearTimeout(autoT); autoSeq++; busy.hide(); S.route = { start: null, via: [], dest: null, path: null }; autoMsg(''); routeChanged(); break;
     case 'useRes': { const r = S.results[i]; place(d.k, r); map.setView([r.lat, r.lng], Math.max(map.getZoom(), 12)); break; }
     case 'goRes': { const r = S.results[i]; map.setView([r.lat, r.lng], 13); S.set.follow = false; saveSet(); fabs(); break; }
     case 'loadRoute': stopNav(); S.route = JSON.parse(JSON.stringify(S.saved[i].route)); routeChanged();
@@ -1032,7 +1076,12 @@ applyLayers(); applyNight();
 trackLine.setLatLngs(S.track.map(p => [p.lat, p.lng]));
 drawHazards(); drawRoute(); renderRoute(); renderHaz(); fabs(); ui();
 if (wps().length > 1 && !store.get('view', null)) map.fitBounds(routeLine.getBounds().pad(0.2));
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* offline mode non disponibile */ });
+/* Nel browser il service worker salva l'app per l'uso senza rete. Nell'APK i file sono già dentro l'app:
+   il service worker non serve e su alcuni Android interferisce con il caricamento, quindi viene tolto. */
+if ('serviceWorker' in navigator) {
+  if (window.Capacitor) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+  else navigator.serviceWorker.register('sw.js').catch(() => { /* offline mode non disponibile */ });
+}
 window.rnStarted = true;
 startGps();
 if (S.route.path === undefined) S.route.path = null;
