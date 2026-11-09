@@ -519,12 +519,17 @@ async function loadGrid(a, b, k, n) {
         ctx.drawImage(bm, (x - box.tx0) * Water.TILE, (y - box.ty0) * Water.TILE);
         if (bm.close) bm.close();
       } catch (e) { failed++; }
-      ++done;
-      if (done < nx * ny) busy.set(`Tratto ${k}/${n}: scarico la carta (${Math.round(done / (nx * ny) * 100)}%)`, k, 0.45 * done / (nx * ny));
-      else busy.set(`Tratto ${k}/${n}: scarico canali e briccole da OpenStreetMap (vicino alla laguna può richiedere fino a un minuto)…`, k, 0.5);
+      ++done; show();
     }
   };
-  const [nr] = await Promise.allSettled([fetchNautical(box), Promise.all([0, 1, 2, 3].map(work))]);
+  /* una sola riga di avanzamento per carta e canali, che si scaricano insieme */
+  let nautTxt = 'canali e briccole…', nautFrac = 0;
+  function show() {
+    const tiles = done < nx * ny ? `carta ${Math.round(done / (nx * ny) * 100)}%` : 'carta ✓';
+    busy.set(`Tratto ${k}/${n}: ${tiles} · ${nautTxt}`, k, 0.65 * (0.4 * done / (nx * ny) + 0.6 * nautFrac));
+  }
+  const report = (t, f) => { nautTxt = t; nautFrac = f; show(); };
+  const [nr] = await Promise.allSettled([fetchNautical(box, report), Promise.all([0, 1, 2, 3].map(work))]);
   if (failed > nx * ny * 0.15) throw new Error('Carta non scaricata: serve la connessione a Internet');
   if (nr.status === 'rejected') throw nr.reason;
   const nautical = nr.value;
@@ -587,31 +592,63 @@ function overpass(q, opt) {
    - pericoli: pericolo isolato, scogli, relitti, ostruzioni
    - zone dove si naviga solo nei canali: water=lagoon, zone umide (barene, velme), natural=shoal
    Senza questi dati il calcolo non è sicuro, quindi un errore di download ferma il calcolo. */
-async function fetchNautical(box) {
-  const b = Water.boxBounds(box), bb = [b.s, b.w, b.n, b.e].map(v => v.toFixed(5)).join(',');
-  const q = `[out:json][timeout:90];(` +
-    `way["waterway"~"^(river|canal|fairway|tidal_channel|dock)$"]["tunnel"!="culvert"]["boat"!="no"](${bb});` +
-    `way["seamark:type"="fairway"](${bb});relation["seamark:type"="fairway"](${bb});` +
-    `node["seamark:type"~"^(beacon_lateral|buoy_lateral|beacon_safe_water|buoy_safe_water|beacon_special_purpose|buoy_special_purpose|pile|light_minor|beacon_cardinal|buoy_cardinal|beacon_isolated_danger|buoy_isolated_danger|rock|wreck|obstruction)$"](${bb});` +
-    `way["water"="lagoon"](${bb});relation["water"="lagoon"](${bb});` +
-    `way["natural"="wetland"](${bb});relation["natural"="wetland"](${bb});` +
-    `way["natural"="shoal"](${bb});relation["natural"="shoal"](${bb});` +
-    `);out tags geom qt;`;
-  /* I dati già scaricati restano sul telefono per 14 giorni: il ricalcolo è immediato e funziona anche senza rete. */
-  const key = 'https://rotta-nautica.local/nautical?v2&' + bb, MAXAGE = 14 * 864e5;
-  let j = null, cache = null;
+async function fetchNautical(box, report) {
+  /* L'area viene scaricata a riquadri di circa 7 km (tile OSM di livello 12), uno alla volta: ogni richiesta è leggera.
+     Le forme grandi (laguna, zone umide) vengono scaricate una sola volta per identificativo.
+     Tutto resta salvato sul telefono: un nuovo tentativo riparte da dove si era fermato. */
+  const b = Water.boxBounds(box), Z = 12, N2 = 2 ** Z;
+  const tx = lng => Math.floor((lng + 180) / 360 * N2);
+  const ty = lat => { const s = Math.sin(lat * Math.PI / 180); return Math.floor((0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * N2); };
+  const lon = x => x / N2 * 360 - 180, lat = y => 180 / Math.PI * Math.atan(Math.sinh(Math.PI * (1 - 2 * y / N2)));
+  const chunks = [];
+  for (let x = tx(b.w); x <= tx(b.e); x++) for (let y = ty(b.n); y <= ty(b.s); y++) chunks.push([x, y]);
+  let cache = null;
   try { cache = await caches.open('rn-nautical'); } catch (e) { /* cache non disponibile */ }
-  if (cache) {
-    try {
-      const hit = await cache.match(key);
-      if (hit && Date.now() - +hit.headers.get('x-saved') < MAXAGE) j = await hit.json();
-    } catch (e) { /* ignora */ }
-  }
-  if (!j) {
-    const txt = await overpass(q, { onWait: m => busy.set(m) });
-    j = JSON.parse(txt);
+  const cached = async (key, maxAge, fetcher) => {
+    if (cache) {
+      try { const hit = await cache.match(key); if (hit && Date.now() - +hit.headers.get('x-saved') < maxAge) return await hit.json(); } catch (e) { /* ignora */ }
+    }
+    const txt = await fetcher();
     if (cache) cache.put(key, new Response(txt, { headers: { 'Content-Type': 'application/json', 'x-saved': String(Date.now()) } })).catch(() => {});
+    return JSON.parse(txt);
+  };
+  const DAY = 864e5, els = new Map(), relIds = new Set();
+  const add = list => (list || []).forEach(e => els.set(e.type + e.id, e));
+  for (let i = 0; i < chunks.length; i++) {
+    const [x, y] = chunks[i], bb = [lat(y + 1), lon(x), lat(y), lon(x + 1)].map(v => v.toFixed(5)).join(',');
+    const msg = `canali e briccole: zona ${i + 1} di ${chunks.length}`;
+    report(msg, i / chunks.length);
+    const q = `[out:json][timeout:60];(` +
+      `way["waterway"~"^(river|canal|fairway|tidal_channel|dock)$"]["tunnel"!="culvert"]["boat"!="no"](${bb});` +
+      `way["seamark:type"="fairway"](${bb});` +
+      `node["seamark:type"~"^(beacon_lateral|buoy_lateral|beacon_safe_water|buoy_safe_water|beacon_special_purpose|buoy_special_purpose|pile|light_minor|beacon_cardinal|buoy_cardinal|beacon_isolated_danger|buoy_isolated_danger|rock|wreck|obstruction)$"](${bb});` +
+      `way["water"="lagoon"](${bb});way["natural"="wetland"](${bb});way["natural"="shoal"](${bb});` +
+      `);out tags geom qt;(` +
+      `relation["water"="lagoon"](${bb});relation["natural"="wetland"](${bb});relation["natural"="shoal"](${bb});relation["seamark:type"="fairway"](${bb});` +
+      `);out tags qt;`;
+    const j = await cached(`https://rotta-nautica.local/nautical?v3&z12/${x}/${y}`, 14 * DAY,
+      () => overpass(q, { onWait: m => report(`${msg} – ${m.charAt(0).toLowerCase()}${m.slice(1)}`, i / chunks.length) }));
+    (j.elements || []).forEach(e => { if (e.type === 'relation') relIds.add(e.id); else add([e]); });
   }
+  /* forme grandi: geometria completa per identificativo, a gruppi di 15 */
+  const ids = [...relIds];
+  for (let i = 0; i < ids.length; i += 15) {
+    const part = ids.slice(i, i + 15);
+    report(`laguna e zone umide (${Math.min(i + 15, ids.length)} di ${ids.length})`, 1);
+    for (const id of part) {
+      if (!cache) break;
+      try { const hit = await cache.match('https://rotta-nautica.local/rel?v1&' + id);
+        if (hit && Date.now() - +hit.headers.get('x-saved') < 30 * DAY) { add((await hit.json()).elements); part.splice(part.indexOf(id), 1, null); } } catch (e) { /* ignora */ }
+    }
+    const todo = part.filter(Boolean);
+    if (!todo.length) continue;
+    const txt = await overpass(`[out:json][timeout:90];rel(id:${todo.join(',')});out tags geom qt;`, { onWait: m => report(m.charAt(0).toLowerCase() + m.slice(1), 1) });
+    const j = JSON.parse(txt);
+    add(j.elements);
+    if (cache) (j.elements || []).forEach(e => cache.put('https://rotta-nautica.local/rel?v1&' + e.id,
+      new Response(JSON.stringify({ elements: [e] }), { headers: { 'Content-Type': 'application/json', 'x-saved': String(Date.now()) } })).catch(() => {}));
+  }
+  const j = { elements: [...els.values()] };
   const ll = g => g.map(p => ({ lat: p.lat, lng: p.lon }));
   const out = { lines: [], corridorAreas: [], restrictAreas: [], nodes: [], info: { canali: 0, segnali: 0, coppie: 0, lagune: 0 } };
   const rings = rel => joinRings((rel.members || []).filter(m => m.type === 'way' && m.geometry).map(m => ll(m.geometry)));
