@@ -150,6 +150,9 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 .mobm{width:30px;height:30px;border-radius:50%;background:var(--bad);color:#fff;display:grid;place-items:center;font:700 11px var(--mono);border:3px solid #fff}
 #boat{transition:transform .3s linear;filter:drop-shadow(0 1px 3px rgba(0,0,0,.6))}
 .ctx{display:flex;flex-direction:column;gap:6px}
+#fatal{position:fixed;z-index:2000;left:12px;right:12px;top:calc(env(safe-area-inset-top,0px) + 90px);padding:14px;border-radius:12px;
+  background:#ff4d4d;color:#fff;font:15px/1.4 system-ui,sans-serif}
+#fatal button{margin-top:10px;background:#fff;color:#900;border:0;font-weight:700}
 /* Scheda dei segnali nautici */
 .smpop .leaflet-popup-content{margin:10px 12px;font:13px/1.4 system-ui,sans-serif;color:#10222c}
 .sm .smt{display:block;font-size:14px}
@@ -258,6 +261,17 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
   <button data-t="mappa">Carta</button>
 </nav>
 
+<div id="fatal" hidden></div>
+<script>
+/* Mostra sullo schermo gli errori che impediscono all'app di partire, invece di lasciare la carta vuota. */
+window.rnFail = function (msg) {
+  var el = document.getElementById('fatal');
+  el.hidden = false;
+  el.innerHTML = '<b>L\'app non è partita correttamente.</b><br>' + String(msg).replace(/[<&]/g, function (c) { return c === '<' ? '&lt;' : '&amp;'; }) +
+    '<br><button onclick="location.reload()">Ricarica</button>';
+};
+window.addEventListener('error', function (e) { if (!window.rnStarted) window.rnFail((e.message || 'errore') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="water.js"></script>
 <script src="channels.js"></script>
