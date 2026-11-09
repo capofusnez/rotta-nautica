@@ -145,9 +145,12 @@
     const name = t['seamark:name'] || t.name || k('name') || '';
     const ref = t['seamark:light:reference'] || k('reference') || t.ref || '';
     let title = TYPES[type] || (type ? type.replace(/_/g, ' ') : 'Segnale nautico');
+    const briccola = (type === 'mooring' && /^(dolphin|pile)$/.test(t['seamark:mooring:category'] || '')) || (!type && t.man_made === 'dolphin');
+    if (briccola) title = 'Briccola (palo)';
     const rows = [];
     const cat = k('category');
-    if (cat && MEANING[cat]) { title += ' – ' + MEANING[cat][0].toLowerCase(); rows.push(['Significato', MEANING[cat][1]]); }
+    if (briccola) rows.push(['Significato', 'Palo o gruppo di pali (in OpenStreetMap: palo d\'ormeggio "dolphin"). In laguna e alle foci le file di briccole delimitano i canali navigabili: si naviga tra le due file.']);
+    else if (cat && MEANING[cat]) { title += ' – ' + MEANING[cat][0].toLowerCase(); rows.push(['Significato', MEANING[cat][1]]); }
     else {
       const note = Object.keys(TYPE_NOTE).find(n => type.endsWith(n) || type === n);
       if (note) rows.push(['Significato', TYPE_NOTE[note]]);
@@ -196,7 +199,8 @@
   /* ---------- Simboli dei segnali (dal file locale) ---------- */
   const CSS = { red: '#e0262b', green: '#1a9a3a', yellow: '#f2c200', black: '#111', white: '#fff', orange: '#ff8c00', blue: '#2a5bd7', grey: '#8a8a8a', brown: '#7a5230' };
   function symbol(t) {
-    const type = t['seamark:type'] || (t.man_made === 'dolphin' ? 'pile' : '');
+    let type = t['seamark:type'] || (t.man_made === 'dolphin' ? 'pile' : '');
+    if (type === 'mooring' && /^(dolphin|pile)$/.test(t['seamark:mooring:category'] || '')) type = 'pile';
     const k = s => t['seamark:' + type + ':' + s];
     const cols = String(k('colour') || '').split(';').filter(Boolean), c0 = CSS[cols[0]];
     const cat = k('category') || '';

@@ -50,7 +50,9 @@
       if (DANGER.test(type)) { dangers.push(p); return; }
       const s = side(t);
       /* man_made=dolphin: così sono mappate molte briccole (es. Laguna di Venezia) */
-      if (CHANNEL.test(type) || t.man_made === 'dolphin' || (type === 'light_minor' && s)) marks.push(Object.assign(p, { side: s }));
+      /* briccole mappate come pali d'ormeggio: seamark:type=mooring con categoria dolphin o pile (es. Lignano, Marano) */
+      const moorPost = type === 'mooring' && /^(dolphin|pile)$/.test(t['seamark:mooring:category'] || '');
+      if (CHANNEL.test(type) || moorPost || t.man_made === 'dolphin' || (type === 'light_minor' && s)) marks.push(Object.assign(p, { side: s }));
       else posts.push(p);
     });
     return { marks, dangers, posts };
@@ -136,6 +138,12 @@
     });
     out.rows = nRows;
 
+    /* vicini lungo la fila entro 3 posizioni */
+    const close3 = M.map((m, i) => {
+      const set = new Set([i]); let front = [i];
+      for (let h = 0; h < 3; h++) { const nx = []; front.forEach(j => M[j].row.forEach(k => { if (!set.has(k)) { set.add(k); nx.push(k); } })); front = nx; }
+      return set;
+    });
     /* 2. COPPIE trasversali: segnale di fronte, su un'altra fila, di traverso e con fila parallela */
     const pairs = [], seen = new Set(), partner = M.map(() => -1);
     M.forEach((m, i) => {
@@ -145,7 +153,7 @@
       near(m, maxW).forEach(k => {
         if (k === i) return;
         const o = M[k];
-        if (rowId[k] >= 0 && rowId[k] === rowId[i]) return;
+        if (close3[i].has(k)) return;   // stessa fila, entro 3 posizioni (non tutta la fila: due file unite a U restano accoppiabili)
         if (m.side && o.side && o.side === m.side) return;
         if (!!m.side !== !!o.side) return;
         const dd = dist(m, o);
