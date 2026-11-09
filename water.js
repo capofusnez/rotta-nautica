@@ -305,11 +305,49 @@
     if (ends[0].i >= 0 && ends[1].i >= 0) {
       const path = astar(g, ends[0].i, ends[1].i);
       if (path) { res.cells = simplify(g, path); res.bad = verify(g, res.cells); }
+      else res.gap = findGap(g, ends[0].i, ends[1].i);
     }
     return res;
   }
+  /* Quando non c'è passaggio: trova i due punti più vicini tra l'acqua raggiungibile dalla partenza
+     e quella raggiungibile dall'arrivo. È lì che la rotta si interrompe (canale non collegato, briccole mancanti...). */
+  function findGap(g, s, t) {
+    const { W, H, d } = g, N = W * H, DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
+    const reach = (start, mark, val) => {
+      const q = new Int32Array(N); let h = 0, n = 0; q[n++] = start; mark[start] = val;
+      while (h < n) {
+        const i = q[h++], x = i % W, y = (i / W) | 0;
+        for (let k = 0; k < 8; k++) {
+          const nx = x + DX[k], ny = y + DY[k];
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const j = ny * W + nx;
+          if (mark[j] || !d[j]) continue;
+          if (k > 3 && (!d[y * W + nx] || !d[ny * W + x])) continue;
+          mark[j] = val; q[n++] = j;
+        }
+      }
+    };
+    const mark = new Uint8Array(N);
+    reach(s, mark, 1); reach(t, mark, 2);
+    /* espansione da tutta l'acqua della partenza, attraverso qualsiasi cella, finché si tocca l'acqua dell'arrivo */
+    const src = new Int32Array(N).fill(-1), q = new Int32Array(N); let h = 0, n = 0;
+    for (let i = 0; i < N; i++) if (mark[i] === 1) { src[i] = i; q[n++] = i; }
+    while (h < n) {
+      const i = q[h++], x = i % W, y = (i / W) | 0;
+      for (let k = 0; k < 8; k++) {
+        const nx = x + DX[k], ny = y + DY[k];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const j = ny * W + nx;
+        if (src[j] >= 0) continue;
+        src[j] = src[i];
+        if (mark[j] === 2) return { a: src[j], b: j };
+        q[n++] = j;
+      }
+    }
+    return null;
+  }
 
-  root.Water = { CFG, TILE, lon2px, lat2px, tileBox, boxBounds, gridBounds, makeGrid, cellOf, verify, snap, snapXY, astar, simplify, cellLL, landDist, close, waterMask, solve };
+  root.Water = { CFG, TILE, lon2px, lat2px, tileBox, boxBounds, gridBounds, makeGrid, cellOf, verify, snap, snapXY, astar, simplify, cellLL, landDist, close, waterMask, solve, findGap };
 
   /* Quando il file è caricato come Web Worker risponde alle richieste di calcolo della pagina. */
   if (typeof importScripts === 'function' && typeof self !== 'undefined' && typeof document === 'undefined') {
