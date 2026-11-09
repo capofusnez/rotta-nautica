@@ -1,0 +1,32 @@
+/*
+  Rotta Nautica – dati nautici per nautica_locale.geojson
+  Zona: Caorle – Porto Baseleghe – Lignano – Laguna di Marano e Grado
+  (sud, ovest, nord, est). Per un'altra zona cambia i quattro numeri qui sotto
+  oppure scrivi {{bbox}} al loro posto e usa l'area visibile su Overpass Turbo.
+
+  Uso: incolla su https://overpass-turbo.eu → Esegui → Esporta → GeoJSON → scarica.
+  Rinomina il file in nautica_locale.geojson e caricalo nella radice del repository,
+  accanto a index.html.
+*/
+[out:json][timeout:300][bbox:45.55,12.80,45.82,13.60];
+(
+  // canali e corsi d'acqua navigabili
+  way["waterway"~"^(river|canal|fairway|tidal_channel|dock)$"]["tunnel"!="culvert"]["boat"!="no"];
+  way["seamark:type"="fairway"];
+  relation["seamark:type"="fairway"];
+
+  // segnali: briccole, pali, mede, boe, fari e fanali, pericoli
+  node["seamark:type"~"^(beacon_lateral|buoy_lateral|beacon_cardinal|buoy_cardinal|beacon_isolated_danger|buoy_isolated_danger|beacon_safe_water|buoy_safe_water|beacon_special_purpose|buoy_special_purpose|pile|light_major|light_minor|light_float|light_vessel|rock|wreck|obstruction|mooring|landmark|fog_signal)$"];
+  node["man_made"="dolphin"];
+
+  // zone dove si naviga solo nei canali: laguna, barene, velme, secche
+  way["water"="lagoon"];
+  relation["water"="lagoon"];
+  way["natural"="wetland"];
+  relation["natural"="wetland"];
+  way["natural"="shoal"];
+  relation["natural"="shoal"];
+);
+out body;
+>;
+out skel qt;
