@@ -581,10 +581,10 @@ let routeWorker = null, routeJob = 0;
 function routeLeg(prep, a, b) {
   const { rgba, W, H, box, extra } = prep;
   const masks = {};
-  ['restrict', 'lines', 'axis', 'ext', 'zone', 'barrier', 'nogo'].forEach(k => { if (extra[k]) masks[k] = extra[k]; });
+  ['restrict', 'hard', 'lines', 'axis', 'ext', 'zone', 'barrier', 'nogo'].forEach(k => { if (extra[k]) masks[k] = extra[k]; });
   masks.coastM = extra.coastM;
   if (extra.enc) masks.enc = { cov: extra.enc.cov, ok: extra.enc.ok, wet: extra.enc.wet, pref: extra.enc.pref };
-  const msg = { rgba, W, H, box, extra: masks, a: { lat: a.lat, lng: a.lng }, b: { lat: b.lat, lng: b.lng } };
+  const msg = { rgba, W, H, box, extra: masks, a: { lat: a.lat, lng: a.lng }, b: { lat: b.lat, lng: b.lng }, relaxM: 500 };
   const local = () => Water.solve(msg);
   if (!window.Worker) return Promise.resolve(local());
   return new Promise(resolve => {
@@ -638,7 +638,8 @@ function indexNautical(gj) {
     if (g.type === 'Polygon' || g.type === 'MultiPolygon') {
       const polys = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).map(p => p.map(r => r.map(ll)));
       polys.forEach(p => {
-        const item = { rings: p, bb: bbOf(p[0]), lagoon: t.water === 'lagoon' };
+        /* barene e zone con vegetazione: emerse, mai attraversabili nemmeno nell'ultimo tratto fuori canale */
+        const item = { rings: p, bb: bbOf(p[0]), lagoon: t.water === 'lagoon', hard: t.natural === 'wetland' && /^(saltmarsh|marsh|reedbed|swamp|fen|bog|wet_meadow)$/.test(t.wetland || '') };
         if (isRestrict) D.restrictAreas.push(item);
         else if (isFair) D.corridorAreas.push(item);
         else if (WATERWAY.test(t.waterway || '')) D.lines.push({ pts: p[0], bb: item.bb });   // canale chiuso ad anello
@@ -658,10 +659,10 @@ function indexNautical(gj) {
 async function fetchNautical(box) {
   const D = await localNautical(), b = Water.boxBounds(box);
   const hit = bb => bb[0] <= b.e && bb[2] >= b.w && bb[1] <= b.n && bb[3] >= b.s;
-  const out = { lines: [], corridorAreas: [], restrictAreas: [], nodes: [], info: { canali: 0, segnali: 0, coppie: 0, lagune: 0 } };
+  const out = { lines: [], corridorAreas: [], restrictAreas: [], hardAreas: [], nodes: [], info: { canali: 0, segnali: 0, coppie: 0, lagune: 0 } };
   D.lines.forEach(l => { if (hit(l.bb)) { out.lines.push(l.pts); out.info.canali++; } });
   D.corridorAreas.forEach(a => { if (hit(a.bb)) { out.corridorAreas.push(a.rings); out.info.canali++; } });
-  D.restrictAreas.forEach(a => { if (hit(a.bb)) { out.restrictAreas.push(a.rings); if (a.lagoon) out.info.lagune++; } });
+  D.restrictAreas.forEach(a => { if (hit(a.bb)) { out.restrictAreas.push(a.rings); if (a.hard) out.hardAreas.push(a.rings); if (a.lagoon) out.info.lagune++; } });
   D.nodes.forEach(n => { if (n.lng >= b.w && n.lng <= b.e && n.lat >= b.s && n.lat <= b.n) out.nodes.push(n); });
   return out;
 }
@@ -678,6 +679,9 @@ function rasterNautical(ctx, W, H, box, nd) {
   let restrict = null;
   /* ogni zona è un poligono con eventuali buchi (isole): riempita da sola, così zone sovrapposte non si annullano */
   if (nd.restrictAreas.length) { nd.restrictAreas.forEach(rings => { ctx.beginPath(); rings.forEach(r => { poly(r); ctx.closePath(); }); ctx.fill('evenodd'); }); restrict = read(); }
+  ctx.clearRect(0, 0, W, H);
+  let hard = null;
+  if (nd.hardAreas && nd.hardAreas.length) { nd.hardAreas.forEach(rings => { ctx.beginPath(); rings.forEach(r => { poly(r); ctx.closePath(); }); ctx.fill('evenodd'); }); hard = read(); }
   // corsi d'acqua e canali mappati come aree
   ctx.clearRect(0, 0, W, H);
   let lines = null;
@@ -693,7 +697,7 @@ function rasterNautical(ctx, W, H, box, nd) {
   const ch = Channels.analyze(nd.nodes, null, nd.lines);
   nd.info.segnali = ch.marks; nd.info.coppie = ch.pairs;
   const m = Channels.rasterize(ch, W, H, P, mpp);
-  return { restrict, lines, axis: m.axis, ext: m.ext, zone: m.zone, barrier: m.barrier, nogo: m.nogo, ch, coastM: S.set.coast };
+  return { restrict, hard, lines, axis: m.axis, ext: m.ext, zone: m.zone, barrier: m.barrier, nogo: m.nogo, ch, coastM: S.set.coast };
 }
 
 /* Calcolo automatico: parte da solo quando partenza, tappe o destinazione cambiano.
@@ -719,7 +723,7 @@ async function autoRouteRun() {
   busy.start(w.length - 1);
   busy.set(w.length > 2 ? `Calcolo della rotta: ${w.length - 1} tratti…` : 'Calcolo della rotta…', 1, 0.01);
   S.grids = []; showWater(false);
-  const legs = [], moved = [], info = { canali: 0, segnali: 0, coppie: 0, lagune: 0 };
+  const legs = [], moved = [], offLegs = [], info = { canali: 0, segnali: 0, coppie: 0, lagune: 0 };
   const name = i => i === 0 ? 'La partenza' : i === w.length - 1 ? "L'arrivo" : `La tappa ${i}`;
   try {
     for (let k = 1; k < w.length; k++) {
@@ -757,6 +761,7 @@ async function autoRouteRun() {
         : `Tratto ${k}: nessun passaggio nei canali navigabili dei dati nautici locali. Aggiungi una tappa lungo il canale che vuoi seguire`);
       if (res.bad) throw new Error(`Tratto ${k}: verifica fallita, un segmento esce dalle acque navigabili`);
       const cells = res.cells;
+      if (res.offChannelM > 0) offLegs.push(`tratto ${k}: ${fmtDist(res.offChannelM)}`);
       legs.push(cells.map(i => Water.cellLL(g, i)));
     }
   } catch (e) {
@@ -780,6 +785,7 @@ async function autoRouteRun() {
   map.fitBounds(routeLine.getBounds().pad(0.15));
   if (S.tab) minSheet(true);
   showWater(false);
+  const offTxt = offLegs.length ? ` ATTENZIONE: per raggiungere partenza, arrivo o tappe la rotta esce dai canali segnalati vicino a quei punti (${offLegs.join(', ')}). In quei tratti i fondali non sono noti: procedi a vista e a velocità ridotta.` : '';
   const edge = S.edgeWarn ? ' Attenzione: partenza o arrivo sono al margine dell\'area di nautica_locale.geojson, lì canali e briccole potrebbero mancare.' : '';
   const mv = moved.length ? ' ' + moved.map(name).join(', ') + (moved.length > 1 ? ' sono state spostate' : ' è stata spostata') + ' nel punto navigabile più vicino.' : '';
   const encUsed = S.grids.filter(g => g.enc).map(g => g.enc), encAll = encUsed.length === S.grids.length && encUsed.every(e => e.fraction > 0.999);
@@ -788,10 +794,11 @@ async function autoRouteRun() {
   autoMsg(encAll
     ? `Rotta calcolata con le carte ENC ufficiali (${encCells}): passa solo dove la profondità è almeno ${num1(S.set.draft + S.set.ukc)} m (pescaggio ${num1(S.set.draft)} m + margine ${num1(S.set.ukc)} m) e lontano da terra, opere e ostacoli.${mv} Verifica che le celle siano aggiornate con gli ultimi Avvisi ai Naviganti.`
     : encUsed.length
-      ? `Rotta calcolata con le carte ENC (${encCells}) dove disponibili e con OpenStreetMap/OpenSeaMap altrove (${osmTxt}).${mv}${edge} Fuori dalle ENC le profondità non sono note: verifica con i segnalamenti in acqua.`
-      : `Rotta calcolata (${osmTxt}).${mv}${edge} I dati OpenStreetMap/OpenSeaMap del file locale non indicano le profondità e possono essere incompleti: verifica sempre con i segnalamenti in acqua.`);
+      ? `Rotta calcolata con le carte ENC (${encCells}) dove disponibili e con OpenStreetMap/OpenSeaMap altrove (${osmTxt}).${mv}${edge}${offTxt} Fuori dalle ENC le profondità non sono note: verifica con i segnalamenti in acqua.`
+      : `Rotta calcolata (${osmTxt}).${mv}${edge}${offTxt} I dati OpenStreetMap/OpenSeaMap del file locale non indicano le profondità e possono essere incompleti: verifica sempre con i segnalamenti in acqua.`);
   let tot = 0; for (let i = 1; i < clean.length; i++) tot += dist(clean[i - 1], clean[i]);
-  busy.done(`Rotta calcolata: ${fmtDist(tot)}, circa ${fmtDur(tot / (S.set.plan / KN))} a ${S.set.plan} nodi. Verificala sulla carta.`);
+  if (offLegs.length) busy.fail(`Rotta calcolata: ${fmtDist(tot)}. Attenzione: ultimo tratto fuori dai canali segnalati (${offLegs.join(', ')}), procedi a vista e piano.`);
+  else busy.done(`Rotta calcolata: ${fmtDist(tot)}, circa ${fmtDur(tot / (S.set.plan / KN))} a ${S.set.plan} nodi. Verificala sulla carta.`);
   $('bAuto').disabled = false;
 }
 

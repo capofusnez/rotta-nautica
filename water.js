@@ -307,11 +307,43 @@
     const res = { id: m.id, z: g.z, ox: g.ox, oy: g.oy, W: g.W, H: g.H, mpp: g.mpp, ends, d: g.d, buf: g.buf };
     if (ends[0].i >= 0 && ends[1].i >= 0) {
       const path = astar(g, ends[0].i, ends[1].i);
-      if (path) { res.cells = simplify(g, path); res.bad = verify(g, res.cells); }
-      else res.gap = findGap(g, ends[0].i, ends[1].i);
+      if (path) { res.cells = simplify(g, path); res.bad = verify(g, res.cells); return res; }
+      res.gap = findGap(g, ends[0].i, ends[1].i);
+    }
+    /* ULTIMO TRATTO FUORI CANALE: se rispettando i canali non si arriva, si riprova permettendo di lasciare canali e
+       zone lagunari solo entro relaxM metri da partenza e arrivo (es. l'approdo di un locale fuori dalle briccole).
+       Terra, pali e file di briccole restano invalicabili. Il tratto fuori canale viene misurato e segnalato. */
+    if (m.relaxM > 0) {
+      const W = m.W, H = m.H, rPx = m.relaxM / g.mpp, r2 = rPx * rPx;
+      const P = [cellOfXY(g, m.a), cellOfXY(g, m.b)];
+      const X2 = Object.assign({}, m.extra);
+      ['restrict', 'zone'].forEach(k => {
+        if (!X2[k]) return;
+        const c = new Uint8Array(X2[k]);
+        P.forEach(([px, py]) => {
+          for (let y = Math.max(0, Math.floor(py - rPx)); y <= Math.min(H - 1, Math.ceil(py + rPx)); y++)
+            for (let x = Math.max(0, Math.floor(px - rPx)); x <= Math.min(W - 1, Math.ceil(px + rPx)); x++)
+              if ((x - px) ** 2 + (y - py) ** 2 <= r2 && !(m.extra.hard && m.extra.hard[y * W + x])) c[y * W + x] = 0;
+        });
+        X2[k] = c;
+      });
+      const g2 = makeGrid(m.rgba, W, H, m.box, X2);
+      const e2 = [m.a, m.b].map(p => { const own = cellOf(g2, p); return own >= 0 && g2.d[own] ? { i: own, moved: false } : { i: snap(g2, p), moved: true }; });
+      if (e2[0].i >= 0 && e2[1].i >= 0) {
+        const path2 = astar(g2, e2[0].i, e2[1].i);
+        if (path2) {
+          let off = 0;
+          path2.forEach((i, k) => { if (!g.d[i] && k) { const a = path2[k - 1]; off += Math.hypot(i % W - a % W, ((i / W) | 0) - ((a / W) | 0)); } });
+          const r2res = { id: m.id, z: g2.z, ox: g2.ox, oy: g2.oy, W: g2.W, H: g2.H, mpp: g2.mpp, ends: e2, d: g2.d, buf: g2.buf };
+          r2res.cells = simplify(g2, path2); r2res.bad = verify(g2, r2res.cells);
+          r2res.offChannelM = Math.round(off * g2.mpp);
+          return r2res;
+        }
+      }
     }
     return res;
   }
+  const cellOfXY = (g, p) => toCell(g, p);
   /* Quando non c'è passaggio: trova i due punti più vicini tra l'acqua raggiungibile dalla partenza
      e quella raggiungibile dall'arrivo. È lì che la rotta si interrompe (canale non collegato, briccole mancanti...). */
   function findGap(g, s, t) {
