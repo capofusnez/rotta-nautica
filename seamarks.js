@@ -216,18 +216,13 @@
         try { cache = await caches.open('rn-nautical'); const hit = await cache.match(key);
           if (hit && Date.now() - +hit.headers.get('x-saved') < 14 * 864e5) return (await hit.json()).elements || []; } catch (e) { /* ignora */ }
         const q = `[out:json][timeout:60];node["seamark:type"](${bb});out tags qt;`;
-        for (const url of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
-          try {
-            const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-            if (!r.ok) continue;
-            const txt = await r.text(), j = JSON.parse(txt);
-            if (j.remark && /error|timed out/i.test(j.remark)) continue;
-            if (cache) cache.put(key, new Response(txt, { headers: { 'x-saved': String(Date.now()) } })).catch(() => {});
-            return j.elements || [];
-          } catch (e) { /* server successivo */ }
-        }
-        tiles.delete(id);
-        return [];
+        /* durante il calcolo della rotta le richieste dei segnali aspettano, per non occupare il server */
+        if (opts.paused && opts.paused()) { tiles.delete(id); return []; }
+        try {
+          const txt = await opts.query(q), j = JSON.parse(txt);
+          if (cache) cache.put(key, new Response(txt, { headers: { 'x-saved': String(Date.now()) } })).catch(() => {});
+          return j.elements || [];
+        } catch (e) { tiles.delete(id); return []; }
       })();
       tiles.set(id, pr);
       return pr;
