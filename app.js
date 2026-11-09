@@ -80,7 +80,7 @@ function fmtClock(ms) {
 }
 
 /* ---------- Stato ---------- */
-const DEF = { xte: 0.1, arr: 80, spd: 0, wind: 25, hz: 300, plan: 5, anc: 40,
+const DEF = { xte: 0.1, arr: 80, spd: 0, wind: 25, hz: 300, plan: 5, anc: 40, coast: 300,
   mute: false, night: false, base: 'osm', sea: true, bathy: false, track: true, follow: true };
 const S = {
   set: Object.assign({}, DEF, store.get('set', {})),
@@ -538,7 +538,7 @@ async function loadGrid(a, b, k, n) {
   const rgba = ctx.getImageData(0, 0, W, H).data;
   const extra = rasterNautical(ctx, W, H, box, nautical);
   const g = Water.makeGrid(rgba, W, H, box, extra);
-  g.info = nautical.info;
+  g.info = nautical.info; g.ch = extra.ch;
   return g;
 }
 
@@ -622,11 +622,12 @@ async function fetchNautical(box, report) {
       `way["waterway"~"^(river|canal|fairway|tidal_channel|dock)$"]["tunnel"!="culvert"]["boat"!="no"](${bb});` +
       `way["seamark:type"="fairway"](${bb});` +
       `node["seamark:type"~"^(beacon_lateral|buoy_lateral|beacon_safe_water|buoy_safe_water|beacon_special_purpose|buoy_special_purpose|pile|light_minor|beacon_cardinal|buoy_cardinal|beacon_isolated_danger|buoy_isolated_danger|rock|wreck|obstruction)$"](${bb});` +
+      `node["man_made"="dolphin"](${bb});` +
       `way["water"="lagoon"](${bb});way["natural"="wetland"](${bb});way["natural"="shoal"](${bb});` +
       `);out tags geom qt;(` +
       `relation["water"="lagoon"](${bb});relation["natural"="wetland"](${bb});relation["natural"="shoal"](${bb});relation["seamark:type"="fairway"](${bb});` +
       `);out tags qt;`;
-    const j = await cached(`https://rotta-nautica.local/nautical?v3&z12/${x}/${y}`, 14 * DAY,
+    const j = await cached(`https://rotta-nautica.local/nautical?v4&z12/${x}/${y}`, 14 * DAY,
       () => overpass(q, { onWait: m => report(`${msg} – ${m.charAt(0).toLowerCase()}${m.slice(1)}`, i / chunks.length) }));
     (j.elements || []).forEach(e => { if (e.type === 'relation') relIds.add(e.id); else add([e]); });
   }
@@ -719,7 +720,7 @@ function rasterNautical(ctx, W, H, box, nd) {
   const ch = Channels.analyze(nd.nodes);
   nd.info.segnali = ch.marks; nd.info.coppie = ch.pairs;
   const m = Channels.rasterize(ch, W, H, P, mpp);
-  return { restrict, lines, axis: m.axis, ext: m.ext, zone: m.zone, barrier: m.barrier, nogo: m.nogo };
+  return { restrict, lines, axis: m.axis, ext: m.ext, zone: m.zone, barrier: m.barrier, nogo: m.nogo, ch, coastM: S.set.coast };
 }
 
 /* Calcolo automatico: parte da solo quando partenza, tappe o destinazione cambiano.
@@ -811,9 +812,18 @@ function showWater(on) {
     S.grids.forEach(g => {
       const cv = document.createElement('canvas'); cv.width = g.W; cv.height = g.H;
       const cx = cv.getContext('2d'), im = cx.createImageData(g.W, g.H);
-      for (let i = 0; i < g.d.length; i++) if (g.d[i]) { const j = i * 4; im.data[j] = 0; im.data[j + 1] = 140; im.data[j + 2] = 255; im.data[j + 3] = 150; }
+      for (let i = 0; i < g.d.length; i++) if (g.d[i]) {
+        const j = i * 4, b = g.buf && g.buf[i];
+        im.data[j] = b ? 255 : 0; im.data[j + 1] = b ? 150 : 140; im.data[j + 2] = b ? 40 : 255; im.data[j + 3] = b ? 120 : 150;
+      }
       cx.putImageData(im, 0, 0);
       L.imageOverlay(cv.toDataURL(), Water.gridBounds(g), { interactive: false, zIndex: 4 }).addTo(waterLayer);
+      /* asse dei canali riconosciuto (verde) e file di briccole usate come barriera (rosso) */
+      if (g.ch) {
+        g.ch.axis.concat(g.ch.ext).forEach(s => { if (s.a.lat !== s.b.lat || s.a.lng !== s.b.lng)
+          L.polyline([[s.a.lat, s.a.lng], [s.b.lat, s.b.lng]], { color: '#16c060', weight: 3, interactive: false }).addTo(waterLayer); });
+        g.ch.barrier.forEach(s => L.polyline([[s.a.lat, s.a.lng], [s.b.lat, s.b.lng]], { color: '#ff2d2d', weight: 2, interactive: false }).addTo(waterLayer));
+      }
     });
     waterLayer.addTo(map);
   } else map.removeLayer(waterLayer);
@@ -1112,12 +1122,16 @@ $('fSave').addEventListener('submit', e => {
 });
 
 /* impostazioni */
-const FIELDS = { sXte: 'xte', sArr: 'arr', sSpd: 'spd', sWind: 'wind', sHz: 'hz', sAnc: 'anc', sPlan: 'plan' };
+let coastT = 0;
+const FIELDS = { sXte: 'xte', sArr: 'arr', sSpd: 'spd', sWind: 'wind', sHz: 'hz', sAnc: 'anc', sPlan: 'plan', sCoast: 'coast' };
 Object.keys(FIELDS).forEach(id => {
   const el = $(id); el.value = S.set[FIELDS[id]];
   el.addEventListener('input', () => {
     const v = parseFloat(el.value);
-    if (isFinite(v)) { S.set[FIELDS[id]] = v; saveSet(); if (id === 'sPlan') renderRoute(); }
+    if (isFinite(v)) {
+      S.set[FIELDS[id]] = v; saveSet(); if (id === 'sPlan') renderRoute();
+      if (id === 'sCoast' && S.route.start && S.route.dest) { clearTimeout(coastT); coastT = setTimeout(editRoute, 1200); }
+    }
   });
 });
 document.querySelectorAll('input[name=base]').forEach(r => {
