@@ -131,16 +131,18 @@
      nogo:     pali, pericoli isolati, scogli, relitti */
   function makeGrid(rgba, W, H, box, extra) {
     const m = waterMask(rgba, W * H), X = extra || {};
-    const R = X.restrict, Z = X.zone, A = X.axis, E = X.ext, Ln = X.lines, B = X.barrier, N = X.nogo;
+    const R = X.restrict, Z = X.zone, A = X.axis, E = X.ext, Ln = X.lines, B = X.barrier, N = X.nogo, SH = X.shallow;
     /* ENC (S-57): dove c'è copertura decidono solo le carte ufficiali (profondità >= pescaggio + margine,
        niente terra, opere od ostacoli). Fuori copertura vale il metodo con OpenStreetMap/OpenSeaMap. */
     const EN = X.enc, EC = EN && EN.cov;
     let raw = m;
     if (EC) { raw = new Uint8Array(m); for (let i = 0; i < raw.length; i++) if (EC[i]) raw[i] = EN.wet[i]; }
     const coastPx = landDist(raw, W, H);   // distanza dalla riva vera, in pixel
-    if (R || Z || A || E || Ln || B || N || EC) for (let i = 0; i < m.length; i++) {
+    if (R || Z || A || E || Ln || B || N || EC || SH) for (let i = 0; i < m.length; i++) {
       if (EC && EC[i]) { m[i] = EN.ok[i] ? 1 : 0; continue; }
       const water = m[i], r = R && R[i];
+      /* fondale EMODnet troppo basso: vietato fuori dai canali segnalati e dai corsi d'acqua mappati */
+      if (SH && SH[i] && !((A && A[i]) || (E && E[i]) || (Ln && Ln[i]))) { m[i] = 0; continue; }
       const z = Z && Z[i];
       let ok = (water && !r && !z) || (Ln && Ln[i] && !z) || (A && A[i] && (water || r)) || (E && E[i] && water && !r);
       /* una fila di briccole è invalicabile, salvo dove la attraversa un canale mappato (lì c'è il varco); i pali restano ostacoli */
@@ -317,7 +319,7 @@
       const W = m.W, H = m.H, rPx = m.relaxM / g.mpp, r2 = rPx * rPx;
       const P = [cellOfXY(g, m.a), cellOfXY(g, m.b)];
       const X2 = Object.assign({}, m.extra);
-      ['restrict', 'zone'].forEach(k => {
+      ['restrict', 'zone', 'shallow'].forEach(k => {
         if (!X2[k]) return;
         const c = new Uint8Array(X2[k]);
         P.forEach(([px, py]) => {

@@ -133,7 +133,7 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 .form label,.inl,.chk{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .form label{justify-content:space-between}
 .chk{padding:4px 0}
-.seg{display:flex;gap:16px}
+.seg{display:flex;gap:16px;flex-wrap:wrap}
 .seg label{display:flex;gap:8px;align-items:center}
 .note{margin:0;font-size:12.5px;color:var(--mut)}
 .note.warn{color:var(--warn)}
@@ -250,8 +250,8 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
       <label>Raffica di vento (0 = off) <span><input id="sWind" type="number" step="1" min="0"> nodi</span></label>
       <label>Raggio di sicurezza ostacoli <span><input id="sHz" type="number" step="25" min="25"> m</span></label>
       <label>Distanza minima dalla costa (0 = off) <span><input id="sCoast" type="number" step="50" min="0"> m</span></label>
-      <label>Pescaggio della barca (carte ENC) <span><input id="sDraft" type="number" step="0.1" min="0"> m</span></label>
-      <label>Margine sotto la chiglia (carte ENC) <span><input id="sUkc" type="number" step="0.1" min="0"> m</span></label>
+      <label>Pescaggio della barca <span><input id="sDraft" type="number" step="0.1" min="0"> m</span></label>
+      <label>Margine sotto la chiglia <span><input id="sUkc" type="number" step="0.1" min="0"> m</span></label>
     </div>
     <h4>Allarme ancora</h4>
     <div class="form"><label>Raggio di deriva <span><input id="sAnc" type="number" step="5" min="10"> m</span></label></div>
@@ -264,6 +264,9 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 
   <div class="pane" id="p-mappa" hidden>
     <div class="seg"><label><input type="radio" name="base" value="osm"> Carta</label><label><input type="radio" name="base" value="sat"> Satellite</label></div>
+    <div class="seg"><label><input type="radio" name="base" value="gmap"> Google strade</label><label><input type="radio" name="base" value="gsat"> Google satellite</label></div>
+    <form class="search" onsubmit="return false"><input id="gKey" type="password" placeholder="Chiave API Google (Map Tiles API)" autocomplete="off"><button id="gKeySave" type="button">Salva</button></form>
+    <p class="note">Per Google Maps serve una chiave API: su console.cloud.google.com crea un progetto, attiva la "Map Tiles API" e crea una chiave. La chiave resta solo su questo telefono. Google offre un credito mensile gratuito; oltre si paga.</p>
     <label class="chk"><input type="checkbox" id="lSea"> Segnali nautici (OpenSeaMap): toccali per vedere la scheda</label>
     <label class="chk"><input type="checkbox" id="lBathy"> Profondità (EMODnet, indicativa)</label>
     <label class="chk"><input type="checkbox" id="lTrack"> Mostra la traccia percorsa</label>

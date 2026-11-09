@@ -147,8 +147,58 @@ map.on('contextmenu', e => {
   L.popup({ closeButton: false }).setLatLng(e.latlng).setContent(el).openOn(map);
 });
 
+/* ---------- Google Maps (Map Tiles API ufficiale) ----------
+   Serve una chiave API dell'utente (Google Cloud, "Map Tiles API" attiva), salvata solo su questo telefono.
+   Le immagini Google non vengono salvate per l'uso senza rete: le condizioni d'uso non lo consentono. */
+const GKEY = 'rn.gkey', GT = { gmap: 'roadmap', gsat: 'satellite' };
+const gKey = () => { try { return localStorage.getItem(GKEY) || ''; } catch (e) { return ''; } };
+const gLayers = {};
+let gAttrT = 0;
+async function gSession(type) {
+  const key = gKey();
+  if (!key) throw new Error('Inserisci la chiave API di Google nella scheda Carta');
+  const sk = 'rn.gsess.' + type;
+  try { const c = JSON.parse(localStorage.getItem(sk) || 'null'); if (c && c.key === key && c.expiry * 1000 > Date.now() + 3600e3) return c.session; } catch (e) { /* ignora */ }
+  const r = await fetch('https://tile.googleapis.com/v1/createSession?key=' + encodeURIComponent(key), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mapType: GT[type], language: 'it-IT', region: 'IT' })
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.session) throw new Error('Google ha rifiutato la chiave: ' + ((j.error && j.error.message) || r.status) + '. Controlla che la "Map Tiles API" sia attiva');
+  try { localStorage.setItem(sk, JSON.stringify({ key, session: j.session, expiry: +j.expiry })); } catch (e) { /* ignora */ }
+  return j.session;
+}
+async function gLayer(type) {
+  if (gLayers[type]) return gLayers[type];
+  const session = await gSession(type), key = gKey();
+  const lyr = L.tileLayer(`https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${session}&key=${encodeURIComponent(key)}`,
+    { maxZoom: 21, maxNativeZoom: type === 'gsat' ? 20 : 21, zIndex: 1, attribution: 'Google' });
+  /* attribuzione richiesta da Google per la zona visibile */
+  const upd = () => {
+    clearTimeout(gAttrT);
+    gAttrT = setTimeout(async () => {
+      if (!map.hasLayer(lyr)) return;
+      const b = map.getBounds();
+      try {
+        const r = await fetch(`https://tile.googleapis.com/tile/v1/viewport?session=${session}&key=${encodeURIComponent(key)}&zoom=${map.getZoom()}&north=${b.getNorth()}&south=${b.getSouth()}&east=${b.getEast()}&west=${b.getWest()}`);
+        const j = await r.json();
+        if (j.copyright) { map.attributionControl.removeAttribution(lyr.options.attribution); lyr.options.attribution = '<b>Google</b> ' + j.copyright; map.attributionControl.addAttribution(lyr.options.attribution); }
+      } catch (e) { /* ignora */ }
+    }, 400);
+  };
+  lyr.on('add', upd); map.on('moveend', upd);
+  gLayers[type] = lyr;
+  return lyr;
+}
+function resetBaseRadio(v) { document.querySelectorAll('input[name=base]').forEach(r => { r.checked = r.value === v; }); }
 function applyLayers() {
   Object.keys(base).forEach(k => { if (k === S.set.base) { if (!map.hasLayer(base[k])) base[k].addTo(map); } else map.removeLayer(base[k]); });
+  Object.keys(gLayers).forEach(k => { if (k !== S.set.base) map.removeLayer(gLayers[k]); });
+  if (GT[S.set.base]) {
+    const want = S.set.base;
+    gLayer(want).then(l => { if (S.set.base === want && !map.hasLayer(l)) l.addTo(map); })
+      .catch(e => { toast(e.message); S.set.base = 'osm'; saveSet(); resetBaseRadio('osm'); applyLayers(); });
+  }
   if (S.set.sea) { if (!map.hasLayer(sea)) sea.addTo(map); } else map.removeLayer(sea);
   if (S.set.bathy) { if (!map.hasLayer(bathy)) bathy.addTo(map); } else map.removeLayer(bathy);
   if (S.set.track) { if (!map.hasLayer(trackLine)) trackLine.addTo(map); } else map.removeLayer(trackLine);
@@ -170,7 +220,7 @@ function encStatus() {
 /* scheda dei segnali (seamarks.js): se il file manca l'app funziona lo stesso */
 let seamarkInspector = { refresh() {} };
 /* i segnali vengono dal file locale: niente rete, disegno immediato */
-try { if (window.Seamarks) seamarkInspector = Seamarks.attach(map, { isOn: () => S.set.sea, isPicking: () => !!S.pick, nodes: () => localNautical().then(D => D.nodes) }); }
+try { if (window.Seamarks) seamarkInspector = Seamarks.attach(map, { isOn: () => S.set.sea, isPicking: () => !!S.pick, nodes: b => nauticaFor(b).then(D => D.nodes) }); }
 catch (e) { console.error(e); }
 function applyNight() {
   document.body.classList.toggle('night', !!S.set.night);
@@ -535,11 +585,13 @@ async function loadGrid(a, b, k, n) {
   const encFull = enc && enc.fraction > 0.999;
   let nautical = { lines: [], corridorAreas: [], restrictAreas: [], nodes: [], info: { canali: 0, segnali: 0, coppie: 0, lagune: 0 } };
   if (!encFull) {
-    /* dati nautici locali: istantanei. Il tratto deve stare nell'area coperta dal file. */
-    /* i limiti del file si ricavano dai dati: in mare aperto non ci sono segnali, quindi si tollerano ~10 km di margine */
-    const D = await localNautical(), inside = (p, M) => p.lat >= D.ext.s - M && p.lat <= D.ext.n + M && p.lng >= D.ext.w - M && p.lng <= D.ext.e + M;
-    if (!inside(a, 0.0) || !inside(b, 0.0)) S.edgeWarn = true;
-    if (!inside(a, 0.1) || !inside(b, 0.1)) throw new Error(`Tratto ${k}: è fuori dall'area di nautica_locale.geojson (${D.ext.s.toFixed(2)}-${D.ext.n.toFixed(2)} N, ${D.ext.w.toFixed(2)}-${D.ext.e.toFixed(2)} E). Scarica i dati anche per questa zona con Overpass Turbo`);
+    /* dati nautici: istantanei dai riquadri salvati. Partenza e arrivo devono stare in zone scaricate. */
+    const idx = await nauticaIndex();
+    if (idx.legacy) {
+      const E = idx.tiles[0].core, ins = p => p.lat >= E.s && p.lat <= E.n && p.lng >= E.w && p.lng <= E.e;
+      if (!ins(a) || !ins(b)) S.edgeWarn = true;
+    }
+    if (!(await nauticaCovers(a)) || !(await nauticaCovers(b))) throw new Error(`Tratto ${k}: è fuori dalle zone di cui sono stati scaricati i dati nautici. Avvia l'azione "Aggiorna dati nautici" su GitHub`);
     nautical = await fetchNautical(box);
     /* immagini della carta OSM per distinguere acqua e terra: salvate sul telefono, la seconda volta non serve la rete */
     const jobs = [];
@@ -571,7 +623,14 @@ async function loadGrid(a, b, k, n) {
   const rgba = ctx.getImageData(0, 0, W, H).data;
   const extra = rasterNautical(ctx, W, H, box, nautical);
   if (enc) extra.enc = enc;
-  return { rgba, W, H, box, extra, info: nautical.info, ch: extra.ch, enc: enc ? { fraction: enc.fraction, cells: enc.cells } : null };
+  /* profondità EMODnet: fuori dai canali si evitano i fondali sotto pescaggio + margine */
+  let depthUsed = false;
+  if (!encFull && S.set.draft > 0) {
+    busy.set(`Tratto ${k}/${n}: leggo le profondità EMODnet…`, k, 0.65);
+    const sh = await depthMask(box, W, H, S.set.draft + S.set.ukc).catch(() => null);
+    if (sh) { extra.shallow = sh; depthUsed = true; }
+  }
+  return { rgba, W, H, box, extra, info: nautical.info, ch: extra.ch, depthUsed, enc: enc ? { fraction: enc.fraction, cells: enc.cells } : null };
 }
 
 /* ---------- Calcolo del percorso nel Web Worker ----------
@@ -581,7 +640,7 @@ let routeWorker = null, routeJob = 0;
 function routeLeg(prep, a, b) {
   const { rgba, W, H, box, extra } = prep;
   const masks = {};
-  ['restrict', 'hard', 'lines', 'axis', 'ext', 'zone', 'barrier', 'nogo'].forEach(k => { if (extra[k]) masks[k] = extra[k]; });
+  ['restrict', 'hard', 'shallow', 'lines', 'axis', 'ext', 'zone', 'barrier', 'nogo'].forEach(k => { if (extra[k]) masks[k] = extra[k]; });
   masks.coastM = extra.coastM;
   if (extra.enc) masks.enc = { cov: extra.enc.cov, ok: extra.enc.ok, wet: extra.enc.wet, pref: extra.enc.pref };
   const msg = { rgba, W, H, box, extra: masks, a: { lat: a.lat, lng: a.lng }, b: { lat: b.lat, lng: b.lng }, relaxM: 500 };
@@ -604,17 +663,109 @@ function stopWorker() { if (routeWorker) { routeWorker.terminate(); routeWorker 
    Il file si scarica una volta da Overpass Turbo (query in tools/overpass_turbo_nautica.txt) e si pubblica
    accanto a index.html. L'app lo legge una sola volta con fetch(): nessuna richiesta a Overpass, segnali e
    calcolo della rotta sono immediati e funzionano anche senza rete. */
-const NAUTICA_URL = 'nautica_locale.geojson';
-let nauticaP = null;
-function localNautical() {
-  if (!nauticaP) nauticaP = (async () => {
-    let r;
-    try { r = await fetch(NAUTICA_URL, { cache: 'no-cache' }); }
-    catch (e) { r = await caches.match(NAUTICA_URL).catch(() => null); }
-    if (!r || !r.ok) throw new Error('Manca il file nautica_locale.geojson con canali e briccole: crealo con Overpass Turbo (vedi tools/overpass_turbo_nautica.txt) e caricalo accanto a index.html');
-    return indexNautical(await r.json());
-  })().catch(e => { nauticaP = null; throw e; });
-  return nauticaP;
+/* Dati pubblicati con l'app (GitHub Pages). Nell'APK si leggono dal sito, poi restano salvati sul telefono. */
+const DATA_BASE = window.Capacitor ? 'https://capofusnez.github.io/rotta-nautica/' : '';
+async function getData(path, type) {
+  let cache = null;
+  try { cache = await caches.open('rn-data'); } catch (e) { /* cache non disponibile */ }
+  const url = DATA_BASE + path;
+  try {
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 20000);
+    const r = await fetch(url, { cache: 'no-cache', signal: ctl.signal });
+    clearTimeout(to);
+    if (r.ok) { if (cache) cache.put(url, r.clone()).catch(() => {}); return type === 'blob' ? r.blob() : r.json(); }
+    if (r.status === 404) { const hit = cache && await cache.match(url); if (hit) return type === 'blob' ? hit.blob() : hit.json(); return null; }
+  } catch (e) { /* senza rete: copia salvata */ }
+  const hit = cache && await cache.match(url);
+  if (hit) return type === 'blob' ? hit.blob() : hit.json();
+  return null;
+}
+/* Dati nautici di tutta Italia a riquadri (nautica/index.json, creato dall'azione "Aggiorna dati nautici").
+   Se l'indice non c'è si usa il vecchio file unico nautica_locale.geojson. */
+let nIndexP = null;
+const nTiles = new Map();
+function nauticaIndex() {
+  if (!nIndexP) nIndexP = (async () => {
+    const idx = await getData('nautica/index.json');
+    if (idx && idx.tiles) return idx;
+    const gj = await getData('nautica_locale.geojson');
+    if (!gj) throw new Error('Mancano i dati nautici (cartella nautica/ o file nautica_locale.geojson): avvia l\'azione "Aggiorna dati nautici" su GitHub');
+    const D = indexNautical(gj), M = 0.1;
+    nTiles.set('legacy', Promise.resolve(D));
+    return { legacy: true, tiles: [{ id: 'legacy', s: D.ext.s - M, w: D.ext.w - M, n: D.ext.n + M, e: D.ext.e + M, file: null, core: D.ext }] };
+  })().catch(e => { nIndexP = null; throw e; });
+  return nIndexP;
+}
+function nauticaTile(t) {
+  if (!nTiles.has(t.id)) nTiles.set(t.id, getData('nautica/' + t.file).then(gj => indexNautical(gj || { features: [] })).catch(e => { nTiles.delete(t.id); throw e; }));
+  return nTiles.get(t.id);
+}
+const tileHit = (t, b) => t.s <= b.n && t.n >= b.s && t.w <= b.e && t.e >= b.w;
+/* Unisce i riquadri che toccano la zona richiesta (gli oggetti a cavallo di due riquadri compaiono una volta sola). */
+async function nauticaFor(b) {
+  const idx = await nauticaIndex();
+  const list = idx.tiles.filter(t => tileHit(t, b) && (t.file || t.id === 'legacy'));
+  const parts = await Promise.all(list.map(nauticaTile));
+  if (parts.length === 1) return parts[0];
+  const D = { nodes: [], lines: [], corridorAreas: [], restrictAreas: [] }, seen = new Set();
+  parts.forEach(P => ['nodes', 'lines', 'corridorAreas', 'restrictAreas'].forEach(k => P[k].forEach(o => {
+    const key = k + ':' + o.id;
+    if (o.id != null && seen.has(key)) return;
+    seen.add(key); D[k].push(o);
+  })));
+  return D;
+}
+/* ---------- Profondità EMODnet (depth/index.json, creato dall'azione "Aggiorna dati nautici") ----------
+   PNG con la profondità nei colori: (R*256 + G) decimetri, B = 255 dove c'è mare con dato. Maglia ~115 m: indicativa. */
+let dIndexP = null;
+const dTiles = new Map();
+function depthIndex() {
+  if (!dIndexP) dIndexP = getData('depth/index.json').then(j => (j && j.tiles) ? j : { tiles: [] }).catch(() => ({ tiles: [] }));
+  return dIndexP;
+}
+function depthTile(t) {
+  if (!dTiles.has(t.id)) dTiles.set(t.id, (async () => {
+    const blob = await getData('depth/' + t.file, 'blob');
+    if (!blob) return null;
+    const bm = await createImageBitmap(blob);
+    const cv = document.createElement('canvas'); cv.width = bm.width; cv.height = bm.height;
+    const cx = cv.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(bm, 0, 0);
+    const data = cx.getImageData(0, 0, bm.width, bm.height).data;
+    if (bm.close) bm.close();
+    return { t, w: cv.width, h: cv.height, data };
+  })().catch(() => { dTiles.delete(t.id); return null; }));
+  return dTiles.get(t.id);
+}
+/* Maschera dei fondali troppo bassi per il pescaggio (1 = profondità nota e minore di need metri). */
+async function depthMask(box, W, H, need) {
+  const idx = await depthIndex(), b = Water.boxBounds(box);
+  const list = (await Promise.all(idx.tiles.filter(t => tileHit(t, b)).map(depthTile))).filter(Boolean);
+  if (!list.length) return null;
+  const m = new Uint8Array(W * H), z = box.z, ox = box.tx0 * Water.TILE, oy = box.ty0 * Water.TILE, N = Water.TILE * 2 ** z;
+  const lim = need * 10;
+  let any = 0;
+  for (let y = 0; y < H; y++) {
+    const lat = 180 / Math.PI * Math.atan(Math.sinh(Math.PI - 2 * Math.PI * (oy + y + 0.5) / N));
+    const rowT = list.filter(d => lat >= d.t.s && lat < d.t.n);
+    if (!rowT.length) continue;
+    for (let x = 0; x < W; x++) {
+      const lng = (ox + x + 0.5) / N * 360 - 180;
+      for (const d of rowT) {
+        if (lng < d.t.w || lng >= d.t.e) continue;
+        const px = Math.min(d.w - 1, ((lng - d.t.w) / (d.t.e - d.t.w) * d.w) | 0), py = Math.min(d.h - 1, ((d.t.n - lat) / (d.t.n - d.t.s) * d.h) | 0);
+        const j = (py * d.w + px) * 4;
+        if (d.data[j + 2] === 255 && d.data[j] * 256 + d.data[j + 1] < lim) { m[y * W + x] = 1; any = 1; }
+        break;
+      }
+    }
+  }
+  return any ? m : null;
+}
+/* il punto è in una zona per cui i dati nautici sono stati scaricati? */
+async function nauticaCovers(p) {
+  const idx = await nauticaIndex();
+  return idx.tiles.some(t => p.lat >= t.s && p.lat <= t.n && p.lng >= t.w && p.lng <= t.e);
 }
 const WATERWAY = /^(river|canal|fairway|tidal_channel|dock)$/;
 /* Prepara il GeoJSON (formato di Overpass Turbo / osmtogeojson): divide per tipo e calcola gli ingombri. */
@@ -639,10 +790,10 @@ function indexNautical(gj) {
       const polys = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).map(p => p.map(r => r.map(ll)));
       polys.forEach(p => {
         /* barene e zone con vegetazione: emerse, mai attraversabili nemmeno nell'ultimo tratto fuori canale */
-        const item = { rings: p, bb: bbOf(p[0]), lagoon: t.water === 'lagoon', hard: t.natural === 'wetland' && /^(saltmarsh|marsh|reedbed|swamp|fen|bog|wet_meadow)$/.test(t.wetland || '') };
+        const item = { id: id + (polys.length > 1 ? '#' + polys.indexOf(p) : ''), rings: p, bb: bbOf(p[0]), lagoon: t.water === 'lagoon', hard: t.natural === 'wetland' && /^(saltmarsh|marsh|reedbed|swamp|fen|bog|wet_meadow)$/.test(t.wetland || '') };
         if (isRestrict) D.restrictAreas.push(item);
         else if (isFair) D.corridorAreas.push(item);
-        else if (WATERWAY.test(t.waterway || '')) D.lines.push({ pts: p[0], bb: item.bb });   // canale chiuso ad anello
+        else if (WATERWAY.test(t.waterway || '')) D.lines.push({ id: item.id, pts: p[0], bb: item.bb });   // canale chiuso ad anello
         else return;
         grow(item.bb);
       });
@@ -650,14 +801,14 @@ function indexNautical(gj) {
     }
     if (g.type === 'LineString' || g.type === 'MultiLineString') {
       if (!(WATERWAY.test(t.waterway || '') || isFair)) return;
-      (g.type === 'LineString' ? [g.coordinates] : g.coordinates).forEach(l => { const pts = l.map(ll), bb = bbOf(pts); D.lines.push({ pts, bb }); grow(bb); });
+      (g.type === 'LineString' ? [g.coordinates] : g.coordinates).forEach((l, j) => { const pts = l.map(ll), bb = bbOf(pts); D.lines.push({ id: id + '#' + j, pts, bb }); grow(bb); });
     }
   });
   return D;
 }
 /* Estrae i dati locali che toccano il riquadro della griglia. Nessuna rete. */
 async function fetchNautical(box) {
-  const D = await localNautical(), b = Water.boxBounds(box);
+  const b = Water.boxBounds(box), D = await nauticaFor(b);
   const hit = bb => bb[0] <= b.e && bb[2] >= b.w && bb[1] <= b.n && bb[3] >= b.s;
   const out = { lines: [], corridorAreas: [], restrictAreas: [], hardAreas: [], nodes: [], info: { canali: 0, segnali: 0, coppie: 0, lagune: 0 } };
   D.lines.forEach(l => { if (hit(l.bb)) { out.lines.push(l.pts); out.info.canali++; } });
@@ -735,7 +886,7 @@ async function autoRouteRun() {
       if (seq !== autoSeq) return;
       if (res.error) throw new Error(`Tratto ${k}: errore nel calcolo (${res.error})`);
       /* griglia restituita dal Worker: serve per le coordinate e per "Mostra acque navigabili" */
-      const g = { z: res.z, ox: res.ox, oy: res.oy, W: res.W, H: res.H, mpp: res.mpp, d: res.d, buf: res.buf, info: prep.info, ch: prep.ch, enc: prep.enc };
+      const g = { z: res.z, ox: res.ox, oy: res.oy, W: res.W, H: res.H, mpp: res.mpp, d: res.d, buf: res.buf, info: prep.info, ch: prep.ch, enc: prep.enc, depthUsed: prep.depthUsed };
       S.grids.push(g);
       Object.keys(info).forEach(x => { info[x] = Math.max(info[x], g.info[x] || 0); });
       [k - 1, k].forEach((idx, j) => {
@@ -785,8 +936,9 @@ async function autoRouteRun() {
   map.fitBounds(routeLine.getBounds().pad(0.15));
   if (S.tab) minSheet(true);
   showWater(false);
+  const depTxt = S.grids.some(g => g.depthUsed) ? ` Fuori dai canali evitati i fondali sotto ${num1(S.set.draft + S.set.ukc)} m secondo EMODnet (dato indicativo, maglia di circa 115 m).` : '';
   const offTxt = offLegs.length ? ` ATTENZIONE: per raggiungere partenza, arrivo o tappe la rotta esce dai canali segnalati vicino a quei punti (${offLegs.join(', ')}). In quei tratti i fondali non sono noti: procedi a vista e a velocità ridotta.` : '';
-  const edge = S.edgeWarn ? ' Attenzione: partenza o arrivo sono al margine dell\'area di nautica_locale.geojson, lì canali e briccole potrebbero mancare.' : '';
+  const edge = S.edgeWarn ? ' Attenzione: partenza o arrivo sono al margine dell\'area dei dati nautici, lì canali e briccole potrebbero mancare.' : '';
   const mv = moved.length ? ' ' + moved.map(name).join(', ') + (moved.length > 1 ? ' sono state spostate' : ' è stata spostata') + ' nel punto navigabile più vicino.' : '';
   const encUsed = S.grids.filter(g => g.enc).map(g => g.enc), encAll = encUsed.length === S.grids.length && encUsed.every(e => e.fraction > 0.999);
   const encCells = [...new Set(encUsed.flatMap(e => e.cells))].join(', ');
@@ -794,8 +946,8 @@ async function autoRouteRun() {
   autoMsg(encAll
     ? `Rotta calcolata con le carte ENC ufficiali (${encCells}): passa solo dove la profondità è almeno ${num1(S.set.draft + S.set.ukc)} m (pescaggio ${num1(S.set.draft)} m + margine ${num1(S.set.ukc)} m) e lontano da terra, opere e ostacoli.${mv} Verifica che le celle siano aggiornate con gli ultimi Avvisi ai Naviganti.`
     : encUsed.length
-      ? `Rotta calcolata con le carte ENC (${encCells}) dove disponibili e con OpenStreetMap/OpenSeaMap altrove (${osmTxt}).${mv}${edge}${offTxt} Fuori dalle ENC le profondità non sono note: verifica con i segnalamenti in acqua.`
-      : `Rotta calcolata (${osmTxt}).${mv}${edge}${offTxt} I dati OpenStreetMap/OpenSeaMap del file locale non indicano le profondità e possono essere incompleti: verifica sempre con i segnalamenti in acqua.`);
+      ? `Rotta calcolata con le carte ENC (${encCells}) dove disponibili e con OpenStreetMap/OpenSeaMap altrove (${osmTxt}).${mv}${depTxt}${edge}${offTxt} Fuori dalle ENC le profondità non sono note: verifica con i segnalamenti in acqua.`
+      : `Rotta calcolata (${osmTxt}).${mv}${depTxt}${edge}${offTxt} I dati OpenStreetMap/OpenSeaMap del file locale non indicano le profondità e possono essere incompleti: verifica sempre con i segnalamenti in acqua.`);
   let tot = 0; for (let i = 1; i < clean.length; i++) tot += dist(clean[i - 1], clean[i]);
   if (offLegs.length) busy.fail(`Rotta calcolata: ${fmtDist(tot)}. Attenzione: ultimo tratto fuori dai canali segnalati (${offLegs.join(', ')}), procedi a vista e piano.`);
   else busy.done(`Rotta calcolata: ${fmtDist(tot)}, circa ${fmtDur(tot / (S.set.plan / KN))} a ${S.set.plan} nodi. Verificala sulla carta.`);
@@ -1149,6 +1301,16 @@ Object.keys(FIELDS).filter(id => $(id)).forEach(id => {
     }
   });
 });
+if ($('gKey')) {
+  $('gKey').value = gKey();
+  $('gKeySave').onclick = () => {
+    const v = $('gKey').value.trim();
+    try { v ? localStorage.setItem(GKEY, v) : localStorage.removeItem(GKEY); Object.keys(GT).forEach(t => localStorage.removeItem('rn.gsess.' + t)); } catch (e) { /* ignora */ }
+    Object.keys(gLayers).forEach(k => { map.removeLayer(gLayers[k]); delete gLayers[k]; });
+    toast(v ? 'Chiave Google salvata su questo telefono' : 'Chiave Google rimossa');
+    applyLayers();
+  };
+}
 document.querySelectorAll('input[name=base]').forEach(r => {
   r.checked = r.value === S.set.base;
   r.addEventListener('change', () => { S.set.base = r.value; saveSet(); applyLayers(); });

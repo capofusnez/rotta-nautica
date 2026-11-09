@@ -227,10 +227,10 @@
   function attach(map, opts) {
     if (!map.getPane('smPane')) map.createPane('smPane').style.zIndex = 430;
     const renderer = L.canvas({ pane: 'smPane', tolerance: 8 }), layer = L.layerGroup(), MINZOOM = 12, MAX = 4000;
-    let nodes = null, timer = 0;
+    let nodes = [], timer = 0, req = 0;
     function draw() {
       layer.clearLayers();
-      if (!nodes || !opts.isOn() || map.getZoom() < MINZOOM) { map.removeLayer(layer); return; }
+      if (!opts.isOn() || map.getZoom() < MINZOOM) { map.removeLayer(layer); return; }
       const b = map.getBounds().pad(0.2);
       let n = 0;
       for (const e of nodes) {
@@ -245,10 +245,12 @@
       }
       if (!map.hasLayer(layer)) layer.addTo(map);
     }
+    /* chiede i segnali della zona visibile (riquadri già in memoria: immediato) */
     function refresh() {
-      if (nodes) { draw(); return; }
-      if (!opts.isOn()) return;
-      opts.nodes().then(list => { nodes = list || []; draw(); }).catch(() => { nodes = null; });
+      if (!opts.isOn() || map.getZoom() < MINZOOM) { draw(); return; }
+      const b = map.getBounds().pad(0.2), id = ++req;
+      opts.nodes({ s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() })
+        .then(list => { if (id === req) { nodes = list || []; draw(); } }).catch(() => {});
     }
     map.on('moveend zoomend', () => { clearTimeout(timer); timer = setTimeout(refresh, 120); });
     return { refresh };
