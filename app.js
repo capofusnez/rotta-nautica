@@ -815,6 +815,7 @@ function showWater(on) {
         g.ch.axis.concat(g.ch.ext).forEach(s => { if (s.a.lat !== s.b.lat || s.a.lng !== s.b.lng)
           L.polyline([[s.a.lat, s.a.lng], [s.b.lat, s.b.lng]], { color: '#16c060', weight: 3, interactive: false }).addTo(waterLayer); });
         g.ch.barrier.forEach(s => L.polyline([[s.a.lat, s.a.lng], [s.b.lat, s.b.lng]], { color: '#ff2d2d', weight: 2, interactive: false }).addTo(waterLayer));
+        (g.ch.band || []).forEach(q => L.polygon(q.map(p => [p.lat, p.lng]), { color: '#ff2d2d', weight: 0, fillColor: '#ff2d2d', fillOpacity: 0.25, interactive: false }).addTo(waterLayer));
       }
     });
     waterLayer.addTo(map);
