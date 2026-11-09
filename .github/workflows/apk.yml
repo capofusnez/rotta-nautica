@@ -33,6 +33,8 @@ jobs:
           npm install --no-audit --no-fund leaflet@1.9.4 @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
           cp ../index.html ../app.js ../water.js ../channels.js ../enc.js ../seamarks.js ../sw.js ../manifest.webmanifest ../icon-192.png ../icon-512.png www/
           cp -r node_modules/leaflet/dist/* www/leaflet/
+          # dati nautici locali (canali e briccole), se presenti nel repository
+          cp ../nautica_locale.geojson www/ 2>/dev/null || echo "nautica_locale.geojson non presente"
           # la libreria della carta viene inclusa nell'APK invece di scaricarla da Internet
           sed -i 's#https://unpkg.com/leaflet@1.9.4/dist/#leaflet/#g' www/index.html
 
