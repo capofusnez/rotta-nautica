@@ -1,0 +1,66 @@
+# Scarica canali, briccole, mede, boe e lagune da OpenStreetMap/OpenSeaMap e salva nautica_locale.geojson
+# nella radice del repository. Si avvia a mano (Actions → Aggiorna dati nautici → Run workflow)
+# e da solo il primo giorno di ogni mese. La query è in tools/overpass_turbo_nautica.txt.
+name: Aggiorna dati nautici
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 1 * *'
+
+permissions:
+  contents: write
+
+jobs:
+  nautica:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarica il codice
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Interroga OpenStreetMap (Overpass)
+        run: |
+          set -e
+          for round in 1 2 3; do
+            for url in https://overpass.private.coffee/api/interpreter \
+                       https://maps.mail.ru/osm/tools/overpass/api/interpreter \
+                       https://overpass-api.de/api/interpreter; do
+              echo "Tentativo $round su $url"
+              if curl -sS --fail --max-time 600 -A "rotta-nautica (github.com/${GITHUB_REPOSITORY})" \
+                   --data-urlencode "data@tools/overpass_turbo_nautica.txt" "$url" -o osm.json; then
+                # una risposta interrotta dal server è incompleta: si scarta
+                if grep -q '"elements"' osm.json && ! grep -qiE '"remark".*(error|timed out|out of memory)' osm.json; then
+                  echo "Risposta valida da $url"; exit 0
+                fi
+                echo "Risposta incompleta"; head -c 400 osm.json; echo
+              fi
+              sleep 5
+            done
+            sleep $((round * 30))
+          done
+          echo "Nessun server Overpass ha risposto: riprova più tardi"; exit 1
+
+      - name: Converti in GeoJSON
+        run: |
+          npx --yes osmtogeojson osm.json > nautica_locale.geojson
+          node -e '
+            const g = JSON.parse(require("fs").readFileSync("nautica_locale.geojson", "utf8")), f = g.features || [];
+            const n = t => f.filter(x => x.geometry && x.geometry.type === t).length;
+            console.log(`Oggetti: ${f.length} (punti ${n("Point")}, linee ${n("LineString") + n("MultiLineString")}, aree ${n("Polygon") + n("MultiPolygon")})`);
+            if (!f.length) { console.error("Nessun dato: controlla la query"); process.exit(1); }
+          '
+          ls -lh nautica_locale.geojson
+
+      - name: Salva nel repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add nautica_locale.geojson
+          if git diff --cached --quiet; then echo "Dati invariati"; exit 0; fi
+          git commit -m "Aggiorna nautica_locale.geojson da OpenStreetMap"
+          git push

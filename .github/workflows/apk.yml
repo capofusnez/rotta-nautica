@@ -6,6 +6,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # ricostruisce l'APK quando i dati nautici vengono aggiornati
+  workflow_run:
+    workflows: ["Aggiorna dati nautici"]
+    types: [completed]
 
 jobs:
   apk:
