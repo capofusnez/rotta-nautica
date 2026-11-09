@@ -6,7 +6,7 @@
    NB: la carta non conosce le profondità. La rotta va sempre verificata. */
 (function (root) {
   const TILE = 256, RAD = Math.PI / 180, DEG = 180 / Math.PI, SQ2 = Math.SQRT2;
-  const CFG = { maxTiles: 90, closeR: 0, clear: 8, clearM: 120, clearK: 3, snapR: 300 };
+  const CFG = { maxTiles: 90, closeR: 0, clear: 8, clearM: 120, clearK: 3, snapR: 300, coastM: 300, coastK: 25 };
 
   const lon2px = (lng, z) => (lng + 180) / 360 * TILE * 2 ** z;
   const lat2px = (lat, z) => { const s = Math.sin(lat * RAD); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * TILE * 2 ** z; };
@@ -132,6 +132,7 @@
   function makeGrid(rgba, W, H, box, extra) {
     const m = waterMask(rgba, W * H), X = extra || {};
     const R = X.restrict, Z = X.zone, A = X.axis, E = X.ext, Ln = X.lines, B = X.barrier, N = X.nogo;
+    const coastPx = landDist(m, W, H);   // distanza dalla riva vera (terra della carta), in pixel
     if (R || Z || A || E || Ln || B || N) for (let i = 0; i < m.length; i++) {
       const water = m[i], r = R && R[i];
       let ok = (water && !r && !(Z && Z[i])) || (Ln && Ln[i]) || (A && A[i] && (water || r)) || (E && E[i] && water && !r);
@@ -142,6 +143,12 @@
     const g = { z: box ? box.z : 0, ox: box ? box.tx0 * TILE : 0, oy: box ? box.ty0 * TILE : 0, W, H, d: landDist(w, W, H) };
     g.mpp = box ? 156543.03392 * Math.cos(px2lat(g.oy + H / 2, g.z) * RAD) / 2 ** g.z : 10;
     g.clear = Math.max(3, Math.min(30, Math.round(CFG.clearM / g.mpp)));
+    /* fascia di rispetto dalla costa: navigabile solo per entrare o uscire, salvo canali segnalati e corsi d'acqua */
+    const coastM = X.coastM != null ? X.coastM : CFG.coastM, lim = coastM / g.mpp;
+    g.buf = new Uint8Array(W * H);
+    if (coastM > 0) for (let i = 0; i < g.buf.length; i++)
+      if (g.d[i] && coastPx[i] < lim && !((A && A[i]) || (E && E[i]) || (Ln && Ln[i]))) g.buf[i] = 1;
+    g.coastM = coastM;
     return g;
   }
   /* Indice della cella sotto un punto, -1 se fuori dalla griglia. */
@@ -227,7 +234,7 @@
         if (!d[j] || closed[j]) continue;
         if (k > 3 && (!d[y * W + nx] || !d[ny * W + x])) continue;
         const m = Math.min(d[i], d[j]);
-        const ng = gs[i] + (k > 3 ? SQ2 : 1) * (1 + K * Math.max(0, C - m) / C);
+        const ng = gs[i] + (k > 3 ? SQ2 : 1) * (1 + K * Math.max(0, C - m) / C) * (g.buf && g.buf[j] ? CFG.coastK : 1);
         if (ng < gs[j]) { gs[j] = ng; par[j] = i; push(j, ng + h(j)); }
       }
     }
@@ -238,18 +245,22 @@
   }
 
   /* Linea di vista: tutte le celle tra a e b hanno distanza da riva >= minD. */
-  function los(g, a, b, minD) {
-    const { W, d } = g;
+  function los(g, a, b, minD) { return losCount(g, a, b, minD) >= 0; }
+  /* come los, ma restituisce quante celle della fascia costiera attraversa (-1 se il segmento è bloccato) */
+  function losCount(g, a, b, minD) {
+    const { W, d } = g, buf = g.buf;
+    let nb = 0;
     let x0 = a % W, y0 = (a / W) | 0;
     const x1 = b % W, y1 = (b / W) | 0, dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
     const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
     let err = dx + dy;
     for (;;) {
-      if (d[y0 * W + x0] < minD) return false;
-      if (x0 === x1 && y0 === y1) return true;
+      if (d[y0 * W + x0] < minD) return -1;
+      if (buf && buf[y0 * W + x0]) nb++;
+      if (x0 === x1 && y0 === y1) return nb;
       const e2 = 2 * err, mx = e2 >= dy, my = e2 <= dx;
       /* passo in diagonale: controlla anche le due celle d'angolo, per non scavalcare strisce di terra sottili */
-      if (mx && my && (d[y0 * W + x0 + sx] < minD || d[(y0 + sy) * W + x0] < minD)) return false;
+      if (mx && my && (d[y0 * W + x0 + sx] < minD || d[(y0 + sy) * W + x0] < minD)) return -1;
       if (mx) { err += dy; x0 += sx; }
       if (my) { err += dx; y0 += sy; }
     }
@@ -257,12 +268,16 @@
   /* Riduce il percorso a poche tappe, senza avvicinarsi a riva più del percorso originale. */
   function simplify(g, path) {
     const out = [path[0]];
+    /* celle della fascia costiera lungo il percorso: una scorciatoia non può attraversarne più del percorso originale */
+    const pb = new Int32Array(path.length + 1);
+    for (let k = 0; k < path.length; k++) pb[k + 1] = pb[k] + (g.buf && g.buf[path[k]] ? 1 : 0);
     let i = 0;
     while (i < path.length - 1) {
       let best = i + 1, md = g.d[path[i]], fails = 0;
       for (let j = i + 1; j < path.length; j++) {
         md = Math.min(md, g.d[path[j]]);
-        if (los(g, path[i], path[j], Math.min(md, 3))) { best = j; fails = 0; }
+        const nb = losCount(g, path[i], path[j], Math.min(md, 3));
+        if (nb >= 0 && nb <= pb[j + 1] - pb[i] + 1) { best = j; fails = 0; }
         else if (++fails > 150) break;
       }
       out.push(path[best]); i = best;
