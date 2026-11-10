@@ -59,7 +59,7 @@ jobs:
     needs: righe
     if: ${{ !cancelled() }}   # salva anche se qualche riga è fallita
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 120
     steps:
       - name: Scarica il codice
         uses: actions/checkout@v4
@@ -79,16 +79,6 @@ jobs:
       - name: Unisci i riquadri e rifai l'indice
         run: node tools/build_nautica.mjs --merge
 
-      - name: Salva i dati nautici nel repository
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A nautica
-          if git diff --cached --quiet; then echo "Dati nautici invariati"; exit 0; fi
-          git commit -m "Aggiorna dati nautici (OpenStreetMap)"
-          git pull --rebase
-          git push
-
       - name: Python
         if: ${{ github.event.inputs.profondita == 'true' || hashFiles('depth/index.json') == '' }}
         uses: actions/setup-python@v5
@@ -99,18 +89,19 @@ jobs:
         if: ${{ github.event.inputs.profondita == 'true' || hashFiles('depth/index.json') == '' }}
         run: |
           pip install --quiet rasterio numpy pillow
-          python -u tools/build_depth.py
+          python tools/build_depth.py
 
       - name: Riepilogo
-        if: ${{ always() }}
         run: |
           du -sh nautica depth 2>/dev/null || true
           ls nautica | wc -l
 
-      - name: Salva le profondità nel repository
+      - name: Salva nel repository
         run: |
-          git add -A depth 2>/dev/null || true
-          if git diff --cached --quiet; then echo "Profondità invariate"; exit 0; fi
-          git commit -m "Aggiorna profondità (EMODnet)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A nautica depth 2>/dev/null || git add -A nautica
+          if git diff --cached --quiet; then echo "Dati invariati"; exit 0; fi
+          git commit -m "Aggiorna dati nautici (OpenStreetMap) e profondità (EMODnet)"
           git pull --rebase
           git push
