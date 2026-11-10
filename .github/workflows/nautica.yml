@@ -1,6 +1,8 @@
 # Aggiorna i dati nautici di tutta Italia (canali, briccole, mede, boe, fari, lagune) a riquadri di 1°,
 # e – la prima volta o su richiesta – le profondità EMODnet. Si avvia a mano
 # (Actions → Aggiorna dati nautici → Run workflow) e da solo il primo giorno di ogni mese.
+# Ogni riga di latitudine è un job a sé (circa 1 ora ciascuno, 4 alla volta): nessun job
+# si avvicina al limite di 6 ore di GitHub, e una riga che va male non fa perdere le altre.
 name: Aggiorna dati nautici
 
 on:
@@ -21,9 +23,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  dati:
+  righe:
+    name: Riga ${{ matrix.lat }}°N
     runs-on: ubuntu-latest
-    timeout-minutes: 340
+    timeout-minutes: 200
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        lat: [36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
     steps:
       - name: Scarica il codice
         uses: actions/checkout@v4
@@ -33,10 +41,43 @@ jobs:
         with:
           node-version: 20
 
-      - name: Dati nautici di tutta Italia (OpenStreetMap / OpenSeaMap)
+      - name: Dati nautici della riga (OpenStreetMap / OpenSeaMap)
+        env:
+          BUDGET_MIN: 170   # dopo 170 minuti non inizia nuovi riquadri: il job finisce sempre in tempo
         run: |
           npm install --no-save --no-audit --no-fund osmtogeojson
-          node tools/build_nautica.mjs
+          node tools/build_nautica.mjs --row ${{ matrix.lat }}
+
+      - name: Conserva il risultato della riga
+        uses: actions/upload-artifact@v4
+        with:
+          name: riga-${{ matrix.lat }}
+          path: parts/
+          retention-days: 3
+
+  salva:
+    needs: righe
+    if: ${{ !cancelled() }}   # salva anche se qualche riga è fallita
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Scarica il codice
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Recupera le righe
+        uses: actions/download-artifact@v4
+        with:
+          pattern: riga-*
+          path: parts
+          merge-multiple: true
+
+      - name: Unisci i riquadri e rifai l'indice
+        run: node tools/build_nautica.mjs --merge
 
       - name: Python
         if: ${{ github.event.inputs.profondita == 'true' || hashFiles('depth/index.json') == '' }}
@@ -62,4 +103,5 @@ jobs:
           git add -A nautica depth 2>/dev/null || git add -A nautica
           if git diff --cached --quiet; then echo "Dati invariati"; exit 0; fi
           git commit -m "Aggiorna dati nautici (OpenStreetMap) e profondità (EMODnet)"
+          git pull --rebase
           git push
