@@ -131,7 +131,9 @@
      nogo:     pali, pericoli isolati, scogli, relitti */
   function makeGrid(rgba, W, H, box, extra) {
     const m = waterMask(rgba, W * H), X = extra || {};
-    const R = X.restrict, Z = X.zone, A = X.axis, E = X.ext, Ln = X.lines, B = X.barrier, N = X.nogo, SH = X.shallow;
+    const R = X.restrict, Z = X.zone, A = X.axis, E = X.ext, Ln = X.lines, B = X.barrier, N = X.nogo, SH = X.shallow, F = X.far;
+    /* oltre il limite di distanza dalla costa (patente o mezzo): mai navigabile, nemmeno nei canali */
+    if (F) for (let i = 0; i < m.length; i++) if (F[i]) m[i] = 0;
     /* ENC (S-57): dove c'è copertura decidono solo le carte ufficiali (profondità >= pescaggio + margine,
        niente terra, opere od ostacoli). Fuori copertura vale il metodo con OpenStreetMap/OpenSeaMap. */
     const EN = X.enc, EC = EN && EN.cov;
@@ -139,6 +141,7 @@
     if (EC) { raw = new Uint8Array(m); for (let i = 0; i < raw.length; i++) if (EC[i]) raw[i] = EN.wet[i]; }
     const coastPx = landDist(raw, W, H);   // distanza dalla riva vera, in pixel
     if (R || Z || A || E || Ln || B || N || EC || SH) for (let i = 0; i < m.length; i++) {
+      if (F && F[i]) { m[i] = 0; continue; }
       if (EC && EC[i]) { m[i] = EN.ok[i] ? 1 : 0; continue; }
       const water = m[i], r = R && R[i];
       /* fondale EMODnet troppo basso: vietato fuori dai canali segnalati e dai corsi d'acqua mappati */
@@ -384,12 +387,194 @@
     return null;
   }
 
-  root.Water = { CFG, TILE, lon2px, lat2px, tileBox, boxBounds, gridBounds, makeGrid, cellOf, verify, snap, snapXY, astar, simplify, cellLL, landDist, close, waterMask, solve, findGap };
+  /* ================= ROTTA A LARGA SCALA (navigazione costiera) =================
+     Griglia geografica (lat/lng) costruita dalle profondità EMODnet: mare dove c'è il dato di profondità,
+     terra altrove. Serve per: distanza vera dalla costa (limiti di patente e del mezzo), rotte lunghe divise
+     in tratti, tratti in mare aperto senza scaricare la carta dettagliata. */
+
+  /* Trasformata della distanza euclidea esatta (Felzenszwalb), con passo diverso in x e in y (metri).
+     Restituisce, per ogni cella, la distanza in metri dalla cella di terra più vicina. */
+  function edt(sea, W, H, dx, dy) {
+    const BIG = 1e20, f = new Float64Array(W * H);
+    for (let i = 0; i < f.length; i++) f[i] = sea[i] ? BIG : 0;
+    const n = Math.max(W, H), g = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
+    /* inviluppo inferiore delle parabole, posizioni q*s */
+    const line = (len, s) => {
+      let k = 0; v[0] = 0; z[0] = -Infinity; z[1] = Infinity;
+      const cross = (q, p) => ((g[q] + (s * q) ** 2) - (g[p] + (s * p) ** 2)) / (2 * s * (q - p));
+      for (let q = 1; q < len; q++) {
+        let x = cross(q, v[k]);
+        while (x <= z[k]) { k--; x = cross(q, v[k]); }
+        k++; v[k] = q; z[k] = x; z[k + 1] = Infinity;
+      }
+      k = 0;
+      for (let q = 0; q < len; q++) { while (z[k + 1] < s * q) k++; const p = v[k]; d[q] = (s * (q - p)) ** 2 + g[p]; }
+    };
+    for (let x = 0; x < W; x++) {
+      for (let y = 0; y < H; y++) g[y] = f[y * W + x];
+      line(H, dy);
+      for (let y = 0; y < H; y++) f[y * W + x] = Math.min(d[y], BIG);
+    }
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) g[x] = f[y * W + x];
+      line(W, dx);
+      for (let x = 0; x < W; x++) f[y * W + x] = d[x];
+    }
+    const out = new Float32Array(W * H);
+    for (let i = 0; i < out.length; i++) out[i] = f[i] >= BIG / 2 ? 1e9 : Math.sqrt(f[i]);
+    return out;
+  }
+
+  /* Rotta sulla griglia geografica.
+     m: { W, H, dx, dy (metri per cella), sea, shallow, nogo (Uint8Array), pts: [indice cella] (partenza, tappe, arrivo),
+          limitM (distanza massima dalla costa, Infinity = nessuna), prefM (distanza preferita), coastM (fascia di rispetto),
+          openM (da qui in poi è mare aperto), snapM }
+     Restituisce cd (distanza dalla costa in metri) e, per ogni tratto dell'utente, i pezzi del percorso:
+     { open: true, cells } in mare aperto (già semplificati), { open: false, cells } vicino a costa, porti e canali. */
+  function coarseSolve(m) {
+    const { W, H, dx, dy, sea, shallow, nogo, lagoon } = m, N = W * H;
+    const cd = edt(sea, W, H, dx, dy);
+    const limit = m.limitM > 0 && isFinite(m.limitM) ? m.limitM : Infinity;
+    const pref = Math.min(m.prefM || 0, limit * 0.8), coastM = m.coastM || 0;
+    const pass = i => sea[i] && !(nogo && nogo[i]) && cd[i] <= limit;
+    const res = { id: m.id, cd, legs: [], ends: [] };
+    /* aggancio dei punti dell'utente al mare navigabile più vicino (entro snapM) */
+    const snapR = Math.ceil((m.snapM || 5000) / Math.min(dx, dy));
+    const ends = m.pts.map(i0 => {
+      if (i0 < 0) return { i: -1, why: 'fuori' };
+      if (pass(i0)) return { i: i0, moved: false };
+      const x0 = i0 % W, y0 = (i0 / W) | 0;
+      let best = -1, bd = Infinity, beyond = false;
+      for (let y = Math.max(0, y0 - snapR); y <= Math.min(H - 1, y0 + snapR); y++)
+        for (let x = Math.max(0, x0 - snapR); x <= Math.min(W - 1, x0 + snapR); x++) {
+          const j = y * W + x, dd = ((x - x0) * dx) ** 2 + ((y - y0) * dy) ** 2;
+          if (dd >= bd) continue;
+          if (pass(j)) { bd = dd; best = j; } else if (sea[j] && cd[j] > limit) beyond = true;
+        }
+      if (best < 0) return { i: -1, why: sea[i0] && cd[i0] > limit ? 'oltre' : beyond ? 'oltre' : 'terra' };
+      return { i: best, moved: true, d: Math.sqrt(bd) };
+    });
+    res.ends = ends.map((e, k) => Object.assign({ cd: e.i >= 0 ? cd[e.i] : (m.pts[k] >= 0 ? cd[m.pts[k]] : -1) }, e));
+    if (ends.some(e => e.i < 0)) return res;
+
+    const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1], DG = Math.hypot(dx, dy);
+    const STEP = [dx, dx, dy, dy, DG, DG, DG, DG];
+    const costAt = j => {
+      let f = 1;
+      if (pref > 0 && cd[j] < pref) f += 2 * (pref - cd[j]) / pref;   // si tiene alla distanza preferita dalla costa
+      if (coastM > 0 && cd[j] < coastM) f *= 25;                       // fascia di rispetto: solo per entrare e uscire
+      if (shallow && shallow[j] && !(lagoon && lagoon[j])) f *= 20;      // fondali bassi (in laguna decidono canali e briccole)
+      if (lagoon && lagoon[j]) f *= 10;                                // laguna: solo per uscire dalla bocca più vicina
+      return f;
+    };
+    const gs = new Float64Array(N), par = new Int32Array(N), closed = new Uint8Array(N);
+    function astarC(s, t) {
+      gs.fill(Infinity); par.fill(-1); closed.fill(0);
+      const tx = t % W, ty = (t / W) | 0, hi = [], hv = [];
+      const h = i => Math.hypot(((i % W) - tx) * dx, (((i / W) | 0) - ty) * dy);
+      const push = (i, val) => {
+        let n = hi.length; hi.push(i); hv.push(val);
+        while (n) { const p = (n - 1) >> 1; if (hv[p] <= val) break; hi[n] = hi[p]; hv[n] = hv[p]; n = p; }
+        hi[n] = i; hv[n] = val;
+      };
+      const pop = () => {
+        const top = hi[0], li = hi.pop(), lv = hv.pop(), L = hi.length;
+        if (L) {
+          let n = 0;
+          for (;;) { let c = 2 * n + 1; if (c >= L) break; if (c + 1 < L && hv[c + 1] < hv[c]) c++; if (hv[c] >= lv) break; hi[n] = hi[c]; hv[n] = hv[c]; n = c; }
+          hi[n] = li; hv[n] = lv;
+        }
+        return top;
+      };
+      gs[s] = 0; push(s, h(s));
+      while (hi.length) {
+        const i = pop();
+        if (closed[i]) continue;
+        if (i === t) break;
+        closed[i] = 1;
+        const x = i % W, y = (i / W) | 0;
+        for (let k = 0; k < 8; k++) {
+          const nx = x + DX[k], ny = y + DY[k];
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const j = ny * W + nx;
+          if (closed[j] || !pass(j)) continue;
+          if (k > 3 && (!pass(y * W + nx) || !pass(ny * W + x))) continue;
+          const ng = gs[i] + STEP[k] * costAt(j);
+          if (ng < gs[j]) { gs[j] = ng; par[j] = i; push(j, ng + h(j)); }
+        }
+      }
+      if (!isFinite(gs[t])) return null;
+      const path = [];
+      for (let i = t; i !== -1; i = par[i]) { path.push(i); if (i === s) break; }
+      return path.reverse();
+    }
+    /* linea dritta tra due celle: tutta navigabile, mai più vicina a costa di minCd, senza nuovi fondali bassi */
+    function losC(a, b, minCd, maxSh) {
+      let x0 = a % W, y0 = (a / W) | 0, sh = 0;
+      const x1 = b % W, y1 = (b / W) | 0, ddx = Math.abs(x1 - x0), ddy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+      let err = ddx + ddy;
+      for (;;) {
+        const i = y0 * W + x0;
+        if (!pass(i) || cd[i] < minCd) return false;
+        if (shallow && shallow[i] && ++sh > maxSh) return false;
+        if (x0 === x1 && y0 === y1) return true;
+        const e2 = 2 * err, mx = e2 >= ddy, my = e2 <= ddx;
+        if (mx && my && (!pass(y0 * W + x0 + sx) || !pass((y0 + sy) * W + x0))) return false;
+        if (mx) { err += ddy; x0 += sx; }
+        if (my) { err += ddx; y0 += sy; }
+      }
+    }
+    function simplifyC(path) {
+      if (path.length < 3) return path.slice();
+      const out = [path[0]];
+      let i = 0;
+      while (i < path.length - 1) {
+        let best = i + 1, md = cd[path[i]], sh = 0, fails = 0;
+        for (let j = i + 1; j < path.length && j - i < 3000; j++) {
+          md = Math.min(md, cd[path[j]]);
+          if (shallow && shallow[path[j]]) sh++;
+          const need = Math.min(md, pref > 0 ? pref : md) - Math.max(dx, dy);
+          if (losC(path[i], path[j], need, sh)) { best = j; fails = 0; } else if (++fails > 200) break;
+        }
+        out.push(path[best]); i = best;
+      }
+      return out;
+    }
+    const openM = m.openM || 1000, isOpen = i => cd[i] >= openM && !(shallow && shallow[i]) && !(lagoon && lagoon[i]);
+    const lenOf = (cells, a, b) => { let L = 0; for (let k = a + 1; k <= b; k++) L += Math.hypot(((cells[k] % W) - (cells[k - 1] % W)) * dx, ((((cells[k] / W) | 0) - ((cells[k - 1] / W) | 0))) * dy); return L; };
+    for (let k = 1; k < ends.length; k++) {
+      const path = astarC(ends[k - 1].i, ends[k].i);
+      if (!path) { res.legs.push({ none: true }); continue; }
+      /* pezzi di mare aperto e pezzi vicino a costa; i pezzi aperti troppo corti restano costieri */
+      const runs = [];
+      let a = 0;
+      for (let q = 1; q <= path.length; q++) {
+        if (q === path.length || isOpen(path[q]) !== isOpen(path[a])) { runs.push({ open: isOpen(path[a]), a, b: q - 1 }); a = q; }
+      }
+      runs.forEach(r => { if (r.open && lenOf(path, r.a, r.b) < (m.minOpenM || 3000)) r.open = false; });
+      const merged = [];
+      runs.forEach(r => {
+        const last = merged[merged.length - 1];
+        if (last && last.open === r.open) last.b = r.b; else merged.push({ open: r.open, a: r.a, b: r.b });
+      });
+      /* i pezzi si toccano: la fine di uno è l'inizio del successivo */
+      const pieces = merged.map((r, idx) => {
+        const a0 = idx ? merged[idx - 1].b : r.a, cells = path.slice(a0, r.b + 1);
+        return { open: r.open, cells: r.open ? simplifyC(cells) : cells };
+      });
+      let far = 0; path.forEach(i => { if (cd[i] > far) far = cd[i]; });
+      res.legs.push({ pieces, far });
+    }
+    return res;
+  }
+
+  root.Water = { CFG, TILE, lon2px, lat2px, tileBox, boxBounds, gridBounds, makeGrid, cellOf, verify, snap, snapXY, astar, simplify, cellLL, landDist, close, waterMask, solve, findGap, edt, coarseSolve };
 
   /* Quando il file è caricato come Web Worker risponde alle richieste di calcolo della pagina. */
   if (typeof importScripts === 'function' && typeof self !== 'undefined' && typeof document === 'undefined') {
     self.onmessage = e => {
       try {
+        if (e.data && e.data.type === 'coarse') { const r = coarseSolve(e.data); self.postMessage(r, [r.cd.buffer]); return; }
         const r = solve(e.data);
         self.postMessage(r, [r.d.buffer, r.buf.buffer]);
       } catch (err) { self.postMessage({ id: e.data && e.data.id, error: String((err && err.message) || err) }); }
