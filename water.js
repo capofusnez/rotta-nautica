@@ -14,12 +14,12 @@
   const px2lat = (y, z) => DEG * Math.atan(Math.sinh(Math.PI - 2 * Math.PI * y / (TILE * 2 ** z)));
 
   /* Riquadro di tiles attorno ai punti, al livello di zoom più dettagliato che sta nel limite. */
-  function tileBox(pts) {
+  function tileBox(pts, zmax, zmin) {
     let la0 = Infinity, la1 = -Infinity, lo0 = Infinity, lo1 = -Infinity;
     pts.forEach(p => { la0 = Math.min(la0, p.lat); la1 = Math.max(la1, p.lat); lo0 = Math.min(lo0, p.lng); lo1 = Math.max(lo1, p.lng); });
     const pLat = Math.max((la1 - la0) * 0.3, 0.012), pLng = Math.max((lo1 - lo0) * 0.3, 0.018);
     la0 -= pLat; la1 += pLat; lo0 -= pLng; lo1 += pLng;
-    for (let z = 15; z >= 13; z--) {
+    for (let z = zmax || 16; z >= (zmin || 13); z--) {
       const tx0 = Math.floor(lon2px(lo0, z) / TILE), tx1 = Math.floor(lon2px(lo1, z) / TILE);
       const ty0 = Math.floor(lat2px(la1, z) / TILE), ty1 = Math.floor(lat2px(la0, z) / TILE);
       if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) <= CFG.maxTiles) return { z, tx0, tx1, ty0, ty1 };
@@ -164,6 +164,7 @@
     if (coastM > 0) for (let i = 0; i < g.buf.length; i++)
       if (g.d[i] && coastPx[i] < lim && !((A && A[i]) || (E && E[i]) || (Ln && Ln[i]) || (EN && EN.pref && EN.pref[i]))) g.buf[i] = 1;
     g.coastM = coastM;
+    g.lane = X.lane || null;   // corsie degli schemi di separazione del traffico: si attraversano, non si percorrono
     g.pref = EN && EN.pref ? EN.pref : null;   // rotte raccomandate e allineamenti ENC: percorso preferito
     return g;
   }
@@ -250,7 +251,7 @@
         if (!d[j] || closed[j]) continue;
         if (k > 3 && (!d[y * W + nx] || !d[ny * W + x])) continue;
         const m = Math.min(d[i], d[j]);
-        const ng = gs[i] + (k > 3 ? SQ2 : 1) * (1 + K * Math.max(0, C - m) / C) * (g.buf && g.buf[j] ? CFG.coastK : 1) * (g.pref && !g.pref[j] ? 1.5 : 1);
+        const ng = gs[i] + (k > 3 ? SQ2 : 1) * (1 + K * Math.max(0, C - m) / C) * (g.buf && g.buf[j] ? CFG.coastK : 1) * (g.pref && !g.pref[j] ? 1.5 : 1) * (g.lane && g.lane[j] ? 8 : 1);
         if (ng < gs[j]) { gs[j] = ng; par[j] = i; push(j, ng + h(j)); }
       }
     }
@@ -272,7 +273,7 @@
     let err = dx + dy;
     for (;;) {
       if (d[y0 * W + x0] < minD) return -1;
-      if (buf && buf[y0 * W + x0]) nb++;
+      if ((buf && buf[y0 * W + x0]) || (g.lane && g.lane[y0 * W + x0])) nb++;
       if (x0 === x1 && y0 === y1) return nb;
       const e2 = 2 * err, mx = e2 >= dy, my = e2 <= dx;
       /* passo in diagonale: controlla anche le due celle d'angolo, per non scavalcare strisce di terra sottili */
@@ -286,7 +287,7 @@
     const out = [path[0]];
     /* celle della fascia costiera lungo il percorso: una scorciatoia non può attraversarne più del percorso originale */
     const pb = new Int32Array(path.length + 1);
-    for (let k = 0; k < path.length; k++) pb[k + 1] = pb[k] + (g.buf && g.buf[path[k]] ? 1 : 0);
+    for (let k = 0; k < path.length; k++) pb[k + 1] = pb[k] + ((g.buf && g.buf[path[k]]) || (g.lane && g.lane[path[k]]) ? 1 : 0);
     let i = 0;
     while (i < path.length - 1) {
       let best = i + 1, md = g.d[path[i]], fails = 0;
@@ -454,7 +455,7 @@
      Restituisce cd (distanza dalla costa in metri) e, per ogni tratto dell'utente, i pezzi del percorso:
      { open: true, cells } in mare aperto (già semplificati), { open: false, cells } vicino a costa, porti e canali. */
   function coarseSolve(m) {
-    const { W, H, dx, dy, sea, shallow, nogo, lagoon } = m, N = W * H;
+    const { W, H, dx, dy, sea, shallow, nogo, lagoon, lane, attn } = m, N = W * H;
     const cd = edt(sea, W, H, dx, dy);
     const limit = m.limitM > 0 && isFinite(m.limitM) ? m.limitM : Infinity;
     const pref = Math.min(m.prefM || 0, limit * 0.8), coastM = m.coastM || 0;
@@ -489,6 +490,7 @@
       if (pref > 0 && cd[j] < pref) f += 2 * (pref - cd[j]) / pref;   // si tiene alla distanza preferita dalla costa
       if (coastM > 0 && cd[j] < coastM) f *= 5;                        // fascia di rispetto (quella vera la applica la carta dettagliata)
       if (shallow && shallow[j] && !(lagoon && lagoon[j])) f *= 20;      // fondali bassi (in laguna decidono canali e briccole)
+      if (lane && lane[j]) f *= 8;                                     // corsie di traffico: attraversarle, non seguirle
       if (lagoon && lagoon[j]) f *= 10;                                // laguna: solo per uscire dalla bocca più vicina
       return f;
     };
@@ -541,7 +543,7 @@
       for (;;) {
         const i = y0 * W + x0;
         if (!pass(i) || cd[i] < minCd) return false;
-        if (shallow && shallow[i] && ++sh > maxSh) return false;
+        if (((shallow && shallow[i]) || (lane && lane[i])) && ++sh > maxSh) return false;
         if (x0 === x1 && y0 === y1) return true;
         const e2 = 2 * err, mx = e2 >= ddy, my = e2 <= ddx;
         if (mx && my && (!pass(y0 * W + x0 + sx) || !pass((y0 + sy) * W + x0))) return false;
@@ -557,7 +559,7 @@
         let best = i + 1, md = cd[path[i]], sh = 0, fails = 0;
         for (let j = i + 1; j < path.length && j - i < 3000; j++) {
           md = Math.min(md, cd[path[j]]);
-          if (shallow && shallow[path[j]]) sh++;
+          if ((shallow && shallow[path[j]]) || (lane && lane[path[j]])) sh++;
           const need = Math.min(md, pref > 0 ? pref : md) - Math.max(dx, dy);
           if (losC(path[i], path[j], need, sh)) { best = j; fails = 0; } else if (++fails > 200) break;
         }
@@ -565,7 +567,9 @@
       }
       return out;
     }
-    const openM = m.openM || 1000, isOpen = i => cd[i] >= openM && !(shallow && shallow[i]) && !(lagoon && lagoon[i]);
+    /* mare aperto = lontano da costa, lagune, bassi fondali e segnaletica: dove ci sono briccole, boe, canali o
+       segnali (attn) il tratto si calcola sulla carta dettagliata, per non perderne nessuno */
+    const openM = m.openM || 1000, isOpen = i => cd[i] >= openM && !(shallow && shallow[i]) && !(lagoon && lagoon[i]) && !(attn && attn[i]);
     const lenOf = (cells, a, b) => { let L = 0; for (let k = a + 1; k <= b; k++) L += Math.hypot(((cells[k] % W) - (cells[k - 1] % W)) * dx, ((((cells[k] / W) | 0) - ((cells[k - 1] / W) | 0))) * dy); return L; };
     for (let k = 1; k < ends.length; k++) {
       const path = astarC(ends[k - 1].i, ends[k].i);

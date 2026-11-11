@@ -620,7 +620,15 @@ async function coastGrid(w, limM, grow) {
         for (let x = Math.max(0, cx - rx); x <= Math.min(W - 1, cx + rx); x++) g.nogo[y * W + x] = 1;
     });
     /* piattaforme e allevamenti */
-    drawNoGo(g.nogo, W, H, p => [(p.lng - we) / dLng, (n - p.lat) / dLat], Math.min(g.dx, g.dy), D.hazards || [], D.noGoAreas || []);
+    const PP = p => [(p.lng - we) / dLng, (n - p.lat) / dLat], mppC = Math.min(g.dx, g.dy);
+    drawNoGo(g.nogo, W, H, PP, mppC, D.hazards || [], D.noGoAreas || []);
+    /* corsie di traffico */
+    if (D.laneAreas && D.laneAreas.length) { g.lane = new Uint8Array(W * H); drawNoGo(g.lane, W, H, PP, mppC, [], D.laneAreas); }
+    /* attenzione: entro 1,5 km da briccole, boe, fari e segnali, e lungo canali e corridoi segnalati, il percorso
+       si calcola sulla carta dettagliata al massimo ingrandimento, per seguire la segnaletica */
+    g.attn = new Uint8Array(W * H);
+    drawNoGo(g.attn, W, H, PP, mppC, D.nodes.map(o => ({ lat: o.lat, lng: o.lng, r: ATTN_M })),
+      D.corridorAreas.map(a => ({ rings: a.rings, r: 500 })).concat(D.lines.map(l => ({ rings: [l.pts], r: 500, line: true }))));
     /* lagune, barene, velme e secche: per EMODnet sono mare, ma lì si naviga solo nei canali (carta dettagliata) */
     if (D.restrictAreas.length) {
       const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
@@ -674,14 +682,18 @@ function farMask(box, W, H, g, limM) {
 
 /* Divide la rotta in tratti: in mare aperto direttamente dalla griglia della costa, vicino a costa, porti, lagune
    e canali con la carta dettagliata (che rispetta briccole e segnali). Rispetta i limiti di patente e mezzo. */
-const LEG_MAX = 7 * NM, LIM_MARGIN = 0.15 * NM;
+/* tratti dettagliati corti: ognuno deve stare in una carta a zoom 15-16 (circa 1-2 m per pixel), dove si vedono
+   singole briccole, pali e canali stretti. Il numero di tratti cresce, ma nessun segnale si perde. */
+const LEG_MAX = 4 * NM, LIM_MARGIN = 0.15 * NM, ZOOM_MIN = 15, ATTN_M = 1500;
 async function planSegments(w, label) {
   const rules = seaRules();
   const limM = isFinite(rules.limNm) ? rules.limNm * NM - LIM_MARGIN : Infinity;
   w.forEach((p, i) => { p.ui = i; });
   const tooLong = w.some((p, i) => i && !Water.tileBox([w[i - 1], p]));
+  /* anche un tratto che starebbe in una carta sola viene diviso se la carta non arriva almeno a zoom 15 */
+  const coarseZoom = w.some((p, i) => i && !Water.tileBox([w[i - 1], p], 16, ZOOM_MIN));
   const simple = () => w.slice(1).map((p, i) => ({ kind: 'detail', a: w[i], b: p }));
-  if (!isFinite(limM) && !tooLong) return { segs: simple(), cg: null, rules, limM };
+  if (!isFinite(limM) && !tooLong && !coarseZoom) return { segs: simple(), cg: null, rules, limM };
   let cg = null, res = null;
   for (let grow = 1; grow <= 4; grow *= 2) {
   busy.set(grow > 1 ? 'Navigazione costiera: allargo la zona di calcolo…' : 'Navigazione costiera: leggo costa e fondali…', 1, 0.02);
@@ -692,6 +704,7 @@ async function planSegments(w, label) {
   }
   busy.set('Navigazione costiera: cerco il percorso lungo la costa…', 1, 0.05);
   const msg = { type: 'coarse', W: cg.W, H: cg.H, dx: cg.dx, dy: cg.dy, sea: cg.sea, shallow: S.set.boat === 'remi' ? null : cg.shallow, nogo: cg.nogo, lagoon: cg.lagoon || null,
+    lane: cg.lane || null, attn: cg.attn || null,
     pts: w.map(p => coastCell(cg, p)), limitM: limM, prefM: S.set.pref * NM, coastM: S.set.coast,
     openM: Math.max(1000, S.set.coast + 600), minOpenM: 4000, snapM: 5000 };
   res = await workerRun(msg, [], () => Water.coarseSolve(msg));
@@ -737,7 +750,7 @@ async function planSegments(w, label) {
         const p0 = coastLL(cg, c[q - 1]), p1 = coastLL(cg, c[q]);
         acc += dist(p0, p1);
         const next = coastLL(cg, c[q + 1]);
-        if (acc + dist(p1, next) > LEG_MAX || !Water.tileBox([from, next, ...span(fromQ, q + 1)])) {
+        if (acc + dist(p1, next) > LEG_MAX || !Water.tileBox([from, next, ...span(fromQ, q + 1)], 16, ZOOM_MIN)) {
           /* punto di taglio: il più lontano da riva negli ultimi passi, mai dentro una laguna (lì solo i canali sono navigabili) */
           const score = i => (cg.lagoon && cg.lagoon[i] ? -1e9 : 0) + res.cd[i];
           let best = q;
@@ -787,14 +800,17 @@ const busy = {
 const yieldUI = () => new Promise(r => setTimeout(r, 40));
 /* Prepara i dati di un tratto: carte ENC, immagini della carta OSM (salvate sul telefono) e dati nautici locali.
    Il calcolo vero e proprio avviene nel Web Worker (vedi routeLeg), così l'interfaccia non si blocca. */
-async function loadGrid(a, b, k, n, plan, via, pad) {
+async function loadGrid(a, b, k, n, plan, via, pad, zmin) {
   let pts = [a, b, ...(via || [])];
   if (pad > 0) {
     let s = 90, nn = -90, w = 180, e = -180;
     pts.forEach(p => { s = Math.min(s, p.lat); nn = Math.max(nn, p.lat); w = Math.min(w, p.lng); e = Math.max(e, p.lng); });
-    const dl = pad / 111320, dg = pad / (111320 * Math.cos((s + nn) / 2 * RAD));
-    const big = pts.concat([{ lat: s - dl, lng: w - dg }, { lat: nn + dl, lng: e + dg }]);
-    if (Water.tileBox(big)) pts = big;
+    /* margine più ampio possibile senza scendere sotto lo zoom 15 */
+    for (const pd of [pad, pad * 0.6, pad * 0.35]) {
+      const dl = pd / 111320, dg = pd / (111320 * Math.cos((s + nn) / 2 * RAD));
+      const big = pts.concat([{ lat: s - dl, lng: w - dg }, { lat: nn + dl, lng: e + dg }]);
+      if (Water.tileBox(big, 16, zmin || ZOOM_MIN)) { pts = big; break; }
+    }
   }
   const box = Water.tileBox(pts) || Water.tileBox([a, b]);
   if (!box) throw new Error(`Tratto ${k} troppo lungo: aggiungi una tappa a metà strada`);
@@ -874,7 +890,7 @@ function routeLeg(prep, a, b) {
   const masks = {};
   /* canoe, kayak, SUP e pedalò: pescaggio quasi nullo, non sono obbligati a stare nei canali né a evitare i bassi fondali */
   const light = S.set.boat === 'remi';
-  ['restrict', 'hard', 'shallow', 'deep', 'lines', 'axis', 'ext', 'zone', 'barrier', 'nogo', 'far'].forEach(k => {
+  ['restrict', 'hard', 'shallow', 'deep', 'lines', 'axis', 'ext', 'zone', 'barrier', 'nogo', 'far', 'lane'].forEach(k => {
     if (light && /^(restrict|shallow|deep|zone|barrier)$/.test(k)) return;
     if (extra[k]) masks[k] = extra[k];
   });
@@ -946,8 +962,8 @@ async function nauticaFor(b) {
   const list = idx.tiles.filter(t => tileHit(t, b) && (t.file || t.id === 'legacy'));
   const parts = await Promise.all(list.map(nauticaTile));
   if (parts.length === 1) return parts[0];
-  const D = { nodes: [], lines: [], corridorAreas: [], restrictAreas: [], hazards: [], noGoAreas: [] }, seen = new Set();
-  parts.forEach(P => ['nodes', 'lines', 'corridorAreas', 'restrictAreas', 'hazards', 'noGoAreas'].forEach(k => (P[k] || []).forEach(o => {
+  const D = { nodes: [], lines: [], corridorAreas: [], restrictAreas: [], hazards: [], noGoAreas: [], laneAreas: [] }, seen = new Set();
+  parts.forEach(P => ['nodes', 'lines', 'corridorAreas', 'restrictAreas', 'hazards', 'noGoAreas', 'laneAreas'].forEach(k => (P[k] || []).forEach(o => {
     const key = k + ':' + o.id;
     if (o.id != null && seen.has(key)) return;
     seen.add(key); D[k].push(o);
@@ -1015,6 +1031,12 @@ function noGoKind(t) {
   if (t.man_made === 'offshore_platform' || t['seamark:type'] === 'platform') return { kind: 'piattaforma', r: 500 };
   if (t['seamark:type'] === 'marine_farm') return { kind: 'allevamento', r: 50 };
   if (t.landuse === 'aquaculture') return { kind: 'allevamento', r: 0 };   // anche valli da pesca: solo l'area, senza fascia
+  /* schemi di separazione del traffico (COLREG regola 10): zone e linee di separazione vietate, corsie solo da attraversare */
+  const st = t['seamark:type'] || '';
+  if (/^(separation_zone|separation_roundabout)$/.test(st)) return { kind: 'separazione del traffico', r: 0 };
+  if (/^(separation_line|separation_boundary)$/.test(st)) return { kind: 'separazione del traffico', r: 50 };
+  if (/^(separation_lane|precautionary_area)$/.test(st)) return { kind: 'corsia di traffico', r: 0, lane: true };
+  if (st === 'restricted_area' && /entry_prohibited/.test(t['seamark:restricted_area:restriction'] || '')) return { kind: 'zona vietata', r: 0 };
   return null;
 }
 /* disegna piattaforme e allevamenti (con la fascia di rispetto) su una maschera; P = coordinate in pixel, mpp = metri per pixel */
@@ -1025,8 +1047,9 @@ function drawNoGo(mask, W, H, P, mpp, hazards, areas) {
   cx.fillStyle = '#000'; cx.strokeStyle = '#000'; cx.lineJoin = 'round'; cx.lineCap = 'round';
   hazards.forEach(h => { const [x, y] = P(h); cx.beginPath(); cx.arc(x, y, Math.max(1, h.r / mpp), 0, 2 * Math.PI); cx.fill(); });
   areas.forEach(a => {
-    cx.beginPath(); a.rings.forEach(r => { r.forEach((p, i) => { const [x, y] = P(p); i ? cx.lineTo(x, y) : cx.moveTo(x, y); }); cx.closePath(); });
-    cx.fill('evenodd'); cx.lineWidth = Math.max(1, 2 * a.r / mpp); cx.stroke();
+    cx.beginPath(); a.rings.forEach(r => { r.forEach((p, i) => { const [x, y] = P(p); i ? cx.lineTo(x, y) : cx.moveTo(x, y); }); if (!a.line) cx.closePath(); });
+    if (!a.line) cx.fill('evenodd');
+    cx.lineWidth = Math.max(a.line ? 2 : 1, 2 * a.r / mpp); cx.stroke();
   });
   const d = cx.getImageData(0, 0, W, H).data; let n = 0;
   for (let i = 0; i < W * H; i++) if (d[i * 4 + 3] > 64) { mask[i] = 1; n++; }
@@ -1034,7 +1057,7 @@ function drawNoGo(mask, W, H, P, mpp, hazards, areas) {
 }
 /* Prepara il GeoJSON (formato di Overpass Turbo / osmtogeojson): divide per tipo e calcola gli ingombri. */
 function indexNautical(gj) {
-  const D = { nodes: [], lines: [], corridorAreas: [], restrictAreas: [], hazards: [], noGoAreas: [], ext: { w: Infinity, s: Infinity, e: -Infinity, n: -Infinity } };
+  const D = { nodes: [], lines: [], corridorAreas: [], restrictAreas: [], hazards: [], noGoAreas: [], laneAreas: [], ext: { w: Infinity, s: Infinity, e: -Infinity, n: -Infinity } };
   const ll = c => ({ lat: c[1], lng: c[0] });
   const bbOf = pts => { let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity; pts.forEach(p => { if (p.lng < w) w = p.lng; if (p.lng > e) e = p.lng; if (p.lat < s) s = p.lat; if (p.lat > n) n = p.lat; }); return [w, s, e, n]; };
   const grow = b => { D.ext.w = Math.min(D.ext.w, b[0]); D.ext.s = Math.min(D.ext.s, b[1]); D.ext.e = Math.max(D.ext.e, b[2]); D.ext.n = Math.max(D.ext.n, b[3]); };
@@ -1046,9 +1069,16 @@ function indexNautical(gj) {
     const id = P['@id'] || P.id || f.id || 'f' + k;
     /* piattaforme in mare (divieto di avvicinamento entro 500 m) e allevamenti di mitili/acquacoltura: da evitare */
     const keep = noGoKind(t);
-    if (keep && g.type === 'Point') { const p = ll(g.coordinates); D.hazards.push({ id, lat: p.lat, lng: p.lng, r: keep.r, kind: keep.kind }); grow([p.lng, p.lat, p.lng, p.lat]); }
+    if (keep && g.type === 'Point' && !keep.lane) { const p = ll(g.coordinates); D.hazards.push({ id, lat: p.lat, lng: p.lng, r: keep.r, kind: keep.kind }); grow([p.lng, p.lat, p.lng, p.lat]); }
     if (keep && (g.type === 'Polygon' || g.type === 'MultiPolygon')) {
-      (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).forEach((pp, j) => { const rings = pp.map(r => r.map(ll)); const bb = bbOf(rings[0]); D.noGoAreas.push({ id: id + '#' + j, rings, bb, r: keep.r, kind: keep.kind }); grow(bb); });
+      (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).forEach((pp, j) => {
+        const rings = pp.map(r => r.map(ll)), bb = bbOf(rings[0]), item = { id: id + '#' + j, rings, bb, r: keep.r, kind: keep.kind };
+        (keep.lane ? D.laneAreas : D.noGoAreas).push(item); grow(bb);
+      });
+      return;
+    }
+    if (keep && !keep.lane && (g.type === 'LineString' || g.type === 'MultiLineString')) {
+      (g.type === 'LineString' ? [g.coordinates] : g.coordinates).forEach((l, j) => { const pts = l.map(ll), bb = bbOf(pts); D.noGoAreas.push({ id: id + '~' + j, rings: [pts], bb, r: keep.r, kind: keep.kind, line: true }); grow(bb); });
       return;
     }
     if (g.type === 'Point') {
@@ -1085,6 +1115,8 @@ async function fetchNautical(box) {
   const m = 0.01;   // le fasce di rispetto sporgono dal riquadro
   (D.hazards || []).forEach(h => { if (h.lng >= b.w - m && h.lng <= b.e + m && h.lat >= b.s - m && h.lat <= b.n + m) { out.hazards.push(h); out.info.ostacoli++; } });
   (D.noGoAreas || []).forEach(a => { if (a.bb[0] <= b.e + m && a.bb[2] >= b.w - m && a.bb[1] <= b.n + m && a.bb[3] >= b.s - m) { out.noGoAreas.push(a); out.info.ostacoli++; } });
+  out.laneAreas = (D.laneAreas || []).filter(a => a.bb[0] <= b.e && a.bb[2] >= b.w && a.bb[1] <= b.n && a.bb[3] >= b.s);
+  out.info.corsie = out.laneAreas.length;
   D.lines.forEach(l => { if (hit(l.bb)) { out.lines.push(l.pts); out.info.canali++; } });
   D.corridorAreas.forEach(a => { if (hit(a.bb)) { out.corridorAreas.push(a.rings); out.info.canali++; } });
   D.restrictAreas.forEach(a => { if (hit(a.bb)) { out.restrictAreas.push(a.rings); if (a.hard) out.hardAreas.push(a.rings); if (a.lagoon) out.info.lagune++; } });
@@ -1123,7 +1155,9 @@ function rasterNautical(ctx, W, H, box, nd) {
   nd.info.segnali = ch.marks; nd.info.coppie = ch.pairs;
   const m = Channels.rasterize(ch, W, H, P, mpp);
   if (nd.hazards && (nd.hazards.length || nd.noGoAreas.length)) drawNoGo(m.nogo, W, H, P, mpp, nd.hazards, nd.noGoAreas);
-  return { restrict, hard, lines, axis: m.axis, ext: m.ext, zone: m.zone, barrier: m.barrier, nogo: m.nogo, ch, coastM: S.set.coast };
+  let lane = null;
+  if (nd.laneAreas && nd.laneAreas.length) { lane = new Uint8Array(W * H); drawNoGo(lane, W, H, P, mpp, [], nd.laneAreas); }
+  return { restrict, hard, lines, axis: m.axis, ext: m.ext, zone: m.zone, barrier: m.barrier, nogo: m.nogo, lane, ch, coastM: S.set.coast };
 }
 
 /* Calcolo automatico: parte da solo quando partenza, tappe o destinazione cambiano.
@@ -1163,11 +1197,21 @@ async function autoRouteRun() {
       const sg = segs[k - 1];
       /* mare aperto: il percorso della griglia costiera è già verificato (acqua, limiti, pericoli, fondali) */
       if (sg.kind === 'open') { legs.push([sg.a, ...sg.mid, sg.b]); busy.set(`Tratto ${k}/${n}: mare aperto`, k, 1); continue; }
-      const prep = await loadGrid(sg.a, sg.b, k, n, plan, sg.via, sg.pad);
+      let prep = await loadGrid(sg.a, sg.b, k, n, plan, sg.via, sg.pad);
       if (seq !== autoSeq) return;
       busy.set(`Tratto ${k}/${n}: cerco il percorso…`, k, 0.75);
-      const res = await routeLeg(prep, sg.a, sg.b);
+      let res = await routeLeg(prep, sg.a, sg.b);
       if (seq !== autoSeq) return;
+      /* nessun passaggio in una carta stretta: si riprova una volta su una carta più ampia (la bocca di porto o il canale
+         giusto possono stare appena fuori), anche a zoom più basso */
+      if (!res.error && !res.cells && plan.cg) {
+        busy.set(`Tratto ${k}/${n}: allargo la carta…`, k, 0.4);
+        const prep2 = await loadGrid(sg.a, sg.b, k, n, plan, sg.via, Math.max(sg.pad || 0, 6000), 13);
+        if (seq !== autoSeq) return;
+        const res2 = await routeLeg(prep2, sg.a, sg.b);
+        if (seq !== autoSeq) return;
+        if (res2.cells) { prep = prep2; res = res2; }
+      }
       if (res.error) throw new Error(`Tratto ${k}: errore nel calcolo (${res.error})`);
       /* griglia restituita dal Worker: serve per le coordinate e per "Mostra acque navigabili" */
       const g = { z: res.z, ox: res.ox, oy: res.oy, W: res.W, H: res.H, mpp: res.mpp, d: res.d, buf: res.buf, info: prep.info, ch: prep.ch, enc: prep.enc, depthUsed: prep.depthUsed };
