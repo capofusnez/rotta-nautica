@@ -251,13 +251,15 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
       <label>Lunghezza fuori tutto <span><input id="sLen" type="number" step="0.5" min="1"> m</span></label>
       <label>Patente nautica <span><select id="sLic">
         <option value="none">Nessuna (entro 6 miglia)</option><option value="12">Entro 12 miglia</option><option value="unl">Senza limiti</option></select></span></label>
-      <label>Limite del mezzo (documenti, omologazione) <span><select id="sVlim">
-        <option value="auto">In base al mezzo</option><option value="none">Nessuno</option><option value="12">12 miglia</option>
+      <label>Marcatura CE (natanti fino a 10 m) <span><select id="sCe">
+        <option value="ce">Con marcatura CE</option><option value="noce">Senza marcatura CE</option><option value="omol">Senza CE, omologato senza limiti</option></select></span></label>
+      <label>Limite del mezzo <span><select id="sVlim">
+        <option value="auto">Secondo la legge (automatico)</option><option value="none">Nessuno</option><option value="12">12 miglia</option>
         <option value="6">6 miglia</option><option value="3">3 miglia</option><option value="1">1 miglio</option></select></span></label>
       <label>Distanza preferita dalla costa <span><input id="sPref" type="number" step="0.25" min="0"> miglia</span></label>
     </div>
     <p class="note" id="licInfo"></p>
-    <p class="note">La rotta resta entro il limite più stretto tra patente e mezzo (distanza vera dalla costa, isole comprese, dai dati EMODnet) e in laguna e nei fiumi segue canali e briccole. Senza patente: entro 6 miglia, motore fino a 40,8 CV (30 kW). Valgono anche le ordinanze delle Capitanerie (fascia di 300 m dalle spiagge in estate, aree marine protette, zone vietate): verificale sempre prima di partire.</p>
+    <p class="note">La rotta resta entro il limite più stretto tra patente e mezzo (distanza vera dalla costa, isole comprese, dai dati EMODnet) e in laguna e nei fiumi segue canali e briccole. Codice della nautica, art. 27 e 39: senza patente entro 6 miglia e motore fino a 40,8 CV (30 kW); natanti fino a 10 m entro 12 miglia con marcatura CE, entro 6 senza; moto d'acqua, canoe, kayak, pedalò e tavole entro 1 miglio. La categoria di progettazione CE (vento e onda) va rispettata a parte. Valgono anche le ordinanze delle Capitanerie (fascia di 300 m dalle spiagge in estate, aree marine protette, zone vietate): verificale sempre prima di partire.</p>
     <h4>Soglie di allarme</h4>
     <div class="form">
       <label>Fuori rotta (XTE) <span><input id="sXte" type="number" step="0.01" min="0.01"> nm</span></label>

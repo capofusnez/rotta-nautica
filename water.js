@@ -33,7 +33,9 @@
     const w = new Uint8Array(n);
     for (let i = 0, j = 0; i < n; i++, j += 4) {
       const r = rgba[j], g = rgba[j + 1], b = rgba[j + 2];
-      w[i] = b - r >= 18 && g - r >= 10 && b >= 150 && rgba[j + 3] > 0 ? 1 : 0;
+      /* acqua azzurra, oppure acqua sotto un confine amministrativo (linea viola semitrasparente, es. tra due comuni
+         attraverso una bocca di porto): blu prevalente su rosso e verde. Sulla terra il confine resta più rosso che blu. */
+      w[i] = rgba[j + 3] > 0 && b >= 150 && ((b - r >= 18 && g - r >= 10) || (b > r + 6 && b > g + 12 && r <= 175 && g <= 185)) ? 1 : 0;
     }
     return w;
   }
@@ -315,6 +317,26 @@
       if (path) { res.cells = simplify(g, path); res.bad = verify(g, res.cells); return res; }
       res.gap = findGap(g, ends[0].i, ends[1].i);
     }
+    /* ACQUA PROFONDA EMODnet: se nei dati mancano pezzi di canale (es. tra San Marco e Lido), in laguna si accettano
+       anche le celle dove EMODnet indica fondale ben sopra il pescaggio. Terra, barene, file di briccole e pali restano vietati. */
+    if (m.extra && m.extra.deep && m.extra.restrict) {
+      const DP = m.extra.deep, R0 = m.extra.restrict, HD = m.extra.hard, W = m.W;
+      const R2 = new Uint8Array(R0);
+      for (let i = 0; i < R2.length; i++) if (R2[i] && DP[i] && !(HD && HD[i])) R2[i] = 0;
+      const g3 = makeGrid(m.rgba, m.W, m.H, m.box, Object.assign({}, m.extra, { restrict: R2 }));
+      const e3 = [m.a, m.b].map(p => { const own = cellOf(g3, p); return own >= 0 && g3.d[own] ? { i: own, moved: false } : { i: snap(g3, p), moved: true }; });
+      if (e3[0].i >= 0 && e3[1].i >= 0) {
+        const path3 = astar(g3, e3[0].i, e3[1].i);
+        if (path3) {
+          let dm = 0;
+          path3.forEach((i, k) => { if (k && !g.d[i]) { const a = path3[k - 1]; dm += Math.hypot(i % W - a % W, ((i / W) | 0) - ((a / W) | 0)); } });
+          const r3 = { id: m.id, z: g3.z, ox: g3.ox, oy: g3.oy, W: g3.W, H: g3.H, mpp: g3.mpp, ends: e3, d: g3.d, buf: g3.buf };
+          r3.cells = simplify(g3, path3); r3.bad = verify(g3, r3.cells);
+          r3.deepM = Math.round(dm * g3.mpp);
+          return r3;
+        }
+      }
+    }
     /* ULTIMO TRATTO FUORI CANALE: se rispettando i canali non si arriva, si riprova permettendo di lasciare canali e
        zone lagunari solo entro relaxM metri da partenza e arrivo (es. l'approdo di un locale fuori dalle briccole).
        Terra, pali e file di briccole restano invalicabili. Il tratto fuori canale viene misurato e segnalato. */
@@ -436,7 +458,10 @@
     const cd = edt(sea, W, H, dx, dy);
     const limit = m.limitM > 0 && isFinite(m.limitM) ? m.limitM : Infinity;
     const pref = Math.min(m.prefM || 0, limit * 0.8), coastM = m.coastM || 0;
-    const pass = i => sea[i] && !(nogo && nogo[i]) && cd[i] <= limit;
+    /* pericoli e piattaforme valgono qui solo in mare aperto: vicino a costa e nelle bocche di porto (dove una maglia
+       di 115-230 m chiuderebbe il passaggio) li considera la carta dettagliata, molto più precisa */
+    const openNoGo = m.openM || 1000;
+    const pass = i => sea[i] && !(nogo && nogo[i] && cd[i] >= openNoGo) && cd[i] <= limit;
     const res = { id: m.id, cd, legs: [], ends: [] };
     /* aggancio dei punti dell'utente al mare navigabile più vicino (entro snapM) */
     const snapR = Math.ceil((m.snapM || 5000) / Math.min(dx, dy));
@@ -462,7 +487,7 @@
     const costAt = j => {
       let f = 1;
       if (pref > 0 && cd[j] < pref) f += 2 * (pref - cd[j]) / pref;   // si tiene alla distanza preferita dalla costa
-      if (coastM > 0 && cd[j] < coastM) f *= 25;                       // fascia di rispetto: solo per entrare e uscire
+      if (coastM > 0 && cd[j] < coastM) f *= 5;                        // fascia di rispetto (quella vera la applica la carta dettagliata)
       if (shallow && shallow[j] && !(lagoon && lagoon[j])) f *= 20;      // fondali bassi (in laguna decidono canali e briccole)
       if (lagoon && lagoon[j]) f *= 10;                                // laguna: solo per uscire dalla bocca più vicina
       return f;
