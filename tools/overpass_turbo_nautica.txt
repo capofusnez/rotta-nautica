@@ -18,6 +18,11 @@
   // segnali: briccole, pali, mede, boe, fari e fanali, pericoli
   node["seamark:type"~"^(beacon_lateral|buoy_lateral|beacon_cardinal|buoy_cardinal|beacon_isolated_danger|buoy_isolated_danger|beacon_safe_water|buoy_safe_water|beacon_special_purpose|buoy_special_purpose|pile|light_major|light_minor|light_float|light_vessel|rock|wreck|obstruction|mooring|landmark|fog_signal)$"];
   node["man_made"="dolphin"];
+  // piattaforme in mare e allevamenti di mitili / acquacoltura: da evitare
+  nwr["man_made"="offshore_platform"];
+  nwr["seamark:type"~"^(platform|marine_farm)$"];
+  way["landuse"="aquaculture"];
+  relation["landuse"="aquaculture"];
 
   // zone dove si naviga solo nei canali: laguna, barene, velme, secche
   way["water"="lagoon"];
