@@ -41,6 +41,9 @@ way["natural"="coastline"]->.coast;
   nwr["seamark:type"~"^(platform|marine_farm)$"];
   way["landuse"="aquaculture"];
   relation["landuse"="aquaculture"];
+  // schemi di separazione del traffico e zone a ingresso vietato
+  nwr["seamark:type"~"^(separation_zone|separation_line|separation_boundary|separation_lane|separation_roundabout|precautionary_area)$"];
+  nwr["seamark:type"="restricted_area"]["seamark:restricted_area:restriction"~"entry_prohibited"];
   way["water"="lagoon"];
   relation["water"="lagoon"];
   way["natural"="wetland"](around.coast:3000);
