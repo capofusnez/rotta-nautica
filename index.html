@@ -294,6 +294,15 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
     <div class="btns"><button data-act="encImport">Importa pacchetto ENC</button><button data-act="encClear" id="bEncClear" hidden>Rimuovi carte ENC</button></div>
     <input id="encFile" type="file" accept=".json,application/json" hidden>
     <p class="note">Il pacchetto si crea sul computer dalle celle S-57 (.000) con lo script <code>tools/enc2rotta.py</code>. Resta salvato solo su questo telefono. Dove ci sono le ENC, la rotta passa solo dove la profondità supera pescaggio + margine.</p>
+    <h4>Dati per l'uso senza rete</h4>
+    <div class="form">
+      <label>Scarica sul telefono <span><select id="sPkg">
+        <option value="all">Dati nautici e profondità (circa 90 MB)</option><option value="nautica">Solo dati nautici (circa 17 MB)</option><option value="off">Solo le zone che uso</option></select></span></label>
+    </div>
+    <label class="chk"><input type="checkbox" id="lPkgWifi"> Scarica solo con il Wi-Fi</label>
+    <p class="note" id="pkgInfo"></p>
+    <div class="btns"><button data-act="pkgSync">Aggiorna ora</button></div>
+    <p class="note">Al primo avvio l'app scarica tutti i dati nautici d'Italia (canali, briccole, segnali, piattaforme, schemi di traffico) e, se scelto, le profondità. A ogni avvio controlla se sul sito ci sono dati nuovi e scarica solo i riquadri cambiati. Le immagini della carta invece si salvano solo per le zone viste o usate per le rotte.</p>
     <div class="btns"><button data-act="trackClear">Azzera traccia e statistiche</button><button data-act="trackGpx">Esporta traccia GPX</button></div>
     <p class="note">Le zone di carta già visualizzate restano disponibili anche senza rete. Prima di partire scorri la carta sulla zona di navigazione, a vari livelli di zoom.</p>
     <p class="note warn">Ausilio alla navigazione. Non sostituisce carte ufficiali, strumenti di bordo, bollettini meteo e buona condotta marinaresca. Le profondità e le secche mostrate possono essere incomplete.</p>

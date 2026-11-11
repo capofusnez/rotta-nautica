@@ -1,5 +1,5 @@
 /* Service worker: l'app e le tiles della carta già viste restano disponibili senza rete. */
-const SHELL_CACHE = 'rn-shell-v25';
+const SHELL_CACHE = 'rn-shell-v26';
 const TILE_CACHE = 'rn-tiles-v2';
 const SHELL = ['./', 'index.html', 'app.js', 'water.js', 'channels.js', 'enc.js', 'seamarks.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 const EXTERNAL = /(tile\.openstreetmap\.org|tiles\.openseamap\.org|server\.arcgisonline\.com|ows\.emodnet-bathymetry\.eu|unpkg\.com)$/;
@@ -44,6 +44,10 @@ self.addEventListener('fetch', e => {
     }));
     return;
   }
+
+  /* dati nautici e profondità: li salva e li aggiorna l'app (pacchetto dati). Qui non si toccano, altrimenti
+     resterebbe per sempre la prima copia scaricata */
+  if (url.origin === self.location.origin && /\/(nautica|depth)\//.test(url.pathname)) return;
 
   if (url.origin === self.location.origin) {
     e.respondWith(caches.match(req).then(hit => {

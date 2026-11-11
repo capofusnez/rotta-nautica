@@ -83,7 +83,7 @@ function fmtClock(ms) {
 /* ---------- Stato ---------- */
 const DEF = { xte: 0.1, arr: 80, spd: 0, wind: 25, hz: 300, plan: 5, anc: 40, coast: 300, draft: 1, ukc: 0.5, enc: true,
   mute: false, night: false, base: 'osm', sea: true, bathy: false, track: true, follow: true,
-  boat: 'motore', hp: 40, len: 6, lic: 'none', vlim: 'auto', ce: 'ce', pref: 1 };
+  boat: 'motore', hp: 40, len: 6, lic: 'none', vlim: 'auto', ce: 'ce', pref: 1, pkg: 'all', pkgWifi: true };
 const S = {
   set: Object.assign({}, DEF, store.get('set', {})),
   route: store.get('route', { start: null, via: [], dest: null }),
@@ -924,6 +924,11 @@ async function getData(path, type) {
   let cache = null;
   try { cache = await caches.open('rn-data'); } catch (e) { /* cache non disponibile */ }
   const url = DATA_BASE + path;
+  /* riquadri del pacchetto scaricato: si leggono dal telefono (li tiene aggiornati syncPackage all'avvio) */
+  if (cache && S.set.pkg !== 'off' && /^(nautica\/c_|depth\/d_)/.test(path)) {
+    const hit = await cache.match(url).catch(() => null);
+    if (hit) return type === 'blob' ? hit.blob() : hit.json();
+  }
   try {
     const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 20000);
     const r = await fetch(url, { cache: 'no-cache', signal: ctl.signal });
@@ -935,6 +940,76 @@ async function getData(path, type) {
   if (hit) return type === 'blob' ? hit.blob() : hit.json();
   return null;
 }
+/* ---------- Pacchetto dati per l'uso senza rete ----------
+   Al primo avvio scarica tutti i riquadri dei dati nautici (e, se scelto, delle profondità EMODnet); agli avvii
+   successivi confronta l'indice pubblicato con quello salvato e scarica solo i riquadri nuovi o cambiati. */
+const PKG = { running: false, done: 0, todo: 0, mb: 0 };
+function pkgInfo(text) { const el = $('pkgInfo'); if (el) el.textContent = text; }
+function pkgStatus() {
+  const st = store.get('pkgState', null);
+  if (S.set.pkg === 'off') return pkgInfo('Si salvano solo le zone usate per calcolare le rotte.');
+  if (PKG.running) return pkgInfo(`Scarico i dati: ${PKG.done}/${PKG.todo} riquadri…`);
+  if (!st) return pkgInfo('Dati non ancora scaricati: partirà al prossimo collegamento' + (S.set.pkgWifi ? ' Wi-Fi.' : '.'));
+  pkgInfo(`Dati salvati sul telefono: ${st.n} riquadri, circa ${Math.round(st.mb)} MB. Dati nautici del ${st.date || '?'}. Ultimo controllo ${new Date(st.checked).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`);
+}
+async function syncPackage(force) {
+  if (PKG.running || S.set.pkg === 'off' || !navigator.onLine) return;
+  const c = navigator.connection;
+  if (!force && S.set.pkgWifi && c && c.type && !/^(wifi|ethernet)$/.test(c.type)) { pkgStatus(); return; }
+  let cache;
+  try { cache = await caches.open('rn-data'); } catch (e) { return; }
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* facoltativo */ }
+  const fresh = async path => { try { const r = await fetch(DATA_BASE + path, { cache: 'no-cache' }); return r.ok ? r.json() : null; } catch (e) { return null; } };
+  const ni = await fresh('nautica/index.json');
+  if (!ni || !ni.tiles) return;
+  const di = S.set.pkg === 'all' ? await fresh('depth/index.json') : null;
+  const items = ni.tiles.filter(t => t.file).map(t => ({ key: 'n:' + t.id, path: 'nautica/' + t.file, sig: t.bytes + '/' + t.count, bytes: t.bytes || 0 }))
+    .concat(di && di.tiles ? di.tiles.map(t => ({ key: 'd:' + t.id, path: 'depth/' + t.file, sig: String(t.bytes), bytes: t.bytes || 0 })) : []);
+  const saved = store.get('pkgSig', {}), want = new Set(items.map(x => x.key));
+  /* riquadri tolti dall'indice (diventati vuoti) o profondità non più volute: si cancellano dal telefono */
+  for (const k of Object.keys(saved)) if (!want.has(k)) {
+    const path = k.startsWith('n:') ? 'nautica/' + k.slice(2) + '.geojson' : 'depth/' + k.slice(2) + '.png';
+    await cache.delete(DATA_BASE + path).catch(() => {}); delete saved[k];
+  }
+  const todo = [];
+  for (const x of items) if (saved[x.key] !== x.sig || !(await cache.match(DATA_BASE + x.path).catch(() => null))) todo.push(x);
+  /* l'indice aggiornato va salvato anche lui, per l'uso senza rete */
+  await cache.put(DATA_BASE + 'nautica/index.json', new Response(JSON.stringify(ni), { headers: { 'Content-Type': 'application/json' } })).catch(() => {});
+  if (di) await cache.put(DATA_BASE + 'depth/index.json', new Response(JSON.stringify(di), { headers: { 'Content-Type': 'application/json' } })).catch(() => {});
+  const totMb = items.reduce((a, x) => a + x.bytes, 0) / 1e6;
+  const finish = () => {
+    store.set('pkgSig', saved);
+    store.set('pkgState', { n: Object.keys(saved).length, mb: totMb, date: (ni.created || '').slice(0, 10).split('-').reverse().join('/'), checked: Date.now() });
+  };
+  if (!todo.length) { finish(); pkgStatus(); return; }
+  PKG.running = true; PKG.done = 0; PKG.todo = todo.length;
+  const first = !Object.keys(saved).length;
+  const mb = todo.reduce((a, x) => a + x.bytes, 0) / 1e6;
+  toast(first ? `Scarico i dati nautici per l'uso senza rete (circa ${Math.round(mb)} MB)…` : `Aggiorno i dati nautici: ${todo.length} riquadri cambiati`);
+  pkgStatus();
+  let failed = 0;
+  const work = async () => {
+    while (todo.length) {
+      const x = todo.shift();
+      try {
+        const r = await fetch(DATA_BASE + x.path, { cache: 'no-cache' });
+        if (!r.ok) throw new Error(r.status);
+        await cache.put(DATA_BASE + x.path, r);
+        saved[x.key] = x.sig;
+        /* il riquadro in memoria è vecchio: verrà riletto */
+        if (x.key.startsWith('n:')) nTiles.delete(x.key.slice(2)); else dTiles.delete(x.key.slice(2));
+      } catch (e) { failed++; }
+      PKG.done++;
+      if (PKG.done % 10 === 0) { store.set('pkgSig', saved); pkgStatus(); }
+    }
+  };
+  await Promise.all([work(), work(), work()]);
+  PKG.running = false;
+  nIndexP = null; dIndexP = null;   // si rileggono gli indici nuovi
+  finish(); pkgStatus();
+  toast(failed ? `Dati nautici: ${failed} riquadri non scaricati, riprovo al prossimo avvio` : first ? 'Dati nautici salvati: ora funzionano anche senza rete' : 'Dati nautici aggiornati');
+}
+
 /* Dati nautici di tutta Italia a riquadri (nautica/index.json, creato dall'azione "Aggiorna dati nautici").
    Se l'indice non c'è si usa il vecchio file unico nautica_locale.geojson. */
 let nIndexP = null;
@@ -1599,6 +1674,7 @@ document.addEventListener('click', e => {
       const s = S.route.start; S.route.start = S.route.dest; S.route.dest = s; S.route.via.reverse(); if (S.route.path) S.route.path.reverse(); routeChanged(); break;
     }
     case 'encImport': $('encFile').click(); break;
+    case 'pkgSync': if (!navigator.onLine) toast('Serve la connessione a Internet'); else { toast('Controllo gli aggiornamenti dei dati…'); syncPackage(true); } break;
     case 'encClear': if (window.ENC) ENC.clear().then(() => { encStatus(); encView.render(); toast('Carte ENC rimosse'); if (S.route.start && S.route.dest) editRoute(); }); break;
     case 'cancelRoute': clearTimeout(autoT); autoSeq++; stopWorker(); busy.fail('Calcolo annullato. Tocca "Ricalcola rotta" nella scheda Rotta per riprovare.'); $('bAuto').disabled = false; autoMsg('Calcolo annullato.'); break;
     case 'closeBusy': busy.hide(); break;
@@ -1698,6 +1774,17 @@ document.querySelectorAll('input[name=base]').forEach(r => {
   $(id).addEventListener('change', () => { S.set[k] = $(id).checked; saveSet(); applyLayers(); });
 });
 
+/* pacchetto dati per l'uso senza rete */
+if ($('sPkg')) {
+  $('sPkg').value = S.set.pkg;
+  $('sPkg').addEventListener('change', () => { S.set.pkg = $('sPkg').value; saveSet(); pkgStatus(); syncPackage(true); });
+}
+if ($('lPkgWifi')) {
+  $('lPkgWifi').checked = !!S.set.pkgWifi;
+  $('lPkgWifi').addEventListener('change', () => { S.set.pkgWifi = $('lPkgWifi').checked; saveSet(); pkgStatus(); });
+}
+pkgStatus();
+
 /* ---------- Ciclo a 1 Hz ---------- */
 setInterval(() => {
   const gpsActive = S.gpsOn || S.sim;
@@ -1729,6 +1816,9 @@ if ('serviceWorker' in navigator) {
 window.rnStarted = true;
 if (window.ENC) ENC.load().then(() => { encStatus(); encView.render(); }); else encStatus();
 startGps();
+/* pacchetto dati: controllo a ogni avvio (dopo che la carta è partita) e quando torna la rete */
+setTimeout(() => syncPackage(), 4000);
+window.addEventListener('online', () => syncPackage());
 if (S.route.path === undefined) S.route.path = null;
 if (!S.route.path && S.route.start && S.route.dest) { S.route.blocked = true; drawRoute(); renderRoute(); autoSchedule(); }
 if (!wps().length) setTimeout(() => openSheet('rotta'), 400);
