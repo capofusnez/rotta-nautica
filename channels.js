@@ -15,7 +15,7 @@
     sideMax: 600,       // larghezza massima di un canale con segnali rossi/verdi
     plainMax: 400,      // larghezza massima di un canale con briccole senza colore
     axisMax: 400,       // distanza massima tra due punti dell'asse consecutivi
-    band: 120,          // larghezza della fascia vietata sul lato esterno di ogni fila
+    band: 150,          // larghezza della fascia vietata sul lato esterno di ogni fila
     endStub: 150,       // raccordo dell'asse oltre le estremità del canale
     bridge: 500,        // distanza massima per unire la fine di un canale di briccole a un canale mappato
     axisW: [16, 80],    // larghezza minima e massima della fascia navigabile sull'asse
@@ -207,13 +207,16 @@
     /* tutta la larghezza del canale tra due coppie consecutive (quadrilatero tra le due file):
        la rotta può aggirare pali o ostacoli in mezzo al canale; il centro resta preferito dal calcolo */
     out.chan = [];
+    out.chanDir = [];   // stesso quadrilatero con il suo asse: serve per la regola 9 (tenere la dritta)
     axisSegs.forEach(([p, q]) => {
       if (Math.hypot(p.x - q.x, p.y - q.y) > C.axisMax) return;
       const A1 = M[p.a], A2 = M[p.b];
       let B1 = M[q.a], B2 = M[q.b];
       if (Math.hypot(A1.x - B1.x, A1.y - B1.y) + Math.hypot(A2.x - B2.x, A2.y - B2.y) >
           Math.hypot(A1.x - B2.x, A1.y - B2.y) + Math.hypot(A2.x - B1.x, A2.y - B1.y)) [B1, B2] = [B2, B1];
-      out.chan.push([back(A1.x, A1.y), back(B1.x, B1.y), back(B2.x, B2.y), back(A2.x, A2.y)]);
+      const quad = [back(A1.x, A1.y), back(B1.x, B1.y), back(B2.x, B2.y), back(A2.x, A2.y)];
+      out.chan.push(quad);
+      out.chanDir.push({ q: quad, a: back(p.x, p.y), b: back(q.x, q.y), w: Math.min(p.w, q.w) });
     });
     const axW = w => Math.max(C.axisW[0], Math.min(C.axisW[1], w * 0.5));
     axisSegs.forEach(([p, q, w]) => out.axis.push({ a: back(p.x, p.y), b: back(q.x, q.y), w: axW(w) }));
@@ -224,6 +227,67 @@
         if (free) out.axis.push({ a: back(p.x, p.y), b: back(p.x + sg * p.d[0] * C.endStub, p.y + sg * p.d[1] * C.endStub), w: axW(p.w) });
       });
     });
+
+    /* 3a. FILE SPEZZATE: il riconoscimento per allineamento perde le briccole nelle curve strette e dove la spaziatura
+           cambia (es. 50 m invece di 90 m). Restava un varco nella barriera, proprio in curva, da cui la rotta usciva dal
+           canale sui bassi fondali. Qui si ricuciono le estremità di fila che proseguono nella stessa direzione, senza
+           attraversare il canale (coppie di fronte) né chiudere l'imbocco di un canale laterale (raccordi dell'asse). */
+    const cross = (P, Q, A, B) => {
+      const o = (a, b, c) => Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+      return o(P, Q, A) * o(P, Q, B) < 0 && o(A, B, P) * o(A, B, Q) < 0;
+    };
+    const guard = pairs.map(p => [M[p.a], M[p.b]]);
+    pairs.forEach(p => [[!p.fwd, 1], [!p.bwd, -1]].forEach(([free, sg]) => {
+      if (free) guard.push([p, { x: p.x + sg * p.d[0] * C.endStub, y: p.y + sg * p.d[1] * C.endStub }]);
+    }));
+    const adj = M.map(() => []);
+    edges.forEach(([i, k]) => { adj[i].push(k); adj[k].push(i); });
+    const comp = M.map((m, i) => i), root = i => { while (comp[i] !== i) i = comp[i] = comp[comp[i]]; return i; };
+    edges.forEach(([i, k]) => { comp[root(i)] = root(k); });
+    for (let round = 0; round < 3; round++) {
+      const cands = [];
+      M.forEach((m, i) => {
+        if (adj[i].length >= 2) return;
+        const di = adj[i].length ? unit(m.x - M[adj[i][0]].x, m.y - M[adj[i][0]].y) : null;
+        const li = adj[i].length ? dist(m, M[adj[i][0]]) : 0;
+        near(m, rowMax(m)).forEach(k => {
+          if (k <= i || adj[k].length >= 2 || root(k) === root(i) || partner[i] === k || partner[k] === i) return;
+          const o = M[k];
+          if (!sameRowOk(m, o)) return;
+          const dd = dist(m, o);
+          if (dd < 5 || dd > rowMax(m)) return;
+          const dk = adj[k].length ? unit(o.x - M[adj[k][0]].x, o.y - M[adj[k][0]].y) : null;
+          if (!di && !dk) return;                                  // due segnali isolati: potrebbero stare di fronte
+          const lk = adj[k].length ? dist(o, M[adj[k][0]]) : 0;
+          if (dd > 2.5 * Math.max(li, lk)) return;                 // varco molto più lungo della spaziatura della fila
+          const v = unit(o.x - m.x, o.y - m.y);
+          if (di && v[0] * di[0] + v[1] * di[1] < 0.7) return;    // prosegue la fila di i (entro ~45°)
+          if (dk && -(v[0] * dk[0] + v[1] * dk[1]) < 0.7) return;  // e quella di k
+          if (guard.some(([A, B]) => A !== m && B !== m && A !== o && B !== o && cross(m, o, A, B))) return;
+          if (edges.some(([a, b]) => a !== i && b !== i && a !== k && b !== k && cross(m, o, M[a], M[b]))) return;
+          cands.push([dd, i, k]);
+        });
+      });
+      if (!cands.length) break;
+      cands.sort((a, b) => a[0] - b[0]);
+      let added = 0;
+      cands.forEach(([, i, k]) => {
+        if (adj[i].length >= 2 || adj[k].length >= 2 || root(i) === root(k)) return;
+        edges.push([i, k]); adj[i].push(k); adj[k].push(i); comp[root(i)] = root(k); added++;
+      });
+      if (!added) break;
+    }
+    out.joined = edges.length - eSet.size;
+    /* file aggiornate (servono all'area tra le file e alle fasce esterne) */
+    M.forEach((m, i) => { m.row = adj[i]; rowId[i] = -1; });
+    nRows = 0;
+    M.forEach((m, i) => {
+      if (rowId[i] >= 0 || !adj[i].length) return;
+      const st = [i]; rowId[i] = nRows;
+      while (st.length) { const j = st.pop(); adj[j].forEach(k => { if (rowId[k] < 0) { rowId[k] = nRows; st.push(k); } }); }
+      nRows++;
+    });
+    out.rows = nRows;
 
     /* 3b. AREA TRA LE FILE: per due file affiancate (rossa e verde, o due file di briccole) il canale è il poligono
            compreso tra loro, per il tratto in cui corrono vicine. Funziona anche con segnali sfalsati e canali che piegano. */
@@ -295,14 +359,47 @@
 
     /* 5. FASCE ESTERNE: sul lato della fila opposto al canale (dove di solito c'è la secca) non si naviga.
           Così nel canale si entra e si esce solo dalle estremità. Le file senza fila opposta hanno solo la barriera. */
-    edges.forEach(([i, k]) => {
+    /* Il lato esterno si ricava dai segnali di fronte; i tratti di fila senza segnale di fronte lo ereditano dai tratti
+       vicini della stessa fila (fino a ~15 tratti). Nelle curve si riempie anche lo spicchio tra due fasce consecutive:
+       prima restavano varchi proprio lì, e la rotta correva fuori dal canale, sul basso fondale accanto alle briccole. */
+    const eOut = edges.map(([i, k]) => {
       const A = M[i], B = M[k], u = unit(B.x - A.x, B.y - A.y), n = [-u[1], u[0]];
       const inner = [i, k].map(j => partner[j]).filter(j => j >= 0).map(j => Math.sign((M[j].x - A.x) * n[0] + (M[j].y - A.y) * n[1]));
-      if (!inner.length) return;
       const sgn = inner.reduce((s, v) => s + v, 0);
-      if (!sgn) return;
-      const o = -Math.sign(sgn) * C.band;          // verso l'esterno
-      out.band.push([back(A.x, A.y), back(B.x, B.y), back(B.x + n[0] * o, B.y + n[1] * o), back(A.x + n[0] * o, A.y + n[1] * o)]);
+      return sgn ? [-Math.sign(sgn) * n[0], -Math.sign(sgn) * n[1]] : null;   // normale verso l'esterno
+    });
+    const eAt = M.map(() => []);
+    edges.forEach(([i, k], e) => { eAt[i].push(e); eAt[k].push(e); });
+    let front = eOut.map((o, e) => o ? e : -1).filter(e => e >= 0);
+    for (let hop = 0; hop < 15 && front.length; hop++) {
+      const next = [];
+      front.forEach(e => edges[e].forEach(j => eAt[j].forEach(f => {
+        if (eOut[f]) return;
+        const [i, k] = edges[f], u = unit(M[k].x - M[i].x, M[k].y - M[i].y), n = [-u[1], u[0]];
+        const s = n[0] * eOut[e][0] + n[1] * eOut[e][1] >= 0 ? 1 : -1;
+        eOut[f] = [s * n[0], s * n[1]]; next.push(f);
+      })));
+      front = next;
+    }
+    edges.forEach(([i, k], e) => {
+      const o = eOut[e]; if (!o) return;
+      const A = M[i], B = M[k], b = C.band;
+      out.band.push([back(A.x, A.y), back(B.x, B.y), back(B.x + o[0] * b, B.y + o[1] * b), back(A.x + o[0] * b, A.y + o[1] * b)]);
+    });
+    M.forEach((m, j) => {
+      /* fine fila: quarto di cerchio esterno oltre l'ultimo segnale, così la fascia non si interrompe di netto dove la
+         fila cambia (curve con segnali sfalsati); l'imbocco di un canale laterale resta aperto dal suo asse */
+      if (eAt[j].length === 1) {
+        const e = eAt[j][0], o = eOut[e]; if (!o) return;
+        const q = M[edges[e][0] === j ? edges[e][1] : edges[e][0]], f = unit(m.x - q.x, m.y - q.y), mid = unit(o[0] + f[0], o[1] + f[1]), b = C.band;
+        out.band.push([back(m.x, m.y), back(m.x + o[0] * b, m.y + o[1] * b), back(m.x + mid[0] * b, m.y + mid[1] * b), back(m.x + f[0] * b, m.y + f[1] * b)]);
+        return;
+      }
+      if (eAt[j].length !== 2) return;
+      const o1 = eOut[eAt[j][0]], o2 = eOut[eAt[j][1]];
+      if (!o1 || !o2 || o1[0] * o2[0] + o1[1] * o2[1] < -0.2) return;
+      const mid = unit(o1[0] + o2[0], o1[1] + o2[1]), b = C.band;
+      out.band.push([back(m.x, m.y), back(m.x + o1[0] * b, m.y + o1[1] * b), back(m.x + mid[0] * b, m.y + mid[1] * b), back(m.x + o2[0] * b, m.y + o2[1] * b)]);
     });
     return out;
   }
@@ -354,8 +451,53 @@
     prims.ext.forEach(s => seg(res.ext, s.a, s.b, Math.max(1.5, s.w / 2 / mpp)));
     prims.barrier.forEach(s => seg(res.barrier, s.a, s.b, 0.75));
     prims.nogo.forEach(z => seg(res.nogo, z.p, z.p, Math.max(0.75, z.r / mpp)));
+    /* regola 9: per ogni cella del canale, verso dell'asse e posizione rispetto alla corsia di dritta */
+    res.sx = new Int8Array(W * H); res.sy = new Int8Array(W * H); res.sp = new Int8Array(W * H); res.sn = new Int8Array(W * H);
+    const S = { res, W, H, toPx, mpp };
+    (prims.chanDir || []).forEach(c => paintSide(S, c.a, c.b, c.w, { quad: c.q }));
+    prims.axis.forEach(s => { if (s.a.lat !== s.b.lat || s.a.lng !== s.b.lng) paintSide(S, s.a, s.b, s.w * 2, { half: Math.max(1.5, s.w / 2 / mpp) }); });
     return res;
   }
 
-  root.Channels = { CFG, side, classify, analyze, rasterize };
+  /* Regola 9 COLREG: in un canale stretto si tiene la dritta. Per ogni cella dentro un quadrilatero (o.quad) o entro
+     o.half pixel dal segmento a->b salva:
+       sx, sy  verso dell'asse a->b (x100, coordinate in pixel)
+       sp      scostamento dall'asse (metri, positivo a destra di a->b) meno la corsia t: chi va da a verso b
+               è sul lato giusto se sp >= 0
+       sn      scostamento più t: chi va da b verso a è sul lato giusto se sn <= 0
+     t = un quarto della larghezza del canale (al massimo 25 m): la rotta sta a metà della metà di dritta,
+     lontana sia dal centro (traffico in senso opposto) sia dal bordo (bassi fondali). Nei canali sotto 12 m t = 0. */
+  function paintSide(S, a, b, width, o) {
+    const { res, W, H, toPx, mpp } = S;
+    const [ax, ay] = toPx(a), [bx, by] = toPx(b), L = Math.hypot(bx - ax, by - ay);
+    if (L < 1) return;
+    const ux = (bx - ax) / L, uy = (by - ay) / L, t = width >= 12 ? Math.min(25, width / 4) : 0;
+    const c8 = v => Math.max(-127, Math.min(127, Math.round(v)));
+    let P = null, x0, x1, y0, y1;
+    if (o.quad) {
+      P = o.quad.map(toPx);
+      x0 = Math.min(...P.map(p => p[0])); x1 = Math.max(...P.map(p => p[0])); y0 = Math.min(...P.map(p => p[1])); y1 = Math.max(...P.map(p => p[1]));
+    } else {
+      x0 = Math.min(ax, bx) - o.half; x1 = Math.max(ax, bx) + o.half; y0 = Math.min(ay, by) - o.half; y1 = Math.max(ay, by) + o.half;
+    }
+    const cr = (p, q, x, y) => (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0]);
+    for (let y = Math.max(0, Math.floor(y0)); y <= Math.min(H - 1, Math.ceil(y1)); y++) for (let x = Math.max(0, Math.floor(x0)); x <= Math.min(W - 1, Math.ceil(x1)); x++) {
+      const px = x + 0.5, py = y + 0.5;
+      if (P) {
+        let pos = 0, neg = 0;
+        for (let k = 0; k < 4; k++) { const c = cr(P[k], P[(k + 1) % 4], px, py); if (c > 0) pos++; else if (c < 0) neg++; }
+        if (pos && neg) continue;
+      } else {
+        const tt = Math.max(0, Math.min(L, (px - ax) * ux + (py - ay) * uy));
+        if (Math.hypot(px - ax - tt * ux, py - ay - tt * uy) > o.half) continue;
+      }
+      /* normale (-uy, ux): in coordinate schermo (y verso il basso) è la destra di chi va da a verso b */
+      const off = (-(px - ax) * uy + (py - ay) * ux) * mpp, i = y * W + x;
+      if (o.keep && (res.sx[i] || res.sy[i])) continue;   // il canale di briccole già dipinto ha la precedenza
+      res.sx[i] = Math.round(ux * 100); res.sy[i] = Math.round(uy * 100);
+      res.sp[i] = c8(off - t); res.sn[i] = c8(off + t);
+    }
+  }
+
+  root.Channels = { CFG, side, classify, analyze, rasterize, paintSide };
 })(typeof window !== 'undefined' ? window : globalThis);

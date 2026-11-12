@@ -6,7 +6,10 @@
    NB: la carta non conosce le profondità. La rotta va sempre verificata. */
 (function (root) {
   const TILE = 256, RAD = Math.PI / 180, DEG = 180 / Math.PI, SQ2 = Math.SQRT2;
-  const CFG = { maxTiles: 90, closeR: 0, clear: 8, clearM: 120, clearK: 3, snapR: 300, coastM: 300, coastK: 25 };
+  /* bridgeM: tratto massimo di "terra" (ponte) che un corso d'acqua non dichiarato navigabile può scavalcare
+     minW:    larghezza minima (m) dell'acqua libera fuori da canali segnalati e corsi navigabili (via fossi e scoli)
+     sideK:   penalità per chi naviga sulla metà sinistra di un canale (COLREG regola 9: tenere la dritta) */
+  const CFG = { maxTiles: 90, closeR: 0, clear: 8, clearM: 120, clearK: 3, snapR: 300, coastM: 300, coastK: 25, bridgeM: 60, minW: 8, sideK: 2 };
 
   const lon2px = (lng, z) => (lng + 180) / 360 * TILE * 2 ** z;
   const lat2px = (lat, z) => { const s = Math.sin(lat * RAD); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * TILE * 2 ** z; };
@@ -93,6 +96,41 @@
   }
   /* Chiusura: riempie interruzioni sottili dell'acqua (ponti, scritte sulla carta). */
   const close = (w, W, H, r) => r > 0 ? morph(morph(w, W, H, r, true), W, H, r, false) : w;
+  /* Apertura: toglie le strisce d'acqua più strette di 2r+1 pixel (fossi, scoli), lascia intatto il resto. */
+  const opening = (w, W, H, r) => r > 0 ? morph(morph(w, W, H, r, false), W, H, r, true) : w;
+
+  /* Pezzi di corso d'acqua (non dichiarato navigabile) disegnati sopra la terra della carta: si accettano solo quelli
+     brevi, cioè i ponti; un canale di bonifica che attraversa i campi resta terra. */
+  function bridges(L2, water, W, H, mpp) {
+    const out = new Uint8Array(W * H), seen = new Uint8Array(W * H), q = new Int32Array(W * H);
+    const stroke = Math.max(3, 30 / mpp), maxPx = (CFG.bridgeM / mpp + stroke) * stroke;
+    for (let s = 0; s < L2.length; s++) {
+      if (!L2[s] || water[s] || seen[s]) continue;
+      let h = 0, n = 0; q[n++] = s; seen[s] = 1;
+      while (h < n) {
+        const i = q[h++], x = i % W, y = (i / W) | 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+          const j = yy * W + xx;
+          if (L2[j] && !water[j] && !seen[j]) { seen[j] = 1; q[n++] = j; }
+        }
+      }
+      if (n <= maxPx) for (let k = 0; k < n; k++) out[q[k]] = 1;
+    }
+    return out;
+  }
+
+  /* Regola 9 COLREG: muovendosi di (mx, my) lungo un canale, la cella è fuori dalla corsia di dritta?
+     (vedi Channels.paintSide). Chi attraversa il canale di traverso non viene penalizzato. */
+  const wrongSide = (g, j, mx, my) => {
+    if (!g.sx) return false;
+    const a = g.sx[j], b = g.sy[j];
+    if (!a && !b) return false;
+    const d = mx * a + my * b;
+    if (Math.abs(d) < 0.5 * Math.hypot(mx, my) * 100) return false;
+    return d > 0 ? g.sp[j] < 0 : g.sn[j] > 0;
+  };
 
   /* Distanza da terra in pixel (scacchiera), 0 = terra, max 255. */
   function landDist(w, W, H) {
@@ -128,12 +166,21 @@
      zone:     area attorno a briccole e segnali di canale -> si naviga solo sull'asse del canale
      axis:     asse del canale tra i segnali (valido sull'acqua e sulle zone lagunari, mai sulla terra)
      ext:      prolungamento dell'asse verso le acque libere (solo su acqua libera)
-     lines:    corsi d'acqua mappati (fiumi, canali): restano navigabili anche sotto i ponti
+     lines:    corsi d'acqua dichiarati navigabili (fairway, boat/motorboat=yes...): restano navigabili anche sotto i ponti
+     lines2:   altri corsi d'acqua (canali di bonifica, scoli, fiumi senza indicazioni): solo dove la carta mostra acqua,
+               più i ponti brevi (bridgeM); non aprono varchi nelle file di briccole e non valgono in laguna
      barrier:  file di segnali dello stesso lato, non attraversabili
-     nogo:     pali, pericoli isolati, scogli, relitti */
+     nogo:     pali, pericoli isolati, scogli, relitti
+     sx, sy, sp, sn: corsia di dritta nei canali (regola 9), vedi Channels.paintSide */
   function makeGrid(rgba, W, H, box, extra) {
     const m = waterMask(rgba, W * H), X = extra || {};
     const R = X.restrict, Z = X.zone, A = X.axis, E = X.ext, Ln = X.lines, B = X.barrier, N = X.nogo, SH = X.shallow, F = X.far;
+    const mpp0 = box ? 156543.03392 * Math.cos(px2lat(box.ty0 * TILE + H / 2, box.z) * RAD) / 2 ** box.z : 10;
+    /* corsi d'acqua non dichiarati navigabili: valgono solo i pezzi brevi sopra la "terra" della carta (ponti) */
+    const BR = X.lines2 ? bridges(X.lines2, m, W, H, mpp0) : null;
+    /* acqua libera troppo stretta (fossi, scoli, canali di bonifica disegnati come linee sottili): non navigabile */
+    const minW = X.minW != null ? X.minW : CFG.minW;
+    const wide = minW > 0 ? opening(m, W, H, Math.round(minW / 2 / mpp0)) : m;
     /* oltre il limite di distanza dalla costa (patente o mezzo): mai navigabile, nemmeno nei canali */
     if (F) for (let i = 0; i < m.length; i++) if (F[i]) m[i] = 0;
     /* ENC (S-57): dove c'è copertura decidono solo le carte ufficiali (profondità >= pescaggio + margine,
@@ -142,14 +189,14 @@
     let raw = m;
     if (EC) { raw = new Uint8Array(m); for (let i = 0; i < raw.length; i++) if (EC[i]) raw[i] = EN.wet[i]; }
     const coastPx = landDist(raw, W, H);   // distanza dalla riva vera, in pixel
-    if (R || Z || A || E || Ln || B || N || EC || SH) for (let i = 0; i < m.length; i++) {
+    for (let i = 0; i < m.length; i++) {
       if (F && F[i]) { m[i] = 0; continue; }
       if (EC && EC[i]) { m[i] = EN.ok[i] ? 1 : 0; continue; }
       const water = m[i], r = R && R[i];
-      /* fondale EMODnet troppo basso: vietato fuori dai canali segnalati e dai corsi d'acqua mappati */
+      /* fondale EMODnet troppo basso: vietato fuori dai canali segnalati e dai corsi d'acqua navigabili */
       if (SH && SH[i] && !((A && A[i]) || (E && E[i]) || (Ln && Ln[i]))) { m[i] = 0; continue; }
       const z = Z && Z[i];
-      let ok = (water && !r && !z) || (Ln && Ln[i] && !z) || (A && A[i] && (water || r)) || (E && E[i] && water && !r);
+      let ok = (wide[i] && !r && !z) || (BR && BR[i] && !r && !z) || (Ln && Ln[i]) || (A && A[i] && (water || r)) || (E && E[i] && water && !r);
       /* una fila di briccole è invalicabile, salvo dove la attraversa un canale mappato (lì c'è il varco); i pali restano ostacoli */
       if ((B && B[i] && !(Ln && Ln[i])) || (N && N[i])) ok = false;
       m[i] = ok ? 1 : 0;
@@ -164,6 +211,7 @@
     if (coastM > 0) for (let i = 0; i < g.buf.length; i++)
       if (g.d[i] && coastPx[i] < lim && !((A && A[i]) || (E && E[i]) || (Ln && Ln[i]) || (EN && EN.pref && EN.pref[i]))) g.buf[i] = 1;
     g.coastM = coastM;
+    g.sx = X.sx || null; g.sy = X.sy || null; g.sp = X.sp || null; g.sn = X.sn || null;   // dritta dei canali (regola 9)
     g.lane = X.lane || null;   // corsie degli schemi di separazione del traffico: si attraversano, non si percorrono
     g.pref = EN && EN.pref ? EN.pref : null;   // rotte raccomandate e allineamenti ENC: percorso preferito
     return g;
@@ -251,7 +299,7 @@
         if (!d[j] || closed[j]) continue;
         if (k > 3 && (!d[y * W + nx] || !d[ny * W + x])) continue;
         const m = Math.min(d[i], d[j]);
-        const ng = gs[i] + (k > 3 ? SQ2 : 1) * (1 + K * Math.max(0, C - m) / C) * (g.buf && g.buf[j] ? CFG.coastK : 1) * (g.pref && !g.pref[j] ? 1.5 : 1) * (g.lane && g.lane[j] ? 8 : 1);
+        const ng = gs[i] + (k > 3 ? SQ2 : 1) * (1 + K * Math.max(0, C - m) / C) * (g.buf && g.buf[j] ? CFG.coastK : 1) * (g.pref && !g.pref[j] ? 1.5 : 1) * (g.lane && g.lane[j] ? 8 : 1) * (wrongSide(g, j, DX[k], DY[k]) ? 1 + CFG.sideK : 1);
         if (ng < gs[j]) { gs[j] = ng; par[j] = i; push(j, ng + h(j)); }
       }
     }
@@ -269,11 +317,11 @@
     let nb = 0;
     let x0 = a % W, y0 = (a / W) | 0;
     const x1 = b % W, y1 = (b / W) | 0, dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
-    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, vx = x1 - x0, vy = y1 - y0;
     let err = dx + dy;
     for (;;) {
       if (d[y0 * W + x0] < minD) return -1;
-      if ((buf && buf[y0 * W + x0]) || (g.lane && g.lane[y0 * W + x0])) nb++;
+      if ((buf && buf[y0 * W + x0]) || (g.lane && g.lane[y0 * W + x0]) || wrongSide(g, y0 * W + x0, vx, vy)) nb++;
       if (x0 === x1 && y0 === y1) return nb;
       const e2 = 2 * err, mx = e2 >= dy, my = e2 <= dx;
       /* passo in diagonale: controlla anche le due celle d'angolo, per non scavalcare strisce di terra sottili */
@@ -287,7 +335,12 @@
     const out = [path[0]];
     /* celle della fascia costiera lungo il percorso: una scorciatoia non può attraversarne più del percorso originale */
     const pb = new Int32Array(path.length + 1);
-    for (let k = 0; k < path.length; k++) pb[k + 1] = pb[k] + ((g.buf && g.buf[path[k]]) || (g.lane && g.lane[path[k]]) ? 1 : 0);
+    /* (e celle sul lato sbagliato di un canale, nel verso del moto) */
+    for (let k = 0; k < path.length; k++) {
+      const c = path[k], p = path[k ? k - 1 : Math.min(1, path.length - 1)], mv = k ? 1 : -1;
+      const wr = wrongSide(g, c, mv * ((c % g.W) - (p % g.W)), mv * (((c / g.W) | 0) - ((p / g.W) | 0)));
+      pb[k + 1] = pb[k] + ((g.buf && g.buf[c]) || (g.lane && g.lane[c]) || wr ? 1 : 0);
+    }
     let i = 0;
     while (i < path.length - 1) {
       let best = i + 1, md = g.d[path[i]], fails = 0;

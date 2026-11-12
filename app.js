@@ -890,11 +890,13 @@ function routeLeg(prep, a, b) {
   const masks = {};
   /* canoe, kayak, SUP e pedalò: pescaggio quasi nullo, non sono obbligati a stare nei canali né a evitare i bassi fondali */
   const light = S.set.boat === 'remi';
-  ['restrict', 'hard', 'shallow', 'deep', 'lines', 'axis', 'ext', 'zone', 'barrier', 'nogo', 'far', 'lane'].forEach(k => {
+  ['restrict', 'hard', 'shallow', 'deep', 'lines', 'lines2', 'axis', 'ext', 'zone', 'barrier', 'nogo', 'far', 'lane', 'sx', 'sy', 'sp', 'sn'].forEach(k => {
     if (light && /^(restrict|shallow|deep|zone|barrier)$/.test(k)) return;
     if (extra[k]) masks[k] = extra[k];
   });
   masks.coastM = extra.coastM;
+  /* larghezza minima dell'acqua fuori dai canali: canoe e kayak passano anche nei canaletti stretti */
+  if (light) masks.minW = 3;
   if (extra.enc) masks.enc = { cov: extra.enc.cov, ok: extra.enc.ok, wet: extra.enc.wet, pref: extra.enc.pref };
   const msg = { rgba, W, H, box, extra: masks, a: { lat: a.lat, lng: a.lng }, b: { lat: b.lat, lng: b.lng }, relaxM: 500 };
   return workerRun(msg, [rgba.buffer], () => Water.solve(msg));
@@ -1101,6 +1103,15 @@ async function nauticaCovers(p) {
   return idx.tiles.some(t => p.lat >= t.s && p.lat <= t.n && p.lng >= t.w && p.lng <= t.e);
 }
 const WATERWAY = /^(river|canal|fairway|tidal_channel|dock)$/;
+/* Corso d'acqua dichiarato navigabile? Solo questi valgono come canali (anche sotto i ponti, in laguna e attraverso le
+   file di briccole). Gli altri (canali di bonifica e di scolo, canali delle valli da pesca, ghebi, fiumi senza
+   indicazioni) contano solo dove la carta mostra acqua abbastanza larga. */
+const NAV_ACCESS = /^(yes|designated|permissive|destination|official)$/;
+function navWay(t) {
+  if (t['seamark:type'] === 'fairway' || t.waterway === 'fairway' || t.waterway === 'dock') return true;
+  if (t.waterway === 'tidal_channel') return false;
+  return NAV_ACCESS.test(t.motorboat || '') || NAV_ACCESS.test(t.boat || '') || !!t.CEMT || t.ship === 'yes';
+}
 /* oggetti in mare da evitare, con la distanza di rispetto in metri */
 function noGoKind(t) {
   if (t.man_made === 'offshore_platform' || t['seamark:type'] === 'platform') return { kind: 'piattaforma', r: 500 };
@@ -1108,9 +1119,14 @@ function noGoKind(t) {
   if (t.landuse === 'aquaculture') return { kind: 'allevamento', r: 0 };   // anche valli da pesca: solo l'area, senza fascia
   /* schemi di separazione del traffico (COLREG regola 10): zone e linee di separazione vietate, corsie solo da attraversare */
   const st = t['seamark:type'] || '';
-  if (/^(separation_zone|separation_roundabout)$/.test(st)) return { kind: 'separazione del traffico', r: 0 };
-  if (/^(separation_line|separation_boundary)$/.test(st)) return { kind: 'separazione del traffico', r: 50 };
-  if (/^(separation_lane|precautionary_area)$/.test(st)) return { kind: 'corsia di traffico', r: 0, lane: true };
+  /* Regola 10: chi attraversa lo schema può passare corsie, linee e zone di separazione, il più possibile ad angolo
+     retto; non si percorrono. Per questo valgono come zone da attraversare (costose), non come muri: prima le linee di
+     separazione e di confine diventavano barriere larghe 100 m che partivano dall'imboccatura del porto (es. Ancona)
+     e chiudevano ogni passaggio lungo la costa. Il confine esterno dello schema non è un ostacolo. */
+  if (st === 'separation_boundary') return null;
+  if (/^(separation_zone|separation_roundabout)$/.test(st)) return { kind: 'separazione del traffico', r: 100, lane: true };
+  if (st === 'separation_line') return { kind: 'separazione del traffico', r: 100, lane: true };
+  if (/^(separation_lane|precautionary_area)$/.test(st)) return { kind: 'corsia di traffico', r: 400, lane: true };
   if (st === 'restricted_area' && /entry_prohibited/.test(t['seamark:restricted_area:restriction'] || '')) return { kind: 'zona vietata', r: 0 };
   return null;
 }
@@ -1147,9 +1163,14 @@ function indexNautical(gj) {
     if (keep && g.type === 'Point' && !keep.lane) { const p = ll(g.coordinates); D.hazards.push({ id, lat: p.lat, lng: p.lng, r: keep.r, kind: keep.kind }); grow([p.lng, p.lat, p.lng, p.lat]); }
     if (keep && (g.type === 'Polygon' || g.type === 'MultiPolygon')) {
       (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).forEach((pp, j) => {
-        const rings = pp.map(r => r.map(ll)), bb = bbOf(rings[0]), item = { id: id + '#' + j, rings, bb, r: keep.r, kind: keep.kind };
+        const rings = pp.map(r => r.map(ll)), bb = bbOf(rings[0]), item = { id: id + '#' + j, rings, bb, r: keep.lane ? 0 : keep.r, kind: keep.kind };
         (keep.lane ? D.laneAreas : D.noGoAreas).push(item); grow(bb);
       });
+      return;
+    }
+    /* corsie e separazioni mappate come linee: fascia da attraversare (r metri per lato) */
+    if (keep && keep.lane && (g.type === 'LineString' || g.type === 'MultiLineString')) {
+      (g.type === 'LineString' ? [g.coordinates] : g.coordinates).forEach((l, j) => { const pts = l.map(ll), bb = bbOf(pts); D.laneAreas.push({ id: id + '~' + j, rings: [pts], bb, r: keep.r, kind: keep.kind, line: true }); grow(bb); });
       return;
     }
     if (keep && !keep.lane && (g.type === 'LineString' || g.type === 'MultiLineString')) {
@@ -1169,7 +1190,7 @@ function indexNautical(gj) {
         const item = { id: id + (polys.length > 1 ? '#' + polys.indexOf(p) : ''), rings: p, bb: bbOf(p[0]), lagoon: t.water === 'lagoon', hard: t.natural === 'wetland' && /^(saltmarsh|marsh|reedbed|swamp|fen|bog|wet_meadow)$/.test(t.wetland || '') };
         if (isRestrict) D.restrictAreas.push(item);
         else if (isFair) D.corridorAreas.push(item);
-        else if (WATERWAY.test(t.waterway || '')) D.lines.push({ id: item.id, pts: p[0], bb: item.bb });   // canale chiuso ad anello
+        else if (WATERWAY.test(t.waterway || '')) D.lines.push({ id: item.id, pts: p[0], bb: item.bb, nav: navWay(t) });   // canale chiuso ad anello
         else return;
         grow(item.bb);
       });
@@ -1177,7 +1198,7 @@ function indexNautical(gj) {
     }
     if (g.type === 'LineString' || g.type === 'MultiLineString') {
       if (!(WATERWAY.test(t.waterway || '') || isFair)) return;
-      (g.type === 'LineString' ? [g.coordinates] : g.coordinates).forEach((l, j) => { const pts = l.map(ll), bb = bbOf(pts); D.lines.push({ id: id + '#' + j, pts, bb }); grow(bb); });
+      (g.type === 'LineString' ? [g.coordinates] : g.coordinates).forEach((l, j) => { const pts = l.map(ll), bb = bbOf(pts); D.lines.push({ id: id + '#' + j, pts, bb, nav: navWay(t) }); grow(bb); });
     }
   });
   return D;
@@ -1186,13 +1207,13 @@ function indexNautical(gj) {
 async function fetchNautical(box) {
   const b = Water.boxBounds(box), D = await nauticaFor(b);
   const hit = bb => bb[0] <= b.e && bb[2] >= b.w && bb[1] <= b.n && bb[3] >= b.s;
-  const out = { lines: [], corridorAreas: [], restrictAreas: [], hardAreas: [], nodes: [], hazards: [], noGoAreas: [], info: { canali: 0, segnali: 0, coppie: 0, lagune: 0, ostacoli: 0 } };
+  const out = { lines: [], lines2: [], corridorAreas: [], restrictAreas: [], hardAreas: [], nodes: [], hazards: [], noGoAreas: [], info: { canali: 0, segnali: 0, coppie: 0, lagune: 0, ostacoli: 0 } };
   const m = 0.01;   // le fasce di rispetto sporgono dal riquadro
   (D.hazards || []).forEach(h => { if (h.lng >= b.w - m && h.lng <= b.e + m && h.lat >= b.s - m && h.lat <= b.n + m) { out.hazards.push(h); out.info.ostacoli++; } });
   (D.noGoAreas || []).forEach(a => { if (a.bb[0] <= b.e + m && a.bb[2] >= b.w - m && a.bb[1] <= b.n + m && a.bb[3] >= b.s - m) { out.noGoAreas.push(a); out.info.ostacoli++; } });
   out.laneAreas = (D.laneAreas || []).filter(a => a.bb[0] <= b.e && a.bb[2] >= b.w && a.bb[1] <= b.n && a.bb[3] >= b.s);
   out.info.corsie = out.laneAreas.length;
-  D.lines.forEach(l => { if (hit(l.bb)) { out.lines.push(l.pts); out.info.canali++; } });
+  D.lines.forEach(l => { if (!hit(l.bb)) return; if (l.nav) { out.lines.push(l.pts); out.info.canali++; } else out.lines2.push(l.pts); });
   D.corridorAreas.forEach(a => { if (hit(a.bb)) { out.corridorAreas.push(a.rings); out.info.canali++; } });
   D.restrictAreas.forEach(a => { if (hit(a.bb)) { out.restrictAreas.push(a.rings); if (a.hard) out.hardAreas.push(a.rings); if (a.lagoon) out.info.lagune++; } });
   D.nodes.forEach(n => { if (n.lng >= b.w && n.lng <= b.e && n.lat >= b.s && n.lat <= b.n) out.nodes.push(n); });
@@ -1224,15 +1245,26 @@ function rasterNautical(ctx, W, H, box, nd) {
     lines = read();
   }
   ctx.clearRect(0, 0, W, H);
+  /* corsi d'acqua non dichiarati navigabili: water.js li usa solo per scavalcare i ponti */
+  let lines2 = null;
+  if (nd.lines2 && nd.lines2.length) {
+    ctx.lineWidth = Math.max(3, 30 / mpp);
+    nd.lines2.forEach(l => { ctx.beginPath(); poly(l); ctx.stroke(); });
+    lines2 = read();
+  }
+  ctx.clearRect(0, 0, W, H);
   // canali segnalati da briccole e segnali laterali (channels.js)
   if (!window.Channels) throw new Error('Manca il file channels.js: aggiorna l\'app');
   const ch = Channels.analyze(nd.nodes, null, nd.lines);
   nd.info.segnali = ch.marks; nd.info.coppie = ch.pairs;
   const m = Channels.rasterize(ch, W, H, P, mpp);
+  /* regola 9 anche nei canali navigabili mappati come linea: corsia di dritta rispetto alla linea del canale */
+  const sideS = { res: m, W, H, toPx: P, mpp };
+  nd.lines.forEach(l => { for (let k = 1; k < l.length; k++) Channels.paintSide(sideS, l[k - 1], l[k], 30, { half: Math.max(1.5, 15 / mpp), keep: true }); });
   if (nd.hazards && (nd.hazards.length || nd.noGoAreas.length)) drawNoGo(m.nogo, W, H, P, mpp, nd.hazards, nd.noGoAreas);
   let lane = null;
   if (nd.laneAreas && nd.laneAreas.length) { lane = new Uint8Array(W * H); drawNoGo(lane, W, H, P, mpp, [], nd.laneAreas); }
-  return { restrict, hard, lines, axis: m.axis, ext: m.ext, zone: m.zone, barrier: m.barrier, nogo: m.nogo, lane, ch, coastM: S.set.coast };
+  return { restrict, hard, lines, lines2, sx: m.sx, sy: m.sy, sp: m.sp, sn: m.sn, axis: m.axis, ext: m.ext, zone: m.zone, barrier: m.barrier, nogo: m.nogo, lane, ch, coastM: S.set.coast };
 }
 
 /* Calcolo automatico: parte da solo quando partenza, tappe o destinazione cambiano.
