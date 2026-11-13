@@ -9,7 +9,7 @@
   /* bridgeM: tratto massimo di "terra" (ponte) che un corso d'acqua non dichiarato navigabile può scavalcare
      minW:    larghezza minima (m) dell'acqua libera fuori da canali segnalati e corsi navigabili (via fossi e scoli)
      sideK:   penalità per chi naviga sulla metà sinistra di un canale (COLREG regola 9: tenere la dritta) */
-  const CFG = { maxTiles: 90, closeR: 0, clear: 8, clearM: 120, clearK: 3, snapR: 300, coastM: 300, coastK: 25, bridgeM: 60, minW: 8, sideK: 2, pocketM: 250 };
+  const CFG = { maxTiles: 90, closeR: 0, clear: 8, clearM: 120, clearK: 3, snapR: 300, coastM: 300, coastK: 25, bridgeM: 60, minW: 8, sideK: 2, laneK: 2, guideTol: 6, pocketM: 250 };
 
   const lon2px = (lng, z) => (lng + 180) / 360 * TILE * 2 ** z;
   const lat2px = (lat, z) => { const s = Math.sin(lat * RAD); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * TILE * 2 ** z; };
@@ -125,13 +125,27 @@
 
   /* Regola 9 COLREG: muovendosi di (mx, my) lungo un canale, la cella è fuori dalla corsia di dritta?
      (vedi Channels.paintSide). Chi attraversa il canale di traverso non viene penalizzato. */
-  const wrongSide = (g, j, mx, my) => {
-    if (!g.sx) return false;
+  /* Linea guida della regola 9: a un quarto della larghezza, sulla destra (sp = scostamento - t, sn = scostamento + t,
+     vedi Channels.paintSide). Prima era una fascia rigida tra quella linea e i pali: nei canali irregolari la fascia
+     saltava da un tratto all'altro e la rotta faceva lo zig-zag tra le briccole. Ora:
+       - lato sbagliato (a sinistra dell'asse): costo x(1 + sideK)
+       - lato giusto: costo che cresce con la distanza dalla linea guida (laneK), senza fascia rigida
+     guideDev: distanza (m) dalla linea guida nel verso del moto, -1 fuori dai canali o di traverso. */
+  const guideDev = (g, j, mx, my) => {
+    if (!g.sx) return -1;
     const a = g.sx[j], b = g.sy[j];
-    if (!a && !b) return false;
+    if (!a && !b) return -1;
     const d = mx * a + my * b;
-    if (Math.abs(d) < 0.5 * Math.hypot(mx, my) * 100) return false;
-    return d > 0 ? g.sp[j] < 0 : g.sn[j] > 0;
+    if (Math.abs(d) < 0.5 * Math.hypot(mx, my) * 100) return -1;
+    const off = (g.sp[j] + g.sn[j]) / 2;
+    if (d > 0 ? off < -1 : off > 1) return 999;   // lato sbagliato
+    return Math.abs(d > 0 ? g.sp[j] : g.sn[j]);
+  };
+  /* tolleranza per raddrizzare la rotta: metà della distanza tra asse e linea guida, al massimo guideTol (m) */
+  const wrongSide = (g, j, mx, my) => { const v = guideDev(g, j, mx, my); return v >= 0 && v > Math.max(2, Math.min(CFG.guideTol, (g.sn[j] - g.sp[j]) / 4)); };
+  const sideCost = (g, j, mx, my) => {
+    const v = guideDev(g, j, mx, my);
+    return v < 0 ? 1 : v >= 999 ? 1 + CFG.sideK : 1 + CFG.laneK * Math.min(1, (v / 12) ** 2);
   };
 
   /* Distanza da terra in pixel (scacchiera), 0 = terra, max 255. */
@@ -301,7 +315,7 @@
         if (!d[j] || closed[j]) continue;
         if (k > 3 && (!d[y * W + nx] || !d[ny * W + x])) continue;
         const m = Math.min(d[i], d[j]);
-        const ng = gs[i] + (k > 3 ? SQ2 : 1) * (1 + K * Math.max(0, C - m) / C) * (g.buf && g.buf[j] ? CFG.coastK : 1) * (g.pref && !g.pref[j] ? 1.5 : 1) * (g.lane && g.lane[j] ? 8 : 1) * (wrongSide(g, j, DX[k], DY[k]) ? 1 + CFG.sideK : 1);
+        const ng = gs[i] + (k > 3 ? SQ2 : 1) * (1 + K * Math.max(0, C - m) / C) * (g.buf && g.buf[j] ? CFG.coastK : 1) * (g.pref && !g.pref[j] ? 1.5 : 1) * (g.lane && g.lane[j] ? 8 : 1) * sideCost(g, j, DX[k], DY[k]);
         if (ng < gs[j]) { gs[j] = ng; par[j] = i; push(j, ng + h(j)); }
       }
     }
