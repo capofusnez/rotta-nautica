@@ -17,10 +17,12 @@
   const px2lat = (y, z) => DEG * Math.atan(Math.sinh(Math.PI - 2 * Math.PI * y / (TILE * 2 ** z)));
 
   /* Riquadro di tiles attorno ai punti, al livello di zoom più dettagliato che sta nel limite. */
-  function tileBox(pts, zmax, zmin) {
+  /* padM: margine in metri attorno ai punti (scansioni ravvicinate); senza, il 30% del riquadro e almeno ~1,3 km */
+  function tileBox(pts, zmax, zmin, padM) {
     let la0 = Infinity, la1 = -Infinity, lo0 = Infinity, lo1 = -Infinity;
     pts.forEach(p => { la0 = Math.min(la0, p.lat); la1 = Math.max(la1, p.lat); lo0 = Math.min(lo0, p.lng); lo1 = Math.max(lo1, p.lng); });
-    const pLat = Math.max((la1 - la0) * 0.3, 0.012), pLng = Math.max((lo1 - lo0) * 0.3, 0.018);
+    const kx = Math.cos((la0 + la1) / 2 * RAD);
+    const pLat = padM != null ? padM / 111320 : Math.max((la1 - la0) * 0.3, 0.012), pLng = padM != null ? padM / (111320 * kx) : Math.max((lo1 - lo0) * 0.3, 0.018);
     la0 -= pLat; la1 += pLat; lo0 -= pLng; lo1 += pLng;
     for (let z = zmax || 16; z >= (zmin || 13); z--) {
       const tx0 = Math.floor(lon2px(lo0, z) / TILE), tx1 = Math.floor(lon2px(lo1, z) / TILE);
