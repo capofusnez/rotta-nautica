@@ -9,7 +9,7 @@
   /* bridgeM: tratto massimo di "terra" (ponte) che un corso d'acqua non dichiarato navigabile può scavalcare
      minW:    larghezza minima (m) dell'acqua libera fuori da canali segnalati e corsi navigabili (via fossi e scoli)
      sideK:   penalità per chi naviga sulla metà sinistra di un canale (COLREG regola 9: tenere la dritta) */
-  const CFG = { maxTiles: 90, closeR: 0, clear: 8, clearM: 120, clearK: 3, snapR: 300, coastM: 300, coastK: 25, bridgeM: 60, minW: 8, sideK: 2 };
+  const CFG = { maxTiles: 90, closeR: 0, clear: 8, clearM: 120, clearK: 3, snapR: 300, coastM: 300, coastK: 25, bridgeM: 60, minW: 8, sideK: 2, pocketM: 250 };
 
   const lon2px = (lng, z) => (lng + 180) / 360 * TILE * 2 ** z;
   const lat2px = (lat, z) => { const s = Math.sin(lat * RAD); return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * TILE * 2 ** z; };
@@ -367,7 +367,12 @@
     });
     const res = { id: m.id, z: g.z, ox: g.ox, oy: g.oy, W: g.W, H: g.H, mpp: g.mpp, ends, d: g.d, buf: g.buf };
     if (ends[0].i >= 0 && ends[1].i >= 0) {
-      const path = astar(g, ends[0].i, ends[1].i);
+      let path = astar(g, ends[0].i, ends[1].i);
+      /* SACCA: il punto di raccordo scelto dalla griglia costiera (maglia ~100 m) può cadere dal lato sbagliato di una
+         fila di briccole o in uno specchio d'acqua chiuso, a pochi metri dal canale vero (es. laguna di Marano: il
+         tratto si fermava a 10 m dalla partenza). L'estremo che sta nella zona d'acqua più piccola si sposta sulla
+         cella più vicina della zona dell'altro estremo, entro CFG.pocketM. */
+      if (!path && repocket(g, ends, m.pocket)) path = astar(g, ends[0].i, ends[1].i);
       if (path) { res.cells = simplify(g, path); res.bad = verify(g, res.cells); return res; }
       res.gap = findGap(g, ends[0].i, ends[1].i);
     }
@@ -425,6 +430,59 @@
     return res;
   }
   const cellOfXY = (g, p) => toCell(g, p);
+  /* Estremi in zone d'acqua separate: si cerca la zona raggiungibile da entrambi con lo spostamento totale minimo
+     (ciascun estremo al massimo pocket[k] metri, di norma CFG.pocketM). La zona propria vale 0, così si sposta solo chi serve; le zone
+     piccolissime (meno di ~2000 m²) non contano. */
+  function repocket(g, ends, pocket) {
+    const { W, H, d } = g, N = W * H, lab = new Int32Array(N).fill(-1), size = [], q = new Int32Array(N);
+    const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
+    const label = s0 => {
+      if (lab[s0] >= 0) return lab[s0];
+      const id = size.length; let h = 0, n = 0; q[n++] = s0; lab[s0] = id;
+      while (h < n) {
+        const i = q[h++], x = i % W, y = (i / W) | 0;
+        for (let k = 0; k < 8; k++) {
+          const nx = x + DX[k], ny = y + DY[k];
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const j = ny * W + nx;
+          if (lab[j] >= 0 || !d[j]) continue;
+          if (k > 3 && (!d[y * W + nx] || !d[ny * W + x])) continue;
+          lab[j] = id; q[n++] = j;
+        }
+      }
+      size.push(n); return id;
+    };
+    const own = ends.map(e => label(e.i));
+    if (own[0] === own[1]) return false;
+    const minSize = 2000 / (g.mpp * g.mpp);
+    /* per ogni estremo: zona -> cella più vicina e distanza */
+    const near = ends.map((e, k) => {
+      const r = Math.ceil(((pocket && pocket[k]) || CFG.pocketM) / g.mpp), M = new Map(), x0 = e.i % W, y0 = (e.i / W) | 0;
+      M.set(own[k], { j: e.i, dd: 0 });
+      for (let y = Math.max(0, y0 - r); y <= Math.min(H - 1, y0 + r); y++)
+        for (let x = Math.max(0, x0 - r); x <= Math.min(W - 1, x0 + r); x++) {
+          const j = y * W + x;
+          if (!d[j]) continue;
+          const dd = (x - x0) ** 2 + (y - y0) ** 2;
+          if (dd > r * r) continue;
+          const c = label(j);
+          if (c !== own[k] && size[c] < minSize) continue;
+          const v = dd + (d[j] >= 2 ? 0 : 0.5), o = M.get(c);   // a parità, meglio non a filo di riva
+          if (!o || v < o.dd) M.set(c, { j, dd: v });
+        }
+      return M;
+    });
+    let best = null, bv = Infinity;
+    near[0].forEach((A, c) => {
+      const B = near[1].get(c);
+      if (!B) return;
+      const v = Math.sqrt(A.dd) + Math.sqrt(B.dd);
+      if (v < bv) { bv = v; best = [A, B]; }
+    });
+    if (!best) return false;
+    best.forEach((o, k) => { if (o.j !== ends[k].i) ends[k] = { i: o.j, moved: true }; });
+    return true;
+  }
   /* Quando non c'è passaggio: trova i due punti più vicini tra l'acqua raggiungibile dalla partenza
      e quella raggiungibile dall'arrivo. È lì che la rotta si interrompe (canale non collegato, briccole mancanti...). */
   function findGap(g, s, t) {
