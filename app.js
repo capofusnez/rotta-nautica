@@ -846,6 +846,35 @@ const yieldUI = () => new Promise(r => setTimeout(r, 40));
 /* Scansione ravvicinata: carta a zoom 16-17 (1-2 m per pixel) con margine stretto attorno al percorso. */
 const CLOSE = { zmax: 17, zmin: 16, padM: 300 };
 const closeBox = (a, b, via) => Water.tileBox([a, b, ...(via || [])], CLOSE.zmax, CLOSE.zmin, CLOSE.padM);
+/* SCANSIONI RAVVICINATE, solo come riserva: rifà il tratto a zoom 16-17; se non basta lo divide a metà lungo il percorso
+   della griglia costiera e rifà ogni metà (fino a 8 pezzi). Restituisce i pezzi riusciti, oppure null: in quel caso
+   resta il risultato normale con il suo messaggio (cerchi rossi dove manca il passaggio). Un punto di metà che a zoom
+   alto cade su una barena o sulla spiaggia fa solo fallire questo tentativo, non tutta la rotta. */
+async function closeSolve(a, b, via, depth, k, n, plan, seq) {
+  if (seq !== autoSeq) return null;
+  if (closeBox(a, b, via)) {
+    const prep = await loadGrid(a, b, k, n, plan, via, 0, undefined, true);
+    if (seq !== autoSeq) return null;
+    const res = await routeLeg(prep, a, b);
+    if (!res.error && res.cells && !res.bad && res.ends.every(e => e.i >= 0)) {
+      /* i punti di metà (non dell'utente) si spostano subito dove il calcolo li ha agganciati, così il pezzo dopo parte da lì */
+      [a, b].forEach((pt, j) => {
+        const e = res.ends[j];
+        if (pt.ui != null || !pt.mid || !e.moved) return;
+        const np = Water.cellLL({ z: res.z, ox: res.ox, oy: res.oy, W: res.W }, e.i);
+        pt.lat = np.lat; pt.lng = np.lng; e.moved = false;
+      });
+      return [{ prep, res, a, b }];
+    }
+  }
+  if (depth >= 3 || via.length < 3) return null;
+  const i = via.length >> 1, m = { lat: via[i].lat, lng: via[i].lng, mid: true };
+  busy.set(`Tratto ${k}/${n}: zoom ravvicinato, pezzo ${depth + 2}…`, k, 0.4);
+  const A = await closeSolve(a, m, via.slice(0, i + 1), depth + 1, k, n, plan, seq);
+  if (!A) return null;
+  const B = await closeSolve(m, b, via.slice(i), depth + 1, k, n, plan, seq);
+  return B ? A.concat(B) : null;
+}
 async function loadGrid(a, b, k, n, plan, via, pad, zmin, close) {
   let pts = [a, b, ...(via || [])];
   if (pad > 0) {
@@ -1398,14 +1427,14 @@ async function autoRouteRun() {
       const sg = segs[k - 1], n = segs.length;
       /* mare aperto: il percorso della griglia costiera è già verificato (acqua, limiti, pericoli, fondali) */
       if (sg.kind === 'open') { legs.push([sg.a, ...sg.mid, sg.b]); busy.set(`Tratto ${k}/${n}: mare aperto`, k, 1); continue; }
-      let prep = await loadGrid(sg.a, sg.b, k, n, plan, sg.via, sg.close ? 0 : sg.pad, undefined, sg.close);
+      let prep = await loadGrid(sg.a, sg.b, k, n, plan, sg.via, sg.pad);
       if (seq !== autoSeq) return;
-      busy.set(`Tratto ${k}/${n}: cerco il percorso${sg.close ? ' (zoom ravvicinato)' : ''}…`, k, 0.75);
+      busy.set(`Tratto ${k}/${n}: cerco il percorso…`, k, 0.75);
       let res = await routeLeg(prep, sg.a, sg.b);
       if (seq !== autoSeq) return;
       /* nessun passaggio in una carta stretta: si riprova una volta su una carta più ampia (la bocca di porto o il canale
          giusto possono stare appena fuori), anche a zoom più basso */
-      if (!res.error && !res.cells && plan.cg && !sg.close) {
+      if (!res.error && !res.cells && plan.cg) {
         busy.set(`Tratto ${k}/${n}: allargo la carta…`, k, 0.4);
         const prep2 = await loadGrid(sg.a, sg.b, k, n, plan, sg.via, Math.max(sg.pad || 0, 6000), 13);
         if (seq !== autoSeq) return;
@@ -1413,30 +1442,22 @@ async function autoRouteRun() {
         if (seq !== autoSeq) return;
         if (res2.cells) { prep = prep2; res = res2; }
       }
-      /* SCANSIONI RAVVICINATE: a zoom 15 (3 m per pixel) canali stretti, pali e briccole vicine possono chiudere un
-         passaggio che c'è. Prima si rifà lo stesso tratto a zoom 16-17; se non basta, lo si divide a metà lungo il
-         percorso della griglia costiera e si rifà ogni metà a zoom alto (fino a 8 pezzi). */
-      if (!res.error && !res.cells && (sg.depth || 0) < 3) {
-        const via = sg.via || [];
-        if (!sg.close && closeBox(sg.a, sg.b, via)) {
-          busy.set(`Tratto ${k}/${n}: zoom ravvicinato…`, k, 0.4);
-          segs.splice(k - 1, 1, Object.assign({}, sg, { close: true, depth: 0 }));
-          busy.legs = segs.length; k--; continue;
-        }
-        if (via.length >= 3) {
-          const i = via.length >> 1, m = { lat: via[i].lat, lng: via[i].lng }, d = (sg.depth || 0) + 1;
-          busy.set(`Tratto ${k}/${n}: divido il tratto per lo zoom ravvicinato…`, k, 0.4);
-          segs.splice(k - 1, 1, { kind: 'detail', a: sg.a, b: m, via: via.slice(0, i + 1), close: true, depth: d },
-            { kind: 'detail', a: m, b: sg.b, via: via.slice(i), close: true, depth: d });
-          busy.legs = segs.length; k--; continue;
-        }
+      /* zoom ravvicinato (16-17), con divisione del tratto se serve: solo se il resto non è bastato */
+      let pieces = [{ prep, res, a: sg.a, b: sg.b }];
+      if (!res.error && !res.cells) {
+        busy.set(`Tratto ${k}/${n}: zoom ravvicinato…`, k, 0.4);
+        const cs = await closeSolve(sg.a, sg.b, sg.via || [], 0, k, n, plan, seq);
+        if (seq !== autoSeq) return;
+        if (cs) pieces = cs;
       }
+      for (const pc of pieces) {
+      const res = pc.res, prep = pc.prep, sa = pc.a, sb = pc.b;
       if (res.error) throw new Error(`Tratto ${k}: errore nel calcolo (${res.error})`);
       /* griglia restituita dal Worker: serve per le coordinate e per "Mostra acque navigabili" */
       const g = { z: res.z, ox: res.ox, oy: res.oy, W: res.W, H: res.H, mpp: res.mpp, d: res.d, buf: res.buf, info: prep.info, ch: prep.ch, enc: prep.enc, depthUsed: prep.depthUsed };
       S.grids.push(g);
       Object.keys(info).forEach(x => { info[x] = Math.max(info[x], g.info[x] || 0); });
-      [sg.a, sg.b].forEach((pt, j) => {
+      [sa, sb].forEach((pt, j) => {
         const e = res.ends[j];
         if (e.i < 0) throw new Error(g.enc ? `${pName(pt)}: secondo le carte ENC non c'è acqua profonda almeno ${num1(S.set.draft + S.set.ukc)} m (pescaggio + margine) nelle vicinanze`
           : `${pName(pt)}: nessuna acqua navigabile nelle vicinanze${plan.cg && isFinite(plan.limM) ? ` entro ${mi(plan.rules.limNm)} dalla costa` : ''}`);
@@ -1464,8 +1485,9 @@ async function autoRouteRun() {
       if (res.offChannelM > 0) offLegs.push(`tratto ${k}: ${fmtDist(res.offChannelM)}`);
       if (res.deepM > 0) deepLegs.push(`tratto ${k}: ${fmtDist(res.deepM)}`);
       const lp = cells.map(i => Water.cellLL(g, i));
-      lp[0] = sg.a; lp[lp.length - 1] = sg.b;
+      lp[0] = sa; lp[lp.length - 1] = sb;
       legs.push(lp);
+      }
     }
   } catch (e) {
     if (seq !== autoSeq) return;
