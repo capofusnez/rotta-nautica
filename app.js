@@ -217,6 +217,8 @@ function encStatus() {
     ? `${i.cells} celle caricate (${i.editions.slice(0, 4).join(', ')}${i.cells > 4 ? '…' : ''}). Profondità colorate per pescaggio ${S.set.draft} m + margine ${S.set.ukc} m.`
     : 'Nessuna carta ENC caricata: il calcolo usa i dati OpenStreetMap/OpenSeaMap.';
   $('bEncClear').hidden = !i;
+  /* la sezione ENC si vede solo se sul telefono ci sono carte importate (servono solo per poterle togliere) */
+  if ($('encBox')) $('encBox').hidden = !i;
 }
 /* scheda dei segnali (seamarks.js): se il file manca l'app funziona lo stesso */
 let seamarkInspector = { refresh() {} };
@@ -1722,13 +1724,14 @@ function renderHaz() {
   $('bAnchor').textContent = S.anchor ? 'Ritira ancora (allarme attivo)' : 'Getta ancora qui';
 }
 
-const TITLES = { rotta: 'Rotta', dati: 'Dati', avvisi: 'Avvisi', mappa: 'Carta' };
+const TITLES = { rotta: 'Rotta', dati: 'Dati', avvisi: 'Avvisi', mappa: 'Carta', imp: 'Impostazioni' };
 function minSheet(on) { $('sheet').classList.toggle('min', on); if (!on) $('sheet').scrollTop = 0; }
 function openSheet(t) {
   S.tab = t; $('sheet').hidden = false; minSheet(false);
   $('sheetTitle').textContent = TITLES[t] || '';
   document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + t; });
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  $('bSet').classList.toggle('on', t === 'imp');
   if (t === 'rotta') renderRoute();
   if (t === 'avvisi') renderHaz();
   ui();
@@ -1736,7 +1739,10 @@ function openSheet(t) {
 function closeSheet() {
   S.tab = null; $('sheet').hidden = true; $('sheet').classList.remove('min');
   document.querySelectorAll('#tabs button').forEach(b => b.classList.remove('on'));
+  $('bSet').classList.remove('on');
 }
+/* ingranaggio: impostazioni della barca e della patente */
+$('bSet').onclick = () => { S.tab === 'imp' ? closeSheet() : openSheet('imp'); };
 document.querySelectorAll('#tabs button').forEach(b => { b.onclick = () => { S.tab === b.dataset.t ? closeSheet() : openSheet(b.dataset.t); }; });
 
 function pick(type) {
