@@ -73,6 +73,10 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 .fab.ok{border-color:var(--ok);color:var(--ok)}
 .fab.search{border-color:var(--warn);color:var(--warn)}
 .fab.mob{background:var(--bad);border-color:var(--bad);color:#fff}
+/* ingranaggio delle impostazioni: in alto a sinistra, così la colonna di destra (e il MOB) non si allunga */
+#fabsL{position:fixed;z-index:890;left:max(8px,env(safe-area-inset-left,0px));top:calc(var(--hudH, 96px) + 8px)}
+.fab.gear{display:flex;align-items:center;justify-content:center}
+.fab.gear svg{width:24px;height:24px;display:block}
 
 #pickBar{position:fixed;z-index:940;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));
   bottom:calc(58px + env(safe-area-inset-bottom,0px));display:flex;justify-content:space-between;align-items:center;gap:8px;
@@ -201,6 +205,9 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 
 <div id="alarms" aria-live="assertive"></div>
 
+<div id="fabsL">
+  <button id="bSet" class="fab gear" aria-label="Impostazioni: barca e patente" title="Impostazioni: barca e patente"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(0 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(45 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(90 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(135 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(180 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(225 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(270 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(315 12 12)"/></g><circle cx="12" cy="12" r="6.4" fill="none" stroke="currentColor" stroke-width="2.6"/><circle cx="12" cy="12" r="2.1" fill="currentColor"/></svg></button>
+</div>
 <div id="fabs">
   <button id="bGps" class="fab" aria-label="Attiva o disattiva il GPS">GPS</button>
   <button id="bFollow" class="fab" aria-label="Centra la carta sulla barca">SEGUI</button>
@@ -241,8 +248,8 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
     <p class="note">XTE: D = sei a dritta della rotta, S = a sinistra. DTW = distanza al punto successivo, VMG = velocità utile verso il punto.</p>
   </div>
 
-  <div class="pane" id="p-avvisi" hidden>
-    <h4>Mezzo e patente</h4>
+  <div class="pane" id="p-imp" hidden>
+    <h4>Barca e patente</h4>
     <div class="form">
       <label>Mezzo <span><select id="sBoat">
         <option value="motore">Barca a motore</option><option value="gommone">Gommone</option><option value="vela">Barca a vela</option>
@@ -257,9 +264,15 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
         <option value="auto">Secondo la legge (automatico)</option><option value="none">Nessuno</option><option value="12">12 miglia</option>
         <option value="6">6 miglia</option><option value="3">3 miglia</option><option value="1">1 miglio</option></select></span></label>
       <label>Distanza preferita dalla costa <span><input id="sPref" type="number" step="0.25" min="0"> miglia</span></label>
+      <label>Pescaggio della barca <span><input id="sDraft" type="number" step="0.1" min="0"> m</span></label>
+      <label>Margine sotto la chiglia <span><input id="sUkc" type="number" step="0.1" min="0"> m</span></label>
     </div>
     <p class="note" id="licInfo"></p>
     <p class="note">La rotta resta entro il limite più stretto tra patente e mezzo (distanza vera dalla costa, isole comprese, dai dati EMODnet) e in laguna e nei fiumi segue canali e briccole. Codice della nautica, art. 27 e 39: senza patente entro 6 miglia e motore fino a 40,8 CV (30 kW); natanti fino a 10 m entro 12 miglia con marcatura CE, entro 6 senza; moto d'acqua, canoe, kayak, pedalò e tavole entro 1 miglio. La categoria di progettazione CE (vento e onda) va rispettata a parte. Valgono anche le ordinanze delle Capitanerie (fascia di 300 m dalle spiagge in estate, aree marine protette, zone vietate): verificale sempre prima di partire.</p>
+    <p class="note">Pescaggio e margine servono a evitare i fondali troppo bassi nel calcolo della rotta (profondità EMODnet, indicative).</p>
+  </div>
+
+  <div class="pane" id="p-avvisi" hidden>
     <h4>Soglie di allarme</h4>
     <div class="form">
       <label>Fuori rotta (XTE) <span><input id="sXte" type="number" step="0.01" min="0.01"> nm</span></label>
@@ -268,8 +281,6 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
       <label>Raffica di vento (0 = off) <span><input id="sWind" type="number" step="1" min="0"> nodi</span></label>
       <label>Raggio di sicurezza ostacoli <span><input id="sHz" type="number" step="25" min="25"> m</span></label>
       <label>Distanza minima dalla costa (0 = off) <span><input id="sCoast" type="number" step="50" min="0"> m</span></label>
-      <label>Pescaggio della barca <span><input id="sDraft" type="number" step="0.1" min="0"> m</span></label>
-      <label>Margine sotto la chiglia <span><input id="sUkc" type="number" step="0.1" min="0"> m</span></label>
     </div>
     <h4>Allarme ancora</h4>
     <div class="form"><label>Raggio di deriva <span><input id="sAnc" type="number" step="5" min="10"> m</span></label></div>
@@ -288,12 +299,13 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
     <label class="chk"><input type="checkbox" id="lSea"> Segnali nautici (OpenSeaMap): toccali per vedere la scheda</label>
     <label class="chk"><input type="checkbox" id="lBathy"> Profondità (EMODnet, indicativa)</label>
     <label class="chk"><input type="checkbox" id="lTrack"> Mostra la traccia percorsa</label>
+    <div id="encBox" hidden>
     <h4>Carte ENC ufficiali (S-57)</h4>
     <p class="note" id="encStatus">Nessuna carta ENC caricata.</p>
     <label class="chk"><input type="checkbox" id="lEnc"> Mostra le carte ENC (profondità, costa, segnali)</label>
     <div class="btns"><button data-act="encImport">Importa pacchetto ENC</button><button data-act="encClear" id="bEncClear" hidden>Rimuovi carte ENC</button></div>
     <input id="encFile" type="file" accept=".json,application/json" hidden>
-    <p class="note">Il pacchetto si crea sul computer dalle celle S-57 (.000) con lo script <code>tools/enc2rotta.py</code>. Resta salvato solo su questo telefono. Dove ci sono le ENC, la rotta passa solo dove la profondità supera pescaggio + margine.</p>
+    </div>
     <h4>Dati per l'uso senza rete</h4>
     <div class="form">
       <label>Scarica sul telefono <span><select id="sPkg">
