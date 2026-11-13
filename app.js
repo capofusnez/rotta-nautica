@@ -965,7 +965,7 @@ function routeLeg(prep, a, b) {
   const masks = {};
   /* canoe, kayak, SUP e pedalò: pescaggio quasi nullo, non sono obbligati a stare nei canali né a evitare i bassi fondali */
   const light = S.set.boat === 'remi';
-  ['restrict', 'hard', 'shallow', 'deep', 'lines', 'lines2', 'axis', 'ext', 'zone', 'barrier', 'nogo', 'far', 'lane', 'sx', 'sy', 'sp', 'sn'].forEach(k => {
+  ['restrict', 'hard', 'shallow', 'deep', 'lines', 'linesCore', 'lines2', 'axis', 'ext', 'zone', 'barrier', 'nogo', 'far', 'lane', 'sx', 'sy', 'sp', 'sn'].forEach(k => {
     if (light && /^(restrict|shallow|deep|zone|barrier)$/.test(k)) return;
     if (extra[k]) masks[k] = extra[k];
   });
@@ -1351,6 +1351,15 @@ function rasterNautical(ctx, W, H, box, nd) {
     lines = read();
   }
   ctx.clearRect(0, 0, W, H);
+  /* solo il centro della linea del canale (pochi metri) apre il varco in una fila di briccole: con tutta la fascia di 30 m,
+     un canale mappato lungo una fila di pali la rendeva attraversabile e la rotta faceva lo slalom tra i pali (Chioggia) */
+  let linesCore = null;
+  if (nd.lines.length) {
+    ctx.lineWidth = Math.max(1.5, 4 / mpp);
+    nd.lines.forEach(l => { ctx.beginPath(); poly(l); ctx.stroke(); });
+    linesCore = read();
+  }
+  ctx.clearRect(0, 0, W, H);
   /* corsi d'acqua non dichiarati navigabili: water.js li usa solo per scavalcare i ponti */
   let lines2 = null;
   if (nd.lines2 && nd.lines2.length) {
@@ -1387,7 +1396,7 @@ function rasterNautical(ctx, W, H, box, nd) {
   if (nd.hazards && (nd.hazards.length || nd.noGoAreas.length)) drawNoGo(m.nogo, W, H, P, mpp, nd.hazards, nd.noGoAreas);
   let lane = null;
   if (nd.laneAreas && nd.laneAreas.length) { lane = new Uint8Array(W * H); drawNoGo(lane, W, H, P, mpp, [], nd.laneAreas); }
-  return { restrict, hard, lines, lines2, sx: m.sx, sy: m.sy, sp: m.sp, sn: m.sn, axis: m.axis, ext: m.ext, zone: m.zone, barrier: m.barrier, nogo: m.nogo, lane, ch, coastM: S.set.coast };
+  return { restrict, hard, lines, linesCore, lines2, sx: m.sx, sy: m.sy, sp: m.sp, sn: m.sn, axis: m.axis, ext: m.ext, zone: m.zone, barrier: m.barrier, nogo: m.nogo, lane, ch, coastM: S.set.coast };
 }
 
 /* Calcolo automatico: parte da solo quando partenza, tappe o destinazione cambiano.
