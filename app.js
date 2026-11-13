@@ -843,6 +843,36 @@ const busy = {
 const yieldUI = () => new Promise(r => setTimeout(r, 40));
 /* Prepara i dati di un tratto: carte ENC, immagini della carta OSM (salvate sul telefono) e dati nautici locali.
    Il calcolo vero e proprio avviene nel Web Worker (vedi routeLeg), così l'interfaccia non si blocca. */
+/* RAMI MORTI ai raccordi tra un tratto e l'altro: il punto di raccordo scelto dalla griglia costiera può stare fuori
+   strada (es. vicino alla riva a Chioggia) e la rotta ci va e torna indietro. Se prima e dopo un raccordo (non scelto
+   dall'utente) la rotta passa vicina a se stessa, si toglie il giro, purché il collegamento diretto stia in acqua
+   navigabile secondo le carte usate per il calcolo. */
+function inWater(p) {
+  for (const g of S.grids) {
+    if (!g.d) continue;
+    const x = Math.floor(Water.lon2px(p.lng, g.z) - g.ox), y = Math.floor(Water.lat2px(p.lat, g.z) - g.oy);
+    if (x < 0 || y < 0 || x >= g.W || y >= g.H) continue;
+    if (g.d[y * g.W + x] > 0) return true;
+  }
+  return false;
+}
+function cutSpurs(pts, joints) {
+  for (let n = joints.length - 1; n >= 0; n--) {
+    const j = joints[n], WIN = 80;
+    let best = null;
+    for (let i = Math.max(0, j - WIN); i < j; i++)
+      for (let k = j + 1; k <= Math.min(pts.length - 1, j + WIN); k++) {
+        const dd = dist(pts[i], pts[k]);
+        if (dd > 40) continue;
+        let L = 0; for (let q = i; q < k; q++) L += dist(pts[q], pts[q + 1]);
+        if (L < 3 * dd + 60 || (best && L <= best.L)) continue;
+        let ok = true;
+        for (let t = 0; t <= 10 && ok; t++) ok = inWater({ lat: pts[i].lat + (pts[k].lat - pts[i].lat) * t / 10, lng: pts[i].lng + (pts[k].lng - pts[i].lng) * t / 10 });
+        if (ok) best = { i, k, L };
+      }
+    if (best) pts.splice(best.i + 1, best.k - best.i - 1);
+  }
+}
 /* Scansione ravvicinata: carta a zoom 16-17 (1-2 m per pixel) con margine stretto attorno al percorso. */
 const CLOSE = { zmax: 17, zmin: 16, padM: 300 };
 const closeBox = (a, b, via) => Water.tileBox([a, b, ...(via || [])], CLOSE.zmax, CLOSE.zmin, CLOSE.padM);
@@ -1509,8 +1539,9 @@ async function autoRouteRun() {
     $('bAuto').disabled = false; return;
   }
   if (seq !== autoSeq) return;
-  const pts = [legs[0][0]];
-  legs.forEach(leg => { pts.push(...leg.slice(1)); });
+  const pts = [legs[0][0]], joints = [];
+  legs.forEach((leg, k) => { if (k && leg[0].ui == null) joints.push(pts.length - 1); pts.push(...leg.slice(1)); });
+  cutSpurs(pts, joints);
   const clean = pts.map(p => ({ lat: p.lat, lng: p.lng })).filter((p, i, a) => i === 0 || i === a.length - 1 || dist(p, a[i - 1]) > 15);
   if (S.active) stopNav();
   const wu = w.map(p => ({ lat: p.lat, lng: p.lng }));
