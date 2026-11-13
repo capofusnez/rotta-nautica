@@ -214,7 +214,7 @@
       const z = Z && Z[i];
       let ok = (wide[i] && !r && !z) || (BR && BR[i] && !r && !z) || (Ln && Ln[i]) || (A && A[i] && (water || r)) || (E && E[i] && water && !r);
       /* una fila di briccole è invalicabile, salvo dove la attraversa un canale mappato (lì c'è il varco); i pali restano ostacoli */
-      if ((B && B[i] && !(Ln && Ln[i])) || (N && N[i])) ok = false;
+      if ((B && B[i] && !((X.linesCore || Ln) && (X.linesCore || Ln)[i])) || (N && N[i])) ok = false;
       m[i] = ok ? 1 : 0;
     }
     const w = close(m, W, H, CFG.closeR);
