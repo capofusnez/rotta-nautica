@@ -533,8 +533,48 @@
       if (best < 0) return { i: -1, why: sea[i0] && cd[i0] > limit ? 'oltre' : beyond ? 'oltre' : 'terra' };
       return { i: best, moved: true, d: Math.sqrt(bd) };
     });
+    if (ends.every(e => e.i >= 0)) unpocket(ends);
     res.ends = ends.map((e, k) => Object.assign({ cd: e.i >= 0 ? cd[e.i] : (m.pts[k] >= 0 ? cd[m.pts[k]] : -1) }, e));
     if (ends.some(e => e.i < 0)) return res;
+
+    /* Sulle griglie larghe (maglia 500-800 m, es. giro dell'Italia) un porto con l'imboccatura stretta diventa una
+       pozza chiusa: il punto agganciato lì non è collegato al mare aperto (prima: "nessun passaggio" partendo da
+       Palermo). Se i due estremi di un tratto stanno in zone d'acqua separate, l'estremo che sta nella zona più
+       piccola si aggancia alla cella più vicina della zona più grande entro snapM; il pezzo tra il punto vero e
+       quella cella lo calcola poi la carta dettagliata, che vede l'imboccatura. */
+    function unpocket(E) {
+      const comp = new Int32Array(N).fill(-1), size = [], q = new Int32Array(N);
+      const label = s0 => {
+        if (comp[s0] >= 0) return comp[s0];
+        const id = size.length; let h = 0, t = 0; q[t++] = s0; comp[s0] = id;
+        while (h < t) {
+          const i = q[h++], x = i % W, y = (i / W) | 0;
+          if (x > 0 && comp[i - 1] < 0 && pass(i - 1)) { comp[i - 1] = id; q[t++] = i - 1; }
+          if (x < W - 1 && comp[i + 1] < 0 && pass(i + 1)) { comp[i + 1] = id; q[t++] = i + 1; }
+          if (y > 0 && comp[i - W] < 0 && pass(i - W)) { comp[i - W] = id; q[t++] = i - W; }
+          if (y < H - 1 && comp[i + W] < 0 && pass(i + W)) { comp[i + W] = id; q[t++] = i + W; }
+        }
+        size.push(t); return id;
+      };
+      E.forEach(e => label(e.i));
+      for (let k = 1; k < E.length; k++) {
+        if (comp[E[k - 1].i] === comp[E[k].i]) continue;
+        /* l'estremo nella zona più piccola cerca la zona dell'altro estremo (o comunque una più grande) */
+        const [lo, hi] = size[comp[E[k - 1].i]] < size[comp[E[k].i]] ? [k - 1, k] : [k, k - 1];
+        const e = E[lo], x0 = m.pts[lo] % W, y0 = (m.pts[lo] / W) | 0, own = size[comp[e.i]], want = comp[E[hi].i];
+        let best = -1, bd = Infinity, bestSame = -1, bdSame = Infinity;
+        for (let y = Math.max(0, y0 - snapR); y <= Math.min(H - 1, y0 + snapR); y++)
+          for (let x = Math.max(0, x0 - snapR); x <= Math.min(W - 1, x0 + snapR); x++) {
+            const j = y * W + x;
+            if (!pass(j)) continue;
+            const c = label(j), dd = ((x - x0) * dx) ** 2 + ((y - y0) * dy) ** 2;
+            if (c === want && dd < bdSame) { bdSame = dd; bestSame = j; }
+            else if (size[c] > own && dd < bd) { bd = dd; best = j; }
+          }
+        const pick = bestSame >= 0 ? bestSame : best;
+        if (pick >= 0) { e.i = pick; e.moved = true; e.d = Math.sqrt(bestSame >= 0 ? bdSame : bd); }
+      }
+    }
 
     const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1], DG = Math.hypot(dx, dy);
     const STEP = [dx, dx, dy, dy, DG, DG, DG, DG];
