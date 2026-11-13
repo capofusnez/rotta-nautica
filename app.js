@@ -573,9 +573,13 @@ function renderRules() {
 
 /* Griglia geografica di mare e terra per la navigazione costiera, dalle profondità EMODnet già scaricate:
    mare dove c'è il dato di profondità, terra altrove. Maglia ~115 m (più larga sulle rotte molto lunghe). */
+/* Estensione dei dati EMODnet scaricati (oltre non c'è costa da vedere: inutile allargare il riquadro). */
+const depthExtent = idx => idx.tiles.reduce((b, t) => ({ s: Math.min(b.s, t.s), n: Math.max(b.n, t.n), w: Math.min(b.w, t.w), e: Math.max(b.e, t.e) }),
+  { s: 90, n: -90, w: 180, e: -180 });
 async function coastGrid(w, limM, grow) {
   const idx = await depthIndex();
   if (!idx.tiles.length) return null;
+  const X = depthExtent(idx);
   let s = 90, n = -90, we = 180, e = -180;
   w.forEach(p => { s = Math.min(s, p.lat); n = Math.max(n, p.lat); we = Math.min(we, p.lng); e = Math.max(e, p.lng); });
   const lat0 = (s + n) / 2, kx = Math.cos(lat0 * RAD);
@@ -584,10 +588,16 @@ async function coastGrid(w, limM, grow) {
      si riprova con un riquadro più grande (grow = 1, 2, 4...) */
   const M = Math.max(isFinite(limM) ? limM + 12000 : 0, 0.3 * spanM, 25000) * (grow || 1);
   s -= M / 111320; n += M / 111320; we -= M / (111320 * kx); e += M / (111320 * kx);
+  /* il riquadro non va oltre i dati: con grow = Infinity copre tutti i mari scaricati (es. giro dell'Italia da
+     Genova a Rimini, passando dallo Stretto di Messina) */
+  s = Math.max(s, X.s); n = Math.min(n, X.n); we = Math.max(we, X.w); e = Math.min(e, X.e);
+  if (s >= n || we >= e) return null;
+  const full = s <= X.s && n >= X.n && we <= X.w && e >= X.e;
   const RES = 960;   // celle per grado dei PNG EMODnet
   const f = Math.max(1, Math.ceil(Math.sqrt(((n - s) * RES) * ((e - we) * RES) / 3e6)));
   const dLat = f / RES, dLng = f / RES, W = Math.ceil((e - we) / dLng), H = Math.ceil((n - s) / dLat);
-  const tiles = (await Promise.all(idx.tiles.filter(t => tileHit(t, { s, n, w: we, e })).map(depthTile))).filter(Boolean);
+  /* sulle griglie larghe (f > 1) bastano tessere ridotte: tutte le 114 tessere intere occuperebbero ~420 MB */
+  const tiles = (await Promise.all(idx.tiles.filter(t => tileHit(t, { s, n, w: we, e })).map(t => f > 1 ? depthTileLow(t, f) : depthTile(t)))).filter(Boolean);
   if (!tiles.length) return null;
   const sea = new Uint8Array(W * H), shallow = new Uint8Array(W * H), need = (S.set.draft > 0 ? S.set.draft + S.set.ukc : 0) * 10;
   let any = 0;
@@ -605,7 +615,7 @@ async function coastGrid(w, limM, grow) {
     }
   });
   if (!any) return null;
-  const g = { s, n, w: we, e, dLat, dLng, W, H, sea, shallow, dx: dLng * 111320 * kx, dy: dLat * 111320 };
+  const g = { s, n, w: we, e, dLat, dLng, W, H, sea, shallow, dx: dLng * 111320 * kx, dy: dLat * 111320, full };
   /* pericoli isolati dei dati nautici (scogli, relitti, ostruzioni, mede di pericolo isolato): da evitare anche al largo */
   g.nogo = new Uint8Array(W * H);
   try {
@@ -695,8 +705,11 @@ async function planSegments(w, label) {
   const simple = () => w.slice(1).map((p, i) => ({ kind: 'detail', a: w[i], b: p }));
   if (!isFinite(limM) && !tooLong && !coarseZoom) return { segs: simple(), cg: null, rules, limM };
   let cg = null, res = null;
-  for (let grow = 1; grow <= 4; grow *= 2) {
-  busy.set(grow > 1 ? 'Navigazione costiera: allargo la zona di calcolo…' : 'Navigazione costiera: leggo costa e fondali…', 1, 0.02);
+  /* riquadro sempre più grande: 1, 2, 4 volte il margine, poi tutti i mari scaricati. Prima si fermava a 4: da
+     Genova a Rimini il riquadro arrivava a 41° N e non vedeva mai lo Stretto di Messina ("nessun passaggio") */
+  for (let grow = 1; ; grow = grow >= 4 ? Infinity : grow * 2) {
+  busy.set(grow === Infinity ? 'Navigazione costiera: cerco il passaggio su tutti i mari scaricati (può richiedere un po\'…)'
+    : grow > 1 ? 'Navigazione costiera: allargo la zona di calcolo…' : 'Navigazione costiera: leggo costa e fondali…', 1, 0.02);
   cg = await coastGrid(w, limM, grow);
   if (!cg) {
     if (tooLong) throw new Error('Tratto troppo lungo e mancano i dati di costa (profondità EMODnet) per dividerlo: aggiungi tappe intermedie');
@@ -711,9 +724,11 @@ async function planSegments(w, label) {
   if (res.error) throw new Error('errore nel calcolo costiero (' + res.error + ')');
   cg.cd = res.cd;
   /* il percorso (o la mancanza di percorso) dipende dal bordo del riquadro? fuori dal riquadro la costa non si vede */
-  if (grow >= 4 || res.ends.some(e => e.i < 0)) break;
+  if (cg.full || grow === Infinity || res.ends.some(e => e.i < 0)) break;
   const edgeM = (isFinite(limM) ? limM : 0) + 4000, ex = Math.ceil(edgeM / cg.dx), ey = Math.ceil(edgeM / cg.dy);
-  const nearEdge = i => { const x = i % cg.W, y = (i / cg.W) | 0; return x < ex || y < ey || x >= cg.W - ex || y >= cg.H - ey; };
+  /* i bordi che coincidono con il limite dei dati non contano: lì non c'è altro da vedere */
+  const X = depthExtent(await depthIndex()), inner = { l: cg.w > X.w, r: cg.e < X.e, t: cg.n < X.n, b: cg.s > X.s };
+  const nearEdge = i => { const x = i % cg.W, y = (i / cg.W) | 0; return (inner.l && x < ex) || (inner.t && y < ey) || (inner.r && x >= cg.W - ex) || (inner.b && y >= cg.H - ey); };
   const touches = res.legs.some(L => L.none || L.pieces.some(pc => pc.cells.some(nearEdge)));
   if (!touches) break;
   }
@@ -1055,7 +1070,10 @@ function depthIndex() {
   if (!dIndexP) dIndexP = getData('depth/index.json').then(j => (j && j.tiles) ? j : { tiles: [] }).catch(() => ({ tiles: [] }));
   return dIndexP;
 }
+/* Tessere intere in memoria: al massimo 16 (3,7 MB l'una), le meno usate di recente escono. */
 function depthTile(t) {
+  if (dTiles.has(t.id)) { const p = dTiles.get(t.id); dTiles.delete(t.id); dTiles.set(t.id, p); return p; }
+  while (dTiles.size >= 16) dTiles.delete(dTiles.keys().next().value);
   if (!dTiles.has(t.id)) dTiles.set(t.id, (async () => {
     const blob = await getData('depth/' + t.file, 'blob');
     if (!blob) return null;
@@ -1068,6 +1086,25 @@ function depthTile(t) {
     return { t, w: cv.width, h: cv.height, data };
   })().catch(() => { dTiles.delete(t.id); return null; }));
   return dTiles.get(t.id);
+}
+/* Tessera ridotta di un fattore f (vicino più prossimo, senza sfumature: i colori sono dati, non immagine). */
+const dLow = new Map();
+function depthTileLow(t, f) {
+  const key = t.id + '/' + f;
+  if (!dLow.has(key)) dLow.set(key, (async () => {
+    const blob = await getData('depth/' + t.file, 'blob');
+    if (!blob) return null;
+    const bm = await createImageBitmap(blob);
+    const w = Math.max(1, Math.ceil(bm.width / f)), h = Math.max(1, Math.ceil(bm.height / f));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const cx = cv.getContext('2d', { willReadFrequently: true });
+    cx.imageSmoothingEnabled = false;
+    cx.drawImage(bm, 0, 0, w, h);
+    const data = cx.getImageData(0, 0, w, h).data;
+    if (bm.close) bm.close();
+    return { t, w, h, data };
+  })().catch(() => { dLow.delete(key); return null; }));
+  return dLow.get(key);
 }
 /* Maschera dei fondali troppo bassi per il pescaggio (1 = profondità nota e minore di need metri). */
 async function depthMask(box, W, H, need) {
