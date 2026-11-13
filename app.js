@@ -843,7 +843,10 @@ const busy = {
 const yieldUI = () => new Promise(r => setTimeout(r, 40));
 /* Prepara i dati di un tratto: carte ENC, immagini della carta OSM (salvate sul telefono) e dati nautici locali.
    Il calcolo vero e proprio avviene nel Web Worker (vedi routeLeg), così l'interfaccia non si blocca. */
-async function loadGrid(a, b, k, n, plan, via, pad, zmin) {
+/* Scansione ravvicinata: carta a zoom 16-17 (1-2 m per pixel) con margine stretto attorno al percorso. */
+const CLOSE = { zmax: 17, zmin: 16, padM: 300 };
+const closeBox = (a, b, via) => Water.tileBox([a, b, ...(via || [])], CLOSE.zmax, CLOSE.zmin, CLOSE.padM);
+async function loadGrid(a, b, k, n, plan, via, pad, zmin, close) {
   let pts = [a, b, ...(via || [])];
   if (pad > 0) {
     let s = 90, nn = -90, w = 180, e = -180;
@@ -855,7 +858,7 @@ async function loadGrid(a, b, k, n, plan, via, pad, zmin) {
       if (Water.tileBox(big, 16, zmin || ZOOM_MIN)) { pts = big; break; }
     }
   }
-  const box = Water.tileBox(pts) || Water.tileBox([a, b]);
+  const box = (close && closeBox(a, b, via)) || Water.tileBox(pts) || Water.tileBox([a, b]);
   if (!box) throw new Error(`Tratto ${k} troppo lungo: aggiungi una tappa a metà strada`);
   const nx = box.tx1 - box.tx0 + 1, ny = box.ty1 - box.ty0 + 1, W = nx * Water.TILE, H = ny * Water.TILE;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
@@ -1389,26 +1392,44 @@ async function autoRouteRun() {
     plan = await planSegments(w, name);
     if (seq !== autoSeq) return;
     if (plan.cg) S.coarse = { g: plan.cg, limM: plan.limM };
-    const segs = plan.segs, n = segs.length;
-    busy.legs = n;
-    for (let k = 1; k <= n; k++) {
-      const sg = segs[k - 1];
+    const segs = plan.segs;
+    busy.legs = segs.length;
+    for (let k = 1; k <= segs.length; k++) {
+      const sg = segs[k - 1], n = segs.length;
       /* mare aperto: il percorso della griglia costiera è già verificato (acqua, limiti, pericoli, fondali) */
       if (sg.kind === 'open') { legs.push([sg.a, ...sg.mid, sg.b]); busy.set(`Tratto ${k}/${n}: mare aperto`, k, 1); continue; }
-      let prep = await loadGrid(sg.a, sg.b, k, n, plan, sg.via, sg.pad);
+      let prep = await loadGrid(sg.a, sg.b, k, n, plan, sg.via, sg.close ? 0 : sg.pad, undefined, sg.close);
       if (seq !== autoSeq) return;
-      busy.set(`Tratto ${k}/${n}: cerco il percorso…`, k, 0.75);
+      busy.set(`Tratto ${k}/${n}: cerco il percorso${sg.close ? ' (zoom ravvicinato)' : ''}…`, k, 0.75);
       let res = await routeLeg(prep, sg.a, sg.b);
       if (seq !== autoSeq) return;
       /* nessun passaggio in una carta stretta: si riprova una volta su una carta più ampia (la bocca di porto o il canale
          giusto possono stare appena fuori), anche a zoom più basso */
-      if (!res.error && !res.cells && plan.cg) {
+      if (!res.error && !res.cells && plan.cg && !sg.close) {
         busy.set(`Tratto ${k}/${n}: allargo la carta…`, k, 0.4);
         const prep2 = await loadGrid(sg.a, sg.b, k, n, plan, sg.via, Math.max(sg.pad || 0, 6000), 13);
         if (seq !== autoSeq) return;
         const res2 = await routeLeg(prep2, sg.a, sg.b);
         if (seq !== autoSeq) return;
         if (res2.cells) { prep = prep2; res = res2; }
+      }
+      /* SCANSIONI RAVVICINATE: a zoom 15 (3 m per pixel) canali stretti, pali e briccole vicine possono chiudere un
+         passaggio che c'è. Prima si rifà lo stesso tratto a zoom 16-17; se non basta, lo si divide a metà lungo il
+         percorso della griglia costiera e si rifà ogni metà a zoom alto (fino a 8 pezzi). */
+      if (!res.error && !res.cells && (sg.depth || 0) < 3) {
+        const via = sg.via || [];
+        if (!sg.close && closeBox(sg.a, sg.b, via)) {
+          busy.set(`Tratto ${k}/${n}: zoom ravvicinato…`, k, 0.4);
+          segs.splice(k - 1, 1, Object.assign({}, sg, { close: true, depth: 0 }));
+          busy.legs = segs.length; k--; continue;
+        }
+        if (via.length >= 3) {
+          const i = via.length >> 1, m = { lat: via[i].lat, lng: via[i].lng }, d = (sg.depth || 0) + 1;
+          busy.set(`Tratto ${k}/${n}: divido il tratto per lo zoom ravvicinato…`, k, 0.4);
+          segs.splice(k - 1, 1, { kind: 'detail', a: sg.a, b: m, via: via.slice(0, i + 1), close: true, depth: d },
+            { kind: 'detail', a: m, b: sg.b, via: via.slice(i), close: true, depth: d });
+          busy.legs = segs.length; k--; continue;
+        }
       }
       if (res.error) throw new Error(`Tratto ${k}: errore nel calcolo (${res.error})`);
       /* griglia restituita dal Worker: serve per le coordinate e per "Mostra acque navigabili" */
@@ -1551,398 +1572,4 @@ function showWater(on) {
 const GRID = [['sog', 'SOG nodi'], ['cog', 'COG'], ['brg', 'BRG al punto'], ['dtw', 'DTW'], ['xte', 'XTE'], ['vmg', 'VMG nodi'],
   ['ttg', 'TTG punto'], ['eta', 'ETA punto'], ['rem', 'Distanza rimanente'], ['fin', 'Arrivo finale'], ['pos', 'Posizione', 1],
   ['trip', 'Percorso'], ['time', 'Tempo'], ['avg', 'Media nodi'], ['max', 'Max nodi'], ['acc', 'Precisione GPS'],
-  ['wind', 'Vento'], ['gust', 'Raffica'], ['wave', 'Onda'], ['pres', 'Pressione'], ['anc', 'Deriva ancora'], ['utc', 'Ora UTC']];
-$('grid').innerHTML = GRID.map(g => `<div class="g${g[2] ? ' w' : ''}"><span class="lbl">${g[1]}</span><b id="d-${g[0]}">--</b></div>`).join('');
-const setD = (id, v) => { const e = $('d-' + id); if (e) e.textContent = v; };
-
-function ui() {
-  const p = S.pos, N = nav();
-  $('sog').textContent = p ? p.sog.toFixed(1) : '0.0';
-  $('cog').textContent = p ? fmtAng(p.cog) : '---°';
-  $('tgtLbl').textContent = N.label;
-  $('brg').textContent = fmtAng(N.brg);
-  $('dtw').textContent = fmtDist(N.dtw);
-  $('xte').textContent = N.xte != null ? (N.xte >= 0 ? 'D ' : 'S ') + fmtDist(Math.abs(N.xte)) : '--';
-  $('eta').textContent = N.eta ? fmtClock(N.eta) : '--:--';
-  $('vmg').textContent = N.vmg != null ? N.vmg.toFixed(1) : '--';
-
-  if ($('sheet').hidden || S.tab !== 'dati') return;
-  const el = p && S.trip.t0 ? (Date.now() - S.trip.t0) / 1000 : NaN;
-  const wx = S.wx || {};
-  const f = (v, n, u) => v != null && isFinite(v) ? (+v).toFixed(n) + (u || '') : '--';
-  setD('sog', p ? p.sog.toFixed(1) : '--'); setD('cog', p ? fmtAng(p.cog) : '--');
-  setD('brg', fmtAng(N.brg)); setD('dtw', fmtDist(N.dtw));
-  setD('xte', N.xte != null ? (N.xte >= 0 ? 'D ' : 'S ') + fmtDist(Math.abs(N.xte)) : '--');
-  setD('vmg', f(N.vmg, 1)); setD('ttg', fmtDur(N.ttg)); setD('eta', N.eta ? fmtClock(N.eta) : '--');
-  setD('rem', fmtDist(N.rem)); setD('fin', N.eta && S.active ? fmtClock(N.eta) : '--');
-  setD('pos', fmtPos(p)); setD('trip', fmtDist(S.trip.dist)); setD('time', fmtDur(el));
-  setD('avg', isFinite(el) && el > 30 ? (S.trip.dist / el * KN).toFixed(1) : '--');
-  setD('max', S.trip.max.toFixed(1)); setD('acc', p && p.acc != null ? '±' + Math.round(p.acc) + ' m' : '--');
-  setD('wind', wx.wind_speed_10m != null ? `${fmtAng(wx.wind_direction_10m)} ${Math.round(wx.wind_speed_10m)} kn` : '--');
-  setD('gust', f(wx.wind_gusts_10m, 0, ' kn'));
-  setD('wave', wx.wave_height != null ? `${wx.wave_height.toFixed(1)} m ${f(wx.wave_period, 0, ' s')}` : '--');
-  setD('pres', f(wx.pressure_msl, 0, ' hPa'));
-  setD('anc', S.anchor && p ? fmtDist(dist(p, S.anchor)) + ' / ' + S.anchor.r + ' m' : '--');
-  const u = new Date(); setD('utc', pad2(u.getUTCHours()) + ':' + pad2(u.getUTCMinutes()) + ':' + pad2(u.getUTCSeconds()));
-}
-
-function fabs() {
-  const g = $('bGps');
-  g.className = 'fab' + (S.sim ? ' on' : !S.gpsOn ? '' : (Date.now() - S.lastFix < 8000 ? ' ok' : ' search'));
-  g.textContent = S.sim ? 'SIM' : 'GPS';
-  $('bFollow').className = 'fab' + (S.set.follow ? ' on' : '');
-  $('bNight').className = 'fab' + (S.set.night ? ' on' : '');
-  $('bMute').className = 'fab' + (S.set.mute ? '' : ' on');
-  $('bMute').textContent = S.set.mute ? 'MUTO' : 'AUDIO';
-  $('bGo').textContent = S.active ? 'Ferma navigazione' : 'Avvia navigazione';
-  $('bSim').textContent = S.sim ? 'Ferma simulazione' : 'Simula';
-}
-
-function renderRoute() {
-  const w = wps(), st = S.route.start, de = S.route.dest;
-  $('tStart').textContent = st ? fmtPos(st) : 'non impostata';
-  $('tDest').textContent = de ? fmtPos(de) : 'non impostata';
-  let html = '', tot = 0;
-  for (let i = 1; i < w.length; i++) {
-    const d = dist(w[i - 1], w[i]); tot += d;
-    const a = i === 1 ? 'P' : String(i - 1), b = i === w.length - 1 ? 'D' : String(i);
-    const isVia = i < w.length - 1;
-    html += `<div class="leg"><b>${a} → ${b}${S.active && i === S.leg ? ' (in corso)' : ''}</b><span>${fmtAng(brg(w[i - 1], w[i]))}</span><span>${fmtDist(d)}</span>` +
-      (isVia ? `<button data-act="delVia" data-i="${i - 1}" aria-label="Elimina tappa ${i}">✕</button>` : '<span></span>') + '</div>';
-  }
-  if (S.route.path) html = S.route.via.map((p, i) =>
-    `<div class="leg"><b>Tappa ${i + 1}</b><span></span><span></span><button data-act="delVia" data-i="${i}" aria-label="Elimina tappa ${i + 1}">✕</button></div>`).join('');
-  $('legs').innerHTML = !S.route.path && w.length > 13 ? `<p class="note">${w.length - 1} tratti</p>` : html;
-  $('bUndo').hidden = true;
-  const bad = routeConflicts();
-  $('sum').innerHTML = S.route.blocked ? '<span class="wr">Rotta non tracciata: vedi il messaggio sopra</span>' : w.length > 1
-    ? `<span>Totale ${fmtDist(tot)}</span><span>Durata ${fmtDur(tot / (S.set.plan / KN))}</span>` + (bad ? `<span class="wr">${bad} ostacoli vicino alla rotta</span>` : '')
-    : '<span class="note">Scegli partenza e destinazione sulla carta, con il GPS o cercando un luogo.</span>';
-  $('sPlan').value = S.set.plan;
-  $('saved').innerHTML = S.saved.map((r, i) =>
-    `<div class="row" style="grid-template-columns:1fr auto auto"><b>${esc(r.name)}</b><button data-act="loadRoute" data-i="${i}">Carica</button><button data-act="delRoute" data-i="${i}" aria-label="Elimina">✕</button></div>`).join('');
-  $('results').innerHTML = S.results.map((r, i) =>
-    `<div class="res"><p>${esc(r.display)}</p><div class="btns">` +
-    ['start|Partenza', 'via|Tappa', 'dest|Destinazione'].map(x => { const [k, l] = x.split('|'); return `<button data-act="useRes" data-k="${k}" data-i="${i}">${l}</button>`; }).join('') +
-    `<button data-act="goRes" data-i="${i}">Vai</button></div></div>`).join('');
-  fabs();
-}
-function routeConflicts() {
-  const w = wps(); let n = 0;
-  S.hazards.forEach(h => { for (let i = 1; i < w.length; i++) if (segDist(h, w[i - 1], w[i]) < h.r) { n++; break; } });
-  return n;
-}
-function renderHaz() {
-  $('hList').innerHTML = S.hazards.map(h =>
-    `<div class="row" style="grid-template-columns:1fr auto auto auto"><b>${esc(h.name)}</b><span>${h.r} m</span><button data-act="goHaz" data-id="${esc(h.id)}">Vai</button><button data-act="delHaz" data-id="${esc(h.id)}" aria-label="Elimina">✕</button></div>`).join('')
-    || '<p class="note">Nessuna secca o ostacolo segnato.</p>';
-  $('bAnchor').textContent = S.anchor ? 'Ritira ancora (allarme attivo)' : 'Getta ancora qui';
-}
-
-const TITLES = { rotta: 'Rotta', dati: 'Dati', avvisi: 'Avvisi', mappa: 'Carta' };
-function minSheet(on) { $('sheet').classList.toggle('min', on); if (!on) $('sheet').scrollTop = 0; }
-function openSheet(t) {
-  S.tab = t; $('sheet').hidden = false; minSheet(false);
-  $('sheetTitle').textContent = TITLES[t] || '';
-  document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + t; });
-  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
-  if (t === 'rotta') renderRoute();
-  if (t === 'avvisi') renderHaz();
-  ui();
-}
-function closeSheet() {
-  S.tab = null; $('sheet').hidden = true; $('sheet').classList.remove('min');
-  document.querySelectorAll('#tabs button').forEach(b => b.classList.remove('on'));
-}
-document.querySelectorAll('#tabs button').forEach(b => { b.onclick = () => { S.tab === b.dataset.t ? closeSheet() : openSheet(b.dataset.t); }; });
-
-function pick(type) {
-  S.pick = type; closeSheet(); map.closePopup();
-  $('pickBar').hidden = false;
-  $('pickTxt').textContent = { start: 'Tocca la carta: PARTENZA', via: 'Tocca la carta: TAPPE (poi Fine)', dest: 'Tocca la carta: DESTINAZIONE', hazard: 'Tocca la carta: SECCA / OSTACOLO' }[type];
-}
-function endPick() { S.pick = null; $('pickBar').hidden = true; if (!S.tab) openSheet('rotta'); autoSchedule(); }
-$('pickDone').onclick = endPick;
-/* pannello: tocco sulla maniglia = abbassa/alza; trascina giù = abbassa (e se già abbassato chiude), su = alza */
-let swY = null, swDy = 0, swMoved = false;
-$('sheetClose').onclick = () => { if (swMoved) { swMoved = false; return; } minSheet(!$('sheet').classList.contains('min')); };
-$('sheet').addEventListener('touchstart', e => {
-  const sh = $('sheet');
-  if (e.target.closest('#sheetClose') || sh.scrollTop <= 0 || sh.classList.contains('min')) { swY = e.touches[0].clientY; swDy = 0; }
-  else swY = null;
-}, { passive: true });
-$('sheet').addEventListener('touchmove', e => {
-  if (swY == null) return;
-  const sh = $('sheet'); swDy = e.touches[0].clientY - swY;
-  if (swDy > 0 && (sh.scrollTop <= 0 || e.target.closest('#sheetClose'))) {
-    e.preventDefault(); sh.classList.add('drag'); sh.style.transform = `translateY(${swDy}px)`;
-  } else if (swDy < 0 && !sh.classList.contains('min')) { swY = null; }
-}, { passive: false });
-$('sheet').addEventListener('touchend', () => {
-  if (swY == null) return;
-  const sh = $('sheet'), wasMin = sh.classList.contains('min');
-  sh.classList.remove('drag'); sh.style.transform = '';
-  if (Math.abs(swDy) > 10) swMoved = true;
-  if (swDy > 60) { if (wasMin) closeSheet(); else minSheet(true); }
-  else if (swDy < -30 && wasMin) minSheet(false);
-  swY = null;
-  setTimeout(() => { swMoved = false; }, 350);
-});
-
-/* ---------- Ricerca luoghi ---------- */
-$('fSearch').addEventListener('submit', async e => {
-  e.preventDefault();
-  const q = $('q').value.trim(); if (!q) return;
-  const m = q.match(/^(-?\d+(?:[.,]\d+)?)[\s,;]+(-?\d+(?:[.,]\d+)?)$/);
-  if (m) {
-    S.results = [{ display: 'Coordinate ' + q, lat: parseFloat(m[1].replace(',', '.')), lng: parseFloat(m[2].replace(',', '.')) }];
-  } else {
-    try {
-      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=it&q=' + encodeURIComponent(q));
-      const j = await r.json();
-      S.results = j.map(x => ({ display: x.display_name, lat: +x.lat, lng: +x.lon }));
-      if (!S.results.length) toast('Nessun risultato');
-    } catch (err) { toast('Ricerca non disponibile senza rete'); S.results = []; }
-  }
-  renderRoute();
-});
-
-/* ---------- GPX ---------- */
-function gpxText(withTrack) {
-  const w = wps();
-  let s = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rotta Nautica" xmlns="http://www.topografix.com/GPX/1/1">\n';
-  if (!withTrack && w.length) {
-    s += '<rte><name>Rotta</name>\n' + w.map((p, i) =>
-      `<rtept lat="${p.lat}" lon="${p.lng}"><name>${i === 0 ? 'Partenza' : i === w.length - 1 ? 'Destinazione' : 'Tappa ' + i}</name></rtept>`).join('\n') + '\n</rte>\n';
-  }
-  if (withTrack && S.track.length) {
-    s += '<trk><name>Traccia</name><trkseg>\n' + S.track.map(p =>
-      `<trkpt lat="${p.lat.toFixed(6)}" lon="${p.lng.toFixed(6)}"><time>${new Date(p.t).toISOString()}</time></trkpt>`).join('\n') + '\n</trkseg></trk>\n';
-  }
-  return s + '</gpx>';
-}
-function download(name, text) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'application/gpx+xml' }));
-  a.download = name; document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
-}
-$('fileIn').addEventListener('change', async e => {
-  const f = e.target.files[0]; if (!f) return;
-  try {
-    const doc = new DOMParser().parseFromString(await f.text(), 'text/xml');
-    let nodes = [...doc.getElementsByTagName('rtept')];
-    if (!nodes.length) nodes = [...doc.getElementsByTagName('wpt')];
-    const pts = nodes.map(n => ({ lat: +n.getAttribute('lat'), lng: +n.getAttribute('lon') })).filter(p => isFinite(p.lat) && isFinite(p.lng));
-    if (pts.length < 2) { toast('Il file non contiene una rotta valida'); return; }
-    stopNav();
-    S.route = { start: pts[0], via: [], dest: pts[pts.length - 1], path: pts.slice(1, -1) };
-    routeChanged(); map.fitBounds(routeLine.getBounds().pad(0.2)); toast('Rotta importata');
-  } catch (err) { toast('Impossibile leggere il file GPX'); }
-  e.target.value = '';
-});
-
-/* ---------- Simulazione ---------- */
-function startSim() {
-  const w = wps();
-  if (w.length < 2) { toast('Imposta partenza e destinazione'); return; }
-  audio(); stopGps();
-  S.simBackup = { track: S.track.slice(), trip: Object.assign({}, S.trip) };
-  S.track = []; trackLine.setLatLngs([]); S.trip = { dist: 0, t0: null, max: 0 };
-  S.pos = null; S.sogS = null;
-  S.sim = { i: 0, pt: { lat: w[0].lat, lng: w[0].lng }, done: 0 };
-  S.centered = false; S.legFrom = null;
-  startNav();
-  S.sim.timer = setInterval(simStep, 1000);
-  wake(); fabs(); toast('Simulazione a velocità accelerata');
-}
-function simStep() {
-  const w = wps(), sm = S.sim; if (!sm) return;
-  if (sm.i + 1 >= w.length) { if (++sm.done > 3) stopSim(); return; }
-  const tgt = w[sm.i + 1], step = Math.max(S.set.plan, 1) / KN * 15;
-  const d = dist(sm.pt, tgt), hdg = brg(sm.pt, tgt);
-  if (d <= step) { sm.pt = { lat: tgt.lat, lng: tgt.lng }; sm.i++; }
-  else sm.pt = dest(sm.pt, hdg, step);
-  const rep = dest(sm.pt, (hdg + 90) % 360, Math.sin(Date.now() / 9000) * 40);
-  onFix({ lat: rep.lat, lng: rep.lng, speed: S.set.plan / KN, heading: hdg, acc: 5, t: Date.now() });
-}
-function stopSim() {
-  if (!S.sim) return;
-  clearInterval(S.sim.timer); S.sim = null;
-  if (S.simBackup) {
-    S.track = S.simBackup.track; S.trip = S.simBackup.trip; S.simBackup = null;
-    trackLine.setLatLngs(S.track.map(p => [p.lat, p.lng]));
-  }
-  S.pos = null; S.sogS = null; predLine.setLatLngs([]); toTgtLine.setLatLngs([]);
-  if (map.hasLayer(boat)) map.removeLayer(boat);
-  stopNav(); fabs(); ui(); toast('Simulazione terminata');
-}
-
-/* ---------- Azioni (pulsanti) ---------- */
-document.addEventListener('click', e => {
-  const b = e.target.closest('[data-act]'); if (!b) return;
-  const d = b.dataset, i = +d.i;
-  switch (d.act) {
-    case 'startGps':
-      if (!S.pos) { toast('In attesa della posizione GPS'); break; }
-      place('start', S.pos); toast('Partenza: posizione attuale'); break;
-    case 'pickStart': pick('start'); break;
-    case 'pickDest': pick('dest'); break;
-    case 'pickVia': pick('via'); break;
-    case 'pickHazard': pick('hazard'); break;
-    case 'ctx': map.closePopup(); place(d.k, S.ctx); if (d.k !== 'hazard') { openSheet('rotta'); } break;
-    case 'delVia': S.route.via.splice(i, 1); editRoute(); break;
-    case 'reverse': {
-      stopNav();
-      const s = S.route.start; S.route.start = S.route.dest; S.route.dest = s; S.route.via.reverse(); if (S.route.path) S.route.path.reverse(); routeChanged(); break;
-    }
-    case 'encImport': $('encFile').click(); break;
-    case 'pkgSync': if (!navigator.onLine) toast('Serve la connessione a Internet'); else { toast('Controllo gli aggiornamenti dei dati…'); syncPackage(true); } break;
-    case 'encClear': if (window.ENC) ENC.clear().then(() => { encStatus(); encView.render(); toast('Carte ENC rimosse'); if (S.route.start && S.route.dest) editRoute(); }); break;
-    case 'cancelRoute': clearTimeout(autoT); autoSeq++; stopWorker(); busy.fail('Calcolo annullato. Tocca "Ricalcola rotta" nella scheda Rotta per riprovare.'); $('bAuto').disabled = false; autoMsg('Calcolo annullato.'); break;
-    case 'closeBusy': busy.hide(); break;
-    case 'clear': stopNav(); clearTimeout(autoT); autoSeq++; busy.hide(); S.route = { start: null, via: [], dest: null, path: null }; autoMsg(''); routeChanged(); break;
-    case 'useRes': { const r = S.results[i]; place(d.k, r); map.setView([r.lat, r.lng], Math.max(map.getZoom(), 12)); break; }
-    case 'goRes': { const r = S.results[i]; map.setView([r.lat, r.lng], 13); S.set.follow = false; saveSet(); fabs(); break; }
-    case 'loadRoute': stopNav(); S.route = JSON.parse(JSON.stringify(S.saved[i].route)); routeChanged();
-      if (wps().length > 1) map.fitBounds(routeLine.getBounds().pad(0.2));
-      if (!S.route.path) { S.route.blocked = true; routeChanged(); autoSchedule(); } break;
-    case 'delRoute': S.saved.splice(i, 1); store.set('routes', S.saved); renderRoute(); break;
-    case 'gpxOut': if (wps().length) download('rotta.gpx', gpxText(false)); else toast('Nessuna rotta da esportare'); break;
-    case 'gpxIn': $('fileIn').click(); break;
-    case 'trackGpx': if (S.track.length) download('traccia.gpx', gpxText(true)); else toast('Traccia vuota'); break;
-    case 'trackClear': S.track = []; S.trip = { dist: 0, t0: null, max: 0 }; trackLine.setLatLngs([]); store.set('track', []); store.set('trip', S.trip); toast('Traccia azzerata'); ui(); break;
-    case 'anchor': setAnchor(); break;
-    case 'autoRoute': autoRoute(); break;
-    case 'water': showWater(!S.waterOn); if (S.waterOn && S.grids.length) minSheet(true); break;
-    case 'delHaz': S.hazards = S.hazards.filter(h => h.id !== d.id); clearAl('h' + d.id); store.set('hazards', S.hazards); map.closePopup(); drawHazards(); routeCheck(); renderHaz(); renderRoute(); break;
-    case 'goHaz': { const h = S.hazards.find(x => x.id === d.id); if (h) { map.setView([h.lat, h.lng], 15); S.set.follow = false; saveSet(); fabs(); } break; }
-    case 'dismiss': SN.set(d.id, Date.now() + 60000); clearAl(d.id); break;
-  }
-});
-
-$('bGo').onclick = () => { S.active ? stopNav() : startNav(); fabs(); };
-$('bSim').onclick = () => { S.sim ? stopSim() : startSim(); };
-$('bGps').onclick = () => { if (S.sim) return; if (S.gpsOn) { stopGps(); toast('GPS disattivato'); } else startGps(); };
-$('bFollow').onclick = () => {
-  S.set.follow = !S.set.follow; saveSet(); fabs();
-  if (S.set.follow && S.pos) map.panTo([S.pos.lat, S.pos.lng]);
-};
-$('bNight').onclick = () => { S.set.night = !S.set.night; saveSet(); applyNight(); fabs(); };
-$('bMute').onclick = () => { S.set.mute = !S.set.mute; saveSet(); audio(); fabs(); };
-$('bMob').onclick = mobPress;
-$('fSave').addEventListener('submit', e => {
-  e.preventDefault();
-  if (wps().length < 2) { toast('Imposta prima partenza e destinazione'); return; }
-  const name = $('rName').value.trim() || 'Rotta ' + (S.saved.length + 1);
-  S.saved.push({ name, route: JSON.parse(JSON.stringify(S.route)) });
-  store.set('routes', S.saved); $('rName').value = ''; renderRoute(); toast('Rotta salvata');
-});
-
-if ($('encFile')) $('encFile').addEventListener('change', async e => {
-  const f = e.target.files[0]; e.target.value = '';
-  if (!f || !window.ENC) return;
-  toast('Importo le carte ENC…');
-  try {
-    const i = await ENC.importFile(f);
-    encStatus(); S.set.enc = true; $('lEnc').checked = true; saveSet(); encView.render();
-    toast(`Carte ENC importate: ${i.cells} celle`);
-    if (S.route.start && S.route.dest) editRoute();
-  } catch (err) { toast('Importazione non riuscita: ' + (err.message || err)); }
-});
-
-/* impostazioni */
-let coastT = 0;
-const FIELDS = { sXte: 'xte', sArr: 'arr', sSpd: 'spd', sWind: 'wind', sHz: 'hz', sAnc: 'anc', sPlan: 'plan', sCoast: 'coast', sDraft: 'draft', sUkc: 'ukc',
-  sHp: 'hp', sLen: 'len', sPref: 'pref' };
-const RULE_IDS = /^(sHp|sLen|sPref|sBoat|sLic|sVlim|sCe)$/;
-Object.keys(FIELDS).filter(id => $(id)).forEach(id => {
-  const el = $(id); el.value = S.set[FIELDS[id]];
-  el.addEventListener('input', () => {
-    const v = parseFloat(el.value);
-    if (isFinite(v)) {
-      S.set[FIELDS[id]] = v; saveSet(); if (id === 'sPlan') renderRoute();
-      if (RULE_IDS.test(id)) renderRules();
-      if (/^(sCoast|sDraft|sUkc|sPref)$/.test(id) && S.route.start && S.route.dest) { clearTimeout(coastT); coastT = setTimeout(editRoute, 1200); }
-      if (/^(sDraft|sUkc)$/.test(id)) encView.render();
-    }
-  });
-});
-/* mezzo, patente e limite del mezzo: cambiano il limite di distanza dalla costa e quindi la rotta */
-const SELECTS = { sBoat: 'boat', sLic: 'lic', sVlim: 'vlim', sCe: 'ce' };
-Object.keys(SELECTS).filter(id => $(id)).forEach(id => {
-  const el = $(id); el.value = S.set[SELECTS[id]];
-  el.addEventListener('change', () => {
-    S.set[SELECTS[id]] = el.value; saveSet(); renderRules();
-    if (S.route.start && S.route.dest) { clearTimeout(coastT); coastT = setTimeout(editRoute, 300); }
-  });
-});
-renderRules();
-if ($('gKey')) {
-  $('gKey').value = gKey();
-  $('gKeySave').onclick = () => {
-    const v = $('gKey').value.trim();
-    try { v ? localStorage.setItem(GKEY, v) : localStorage.removeItem(GKEY); Object.keys(GT).forEach(t => localStorage.removeItem('rn.gsess.' + t)); } catch (e) { /* ignora */ }
-    Object.keys(gLayers).forEach(k => { map.removeLayer(gLayers[k]); delete gLayers[k]; });
-    toast(v ? 'Chiave Google salvata su questo telefono' : 'Chiave Google rimossa');
-    applyLayers();
-  };
-}
-document.querySelectorAll('input[name=base]').forEach(r => {
-  r.checked = r.value === S.set.base;
-  r.addEventListener('change', () => { S.set.base = r.value; saveSet(); applyLayers(); });
-});
-[['lSea', 'sea'], ['lBathy', 'bathy'], ['lTrack', 'track'], ['lEnc', 'enc']].filter(([id]) => $(id)).forEach(([id, k]) => {
-  $(id).checked = !!S.set[k];
-  $(id).addEventListener('change', () => { S.set[k] = $(id).checked; saveSet(); applyLayers(); });
-});
-
-/* pacchetto dati per l'uso senza rete */
-if ($('sPkg')) {
-  $('sPkg').value = S.set.pkg;
-  $('sPkg').addEventListener('change', () => { S.set.pkg = $('sPkg').value; saveSet(); pkgStatus(); syncPackage(true); });
-}
-if ($('lPkgWifi')) {
-  $('lPkgWifi').checked = !!S.set.pkgWifi;
-  $('lPkgWifi').addEventListener('change', () => { S.set.pkgWifi = $('lPkgWifi').checked; saveSet(); pkgStatus(); });
-}
-pkgStatus();
-
-/* ---------- Ciclo a 1 Hz ---------- */
-setInterval(() => {
-  const gpsActive = S.gpsOn || S.sim;
-  if (gpsActive && S.lastFix && Date.now() - S.lastFix > 12000) raise('gps', 'Segnale GPS assente da ' + Math.round((Date.now() - S.lastFix) / 1000) + ' s', 'bad');
-  if ([...A.values()].some(a => a.level === 'bad') && Date.now() - lastBeep > 8000) { pattern('bad'); vib('bad'); lastBeep = Date.now(); }
-  if (S.pos && Date.now() - S.wxT > 600000) fetchWx();
-  ui(); fabs();
-}, 1000);
-setInterval(() => {
-  store.set('track', S.track.slice(-3000).map(p => [+p.lat.toFixed(6), +p.lng.toFixed(6), p.t]));
-  store.set('trip', S.trip);
-}, 20000);
-window.addEventListener('pagehide', () => {
-  store.set('track', S.track.slice(-3000).map(p => [+p.lat.toFixed(6), +p.lng.toFixed(6), p.t]));
-  store.set('trip', S.trip);
-});
-
-/* ---------- Avvio ---------- */
-applyLayers(); applyNight();
-trackLine.setLatLngs(S.track.map(p => [p.lat, p.lng]));
-drawHazards(); drawRoute(); renderRoute(); renderHaz(); fabs(); ui();
-if (wps().length > 1 && !store.get('view', null)) map.fitBounds(routeLine.getBounds().pad(0.2));
-/* Nel browser il service worker salva l'app per l'uso senza rete. Nell'APK i file sono già dentro l'app:
-   il service worker non serve e su alcuni Android interferisce con il caricamento, quindi viene tolto. */
-if ('serviceWorker' in navigator) {
-  if (window.Capacitor) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
-  else navigator.serviceWorker.register('sw.js').catch(() => { /* offline mode non disponibile */ });
-}
-window.rnStarted = true;
-if (window.ENC) ENC.load().then(() => { encStatus(); encView.render(); }); else encStatus();
-startGps();
-/* pacchetto dati: controllo a ogni avvio (dopo che la carta è partita) e quando torna la rete */
-setTimeout(() => syncPackage(), 4000);
-window.addEventListener('online', () => syncPackage());
-if (S.route.path === undefined) S.route.path = null;
-if (!S.route.path && S.route.start && S.route.dest) { S.route.blocked = true; drawRoute(); renderRoute(); autoSchedule(); }
-if (!wps().length) setTimeout(() => openSheet('rotta'), 400);
-})();
+  ['wind', 'Vento'], ['gust', 'Raffica'], ['wave', 'Onda'], ['pres', 'Pressione'], ['anc', 'Deriva ancora'], ['utc', 
