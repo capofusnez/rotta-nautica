@@ -941,7 +941,10 @@ function routeLeg(prep, a, b) {
   /* larghezza minima dell'acqua fuori dai canali: canoe e kayak passano anche nei canaletti stretti */
   if (light) masks.minW = 3;
   if (extra.enc) masks.enc = { cov: extra.enc.cov, ok: extra.enc.ok, wet: extra.enc.wet, pref: extra.enc.pref };
-  const msg = { rgba, W, H, box, extra: masks, a: { lat: a.lat, lng: a.lng }, b: { lat: b.lat, lng: b.lng }, relaxM: 500 };
+  const msg = { rgba, W, H, box, extra: masks, a: { lat: a.lat, lng: a.lng }, b: { lat: b.lat, lng: b.lng }, relaxM: 500,
+    /* spostamento massimo degli estremi se cadono in una sacca: poco per i punti scelti dall'utente, di più per i raccordi
+       tra un tratto e l'altro decisi dalla griglia costiera (possono cadere fuori dal canale) */
+    pocket: [a, b].map(p => p.ui != null ? 250 : 1200) };
   return workerRun(msg, [rgba.buffer], () => Water.solve(msg));
 }
 function workerRun(msg, transfer, local) {
@@ -1175,7 +1178,13 @@ const NAV_ACCESS = /^(yes|designated|permissive|destination|official)$/;
 function navWay(t) {
   if (t['seamark:type'] === 'fairway' || t.waterway === 'fairway' || t.waterway === 'dock') return true;
   if (t.waterway === 'tidal_channel') return false;
-  return NAV_ACCESS.test(t.motorboat || '') || NAV_ACCESS.test(t.boat || '') || !!t.CEMT || t.ship === 'yes';
+  if (NAV_ACCESS.test(t.motorboat || '') || NAV_ACCESS.test(t.boat || '') || !!t.CEMT || t.ship === 'yes') return true;
+  if (/^(no|private)$/.test(t.motorboat || t.boat || '')) return false;
+  /* canali portuali e navigabili mappati senza boat/motorboat (es. "Canale di Zaule / Canale Navigabile" a Muggia,
+     "Canale Navigabile Eugenio Valentinis" a Monfalcone, i porti canale): prima venivano trattati come fossi */
+  if (t.usage === 'transportation') return true;
+  return t.waterway === 'canal' && !/antic/i.test(t.name || '') &&
+    /navigabil|porto ?canale|bocca di porto|darsena|canale (portuale|industriale)|idrovia|litoranea veneta/i.test(t.name || '');
 }
 /* oggetti in mare da evitare, con la distanza di rispetto in metri */
 function noGoKind(t) {
@@ -1326,6 +1335,23 @@ function rasterNautical(ctx, W, H, box, nd) {
   /* regola 9 anche nei canali navigabili mappati come linea: corsia di dritta rispetto alla linea del canale */
   const sideS = { res: m, W, H, toPx: P, mpp };
   nd.lines.forEach(l => { for (let k = 1; k < l.length; k++) Channels.paintSide(sideS, l[k - 1], l[k], 30, { half: Math.max(1.5, 15 / mpp), keep: true }); });
+  /* raccordo alle estremità dei canali navigabili: 200 m in prosecuzione dove i fondali EMODnet (maglia 115 m, non vedono
+     i dragaggi) non contano. Es. l'imbocco del canale di Zaule cadeva in una casella "troppo bassa". Terra e briccole restano. */
+  if (m.ext) nd.lines.forEach(l => {
+    if (l.length < 2) return;
+    [[l[1], l[0]], [l[l.length - 2], l[l.length - 1]]].forEach(([p, q]) => {
+      const [px, py] = P(p), [qx, qy] = P(q), L = Math.hypot(qx - px, qy - py);
+      if (L < 0.5) return;
+      const ux = (qx - px) / L, uy = (qy - py) / L, n = Math.round(200 / mpp), r = Math.max(1, Math.round(15 / mpp));
+      for (let t = 0; t <= n; t++) {
+        const cx = Math.round(qx + ux * t), cy = Math.round(qy + uy * t);
+        for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+          const x = cx + dx, y = cy + dy;
+          if (x >= 0 && y >= 0 && x < W && y < H && dx * dx + dy * dy <= r * r) m.ext[y * W + x] = 1;
+        }
+      }
+    });
+  });
   if (nd.hazards && (nd.hazards.length || nd.noGoAreas.length)) drawNoGo(m.nogo, W, H, P, mpp, nd.hazards, nd.noGoAreas);
   let lane = null;
   if (nd.laneAreas && nd.laneAreas.length) { lane = new Uint8Array(W * H); drawNoGo(lane, W, H, P, mpp, [], nd.laneAreas); }
