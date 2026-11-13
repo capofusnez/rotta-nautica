@@ -665,6 +665,34 @@ async function coastGrid(w, limM, grow) {
       }
       fill.forEach(i => { sea[i] = 1; });
     }
+    /* Canali segnalati e corsi d'acqua navigabili aprono la griglia: a maglia di 100-200 m le dighe e i bordi della
+       laguna chiudono le imboccature vere (es. bocca di Grado: la rotta per il porto di Grado faceva il giro da
+       Primero). Solo vicino al mare o in laguna, così un canale interno non diventa una scorciatoia nei campi.
+       Solo sulle griglie fini (fino a ~250 m): su quelle larghe i porti li gestisce l'aggancio di coarseSolve. */
+    if (Math.min(g.dx, g.dy) <= 250) {
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const cx = cv.getContext('2d', { willReadFrequently: true });
+      cx.strokeStyle = cx.fillStyle = '#000'; cx.lineCap = cx.lineJoin = 'round';
+      cx.lineWidth = Math.max(1.5, 60 / Math.min(g.dx, g.dy));
+      const XY = p => [(p.lng - we) / dLng, (n - p.lat) / dLat];
+      D.lines.forEach(l => { if (!l.nav) return; cx.beginPath(); l.pts.forEach((p, i) => { const [x, y] = XY(p); i ? cx.lineTo(x, y) : cx.moveTo(x, y); }); cx.stroke(); });
+      const rr = Math.max(1, 60 / Math.min(g.dx, g.dy));
+      D.nodes.forEach(o => { if (!Channels.side(o.tags)) return; const [x, y] = XY(o); cx.beginPath(); cx.arc(x, y, rr, 0, 2 * Math.PI); cx.fill(); });
+      const px = cx.getImageData(0, 0, W, H).data, near = Math.ceil(300 / Math.min(g.dx, g.dy)), add = [];
+      /* chan: celle di canale segnalato. Lì il calcolo non applica la fascia dei 300 m da riva né la penalità della
+         laguna: in un'imboccatura o in un canale si passa per forza vicino alle dighe */
+      g.chan = new Uint8Array(W * H);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        if (px[i * 4 + 3] < 64) continue;
+        if (sea[i]) { g.chan[i] = 1; continue; }
+        let ok = g.lagoon && g.lagoon[i];
+        for (let yy = Math.max(0, y - near); yy <= Math.min(H - 1, y + near) && !ok; yy++)
+          for (let xx = Math.max(0, x - near); xx <= Math.min(W - 1, x + near); xx++) if (sea[yy * W + xx]) { ok = true; break; }
+        if (ok) add.push(i);
+      }
+      add.forEach(i => { sea[i] = 1; g.chan[i] = 1; });
+    }
   } catch (err) { /* dati nautici non disponibili: restano costa e fondali */ }
   return g;
 }
@@ -717,7 +745,7 @@ async function planSegments(w, label) {
   }
   busy.set('Navigazione costiera: cerco il percorso lungo la costa…', 1, 0.05);
   const msg = { type: 'coarse', W: cg.W, H: cg.H, dx: cg.dx, dy: cg.dy, sea: cg.sea, shallow: S.set.boat === 'remi' ? null : cg.shallow, nogo: cg.nogo, lagoon: cg.lagoon || null,
-    lane: cg.lane || null, attn: cg.attn || null,
+    lane: cg.lane || null, attn: cg.attn || null, chan: cg.chan || null,
     pts: w.map(p => coastCell(cg, p)), limitM: limM, prefM: S.set.pref * NM, coastM: S.set.coast,
     openM: Math.max(1000, S.set.coast + 600), minOpenM: 4000, snapM: 5000 };
   res = await workerRun(msg, [], () => Water.coarseSolve(msg));
