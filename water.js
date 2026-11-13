@@ -508,7 +508,7 @@
      Restituisce cd (distanza dalla costa in metri) e, per ogni tratto dell'utente, i pezzi del percorso:
      { open: true, cells } in mare aperto (già semplificati), { open: false, cells } vicino a costa, porti e canali. */
   function coarseSolve(m) {
-    const { W, H, dx, dy, sea, shallow, nogo, lagoon, lane, attn } = m, N = W * H;
+    const { W, H, dx, dy, sea, shallow, nogo, lagoon, lane, attn, chan } = m, N = W * H;
     const cd = edt(sea, W, H, dx, dy);
     const limit = m.limitM > 0 && isFinite(m.limitM) ? m.limitM : Infinity;
     const pref = Math.min(m.prefM || 0, limit * 0.8), coastM = m.coastM || 0;
@@ -579,6 +579,7 @@
     const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1], DG = Math.hypot(dx, dy);
     const STEP = [dx, dx, dy, dy, DG, DG, DG, DG];
     const costAt = j => {
+      if (chan && chan[j]) return lane && lane[j] ? 8 : 1.2;           // canale segnalato: si segue (dighe e rive vicine sono normali)
       let f = 1;
       if (pref > 0 && cd[j] < pref) f += 2 * (pref - cd[j]) / pref;   // si tiene alla distanza preferita dalla costa
       if (coastM > 0 && cd[j] < coastM) f *= 5;                        // fascia di rispetto (quella vera la applica la carta dettagliata)
