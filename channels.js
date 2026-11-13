@@ -16,6 +16,7 @@
     plainMax: 400,      // larghezza massima di un canale con briccole senza colore
     axisMax: 400,       // distanza massima tra due punti dell'asse consecutivi
     band: 150,          // larghezza della fascia vietata sul lato esterno di ogni fila
+    wallMax: 330,       // file con segnali più distanti (boe in mare aperto, es. baia di Muggia): niente barriera né fascia
     endStub: 150,       // raccordo dell'asse oltre le estremità del canale
     bridge: 500,        // distanza massima per unire la fine di un canale di briccole a un canale mappato
     axisW: [16, 80],    // larghezza minima e massima della fascia navigabile sull'asse
@@ -325,8 +326,10 @@
       out.chanPoly.push(As.concat(Bs).map(j => back(M[j].x, M[j].y)));
     });
 
-    /* 4. BARRIERE: ogni fila è invalicabile */
-    edges.forEach(([i, k]) => out.barrier.push({ a: back(M[i].x, M[i].y), b: back(M[k].x, M[k].y) }));
+    /* 4. BARRIERE: ogni fila fitta è invalicabile. Tra boe distanti centinaia di metri (canali in mare aperto, ingressi
+          dei porti) la "fila" non è un muro: chiudeva per esempio l'ingresso al canale di Zaule. Lì decidono fondali e carta. */
+    const isWall = ([i, k]) => dist(M[i], M[k]) <= C.wallMax;
+    edges.forEach(e => { if (isWall(e)) out.barrier.push({ a: back(M[e[0]].x, M[e[0]].y), b: back(M[e[1]].x, M[e[1]].y) }); });
 
     /* 4b. RACCORDI: dove un canale di briccole finisce e poco più avanti, nella stessa direzione, comincia un canale
            mappato come linea (es. nella gola di una bocca di porto), i due vengono uniti, se il raccordo non scavalca file. */
@@ -363,13 +366,14 @@
        vicini della stessa fila (fino a ~15 tratti). Nelle curve si riempie anche lo spicchio tra due fasce consecutive:
        prima restavano varchi proprio lì, e la rotta correva fuori dal canale, sul basso fondale accanto alle briccole. */
     const eOut = edges.map(([i, k]) => {
+      if (!isWall([i, k])) return null;
       const A = M[i], B = M[k], u = unit(B.x - A.x, B.y - A.y), n = [-u[1], u[0]];
       const inner = [i, k].map(j => partner[j]).filter(j => j >= 0).map(j => Math.sign((M[j].x - A.x) * n[0] + (M[j].y - A.y) * n[1]));
       const sgn = inner.reduce((s, v) => s + v, 0);
       return sgn ? [-Math.sign(sgn) * n[0], -Math.sign(sgn) * n[1]] : null;   // normale verso l'esterno
     });
     const eAt = M.map(() => []);
-    edges.forEach(([i, k], e) => { eAt[i].push(e); eAt[k].push(e); });
+    edges.forEach(([i, k], e) => { if (isWall([i, k])) { eAt[i].push(e); eAt[k].push(e); } });
     let front = eOut.map((o, e) => o ? e : -1).filter(e => e >= 0);
     for (let hop = 0; hop < 15 && front.length; hop++) {
       const next = [];
