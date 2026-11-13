@@ -17,6 +17,8 @@
     axisMax: 400,       // distanza massima tra due punti dell'asse consecutivi
     band: 150,          // larghezza della fascia vietata sul lato esterno di ogni fila
     wallMax: 330,       // file con segnali più distanti (boe in mare aperto, es. baia di Muggia): niente barriera né fascia
+    wallMaxPaired: 450, // ...ma fino a 450 m se i segnali hanno quello di fronte (canale segnalato, es. ingresso di Porto Buso)
+    joinChanMax: 800,   // fine di un canale segnalato: si chiude il lato fino al segnale successivo dello stesso lato, allineato
     endStub: 150,       // raccordo dell'asse oltre le estremità del canale
     bridge: 500,        // distanza massima per unire la fine di un canale di briccole a un canale mappato
     axisW: [16, 80],    // larghezza minima e massima della fascia navigabile sull'asse
@@ -241,7 +243,7 @@
     pairs.forEach(p => [[!p.fwd, 1], [!p.bwd, -1]].forEach(([free, sg]) => {
       if (free) guard.push([p, { x: p.x + sg * p.d[0] * C.endStub, y: p.y + sg * p.d[1] * C.endStub }]);
     }));
-    const adj = M.map(() => []);
+    const adj = M.map(() => []), longWall = new Set();
     edges.forEach(([i, k]) => { adj[i].push(k); adj[k].push(i); });
     const comp = M.map((m, i) => i), root = i => { while (comp[i] !== i) i = comp[i] = comp[comp[i]]; return i; };
     edges.forEach(([i, k]) => { comp[root(i)] = root(k); });
@@ -260,20 +262,26 @@
           const dk = adj[k].length ? unit(o.x - M[adj[k][0]].x, o.y - M[adj[k][0]].y) : null;
           if (!di && !dk) return;                                  // due segnali isolati: potrebbero stare di fronte
           const lk = adj[k].length ? dist(o, M[adj[k][0]]) : 0;
-          if (dd > 2.5 * Math.max(li, lk)) return;                 // varco molto più lungo della spaziatura della fila
           const v = unit(o.x - m.x, o.y - m.y);
+          /* fine di un canale segnalato (segnale con quello di fronte) che prosegue, allineato, verso un segnale dello stesso
+             lato più lontano, es. ultima boa rossa e fanale rosso della testata del molo a Porto Buso: si chiude il lato */
+          const al = (!di || v[0] * di[0] + v[1] * di[1] >= 0.9) && (!dk || -(v[0] * dk[0] + v[1] * dk[1]) >= 0.9);
+          const chanEnd = m.side && m.side === o.side && dd <= C.joinChanMax && al &&
+            ((partner[i] >= 0 && di) || (partner[k] >= 0 && dk));
+          if (dd > 2.5 * Math.max(li, lk) && !chanEnd) return;     // varco molto più lungo della spaziatura della fila
           if (di && v[0] * di[0] + v[1] * di[1] < 0.7) return;    // prosegue la fila di i (entro ~45°)
           if (dk && -(v[0] * dk[0] + v[1] * dk[1]) < 0.7) return;  // e quella di k
           if (guard.some(([A, B]) => A !== m && B !== m && A !== o && B !== o && cross(m, o, A, B))) return;
           if (edges.some(([a, b]) => a !== i && b !== i && a !== k && b !== k && cross(m, o, M[a], M[b]))) return;
-          cands.push([dd, i, k]);
+          cands.push([dd, i, k, chanEnd && dd > C.wallMaxPaired]);
         });
       });
       if (!cands.length) break;
       cands.sort((a, b) => a[0] - b[0]);
       let added = 0;
-      cands.forEach(([, i, k]) => {
+      cands.forEach(([, i, k, long]) => {
         if (adj[i].length >= 2 || adj[k].length >= 2 || root(i) === root(k)) return;
+        if (long) longWall.add(i + ',' + k);
         edges.push([i, k]); adj[i].push(k); adj[k].push(i); comp[root(i)] = root(k); added++;
       });
       if (!added) break;
@@ -328,7 +336,18 @@
 
     /* 4. BARRIERE: ogni fila fitta è invalicabile. Tra boe distanti centinaia di metri (canali in mare aperto, ingressi
           dei porti) la "fila" non è un muro: chiudeva per esempio l'ingresso al canale di Zaule. Lì decidono fondali e carta. */
-    const isWall = ([i, k]) => dist(M[i], M[k]) <= C.wallMax;
+    const wall0 = (i, k) => { const d = dist(M[i], M[k]); return d <= C.wallMax || (d <= C.wallMaxPaired && partner[i] >= 0 && partner[k] >= 0); };
+    /* tratto lungo (fino a joinChanMax) che prolunga, allineato e dello stesso lato, un tratto di canale segnalato:
+       resta barriera (es. ultima boa rossa -> fanale rosso del molo a Porto Buso, 770 m) */
+    const wallExt = (i, k) => {
+      if (dist(M[i], M[k]) > C.joinChanMax || !M[i].side || M[i].side !== M[k].side) return false;
+      const u = unit(M[k].x - M[i].x, M[k].y - M[i].y);
+      return [[i, k, 1], [k, i, -1]].some(([p, q, sg]) => adj[p].some(r => r !== q && wall0(p, r) && partner[p] >= 0 && (() => {
+        const w = unit(M[p].x - M[r].x, M[p].y - M[r].y);
+        return sg * (w[0] * u[0] + w[1] * u[1]) >= 0.9;
+      })()));
+    };
+    const isWall = ([i, k]) => wall0(i, k) || longWall.has(i + ',' + k) || longWall.has(k + ',' + i) || wallExt(i, k);
     edges.forEach(e => { if (isWall(e)) out.barrier.push({ a: back(M[e[0]].x, M[e[0]].y), b: back(M[e[1]].x, M[e[1]].y) }); });
 
     /* 4b. RACCORDI: dove un canale di briccole finisce e poco più avanti, nella stessa direzione, comincia un canale
