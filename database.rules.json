@@ -1,0 +1,22 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "flotta": {
+      ".read": "auth != null",
+      ".indexOn": ["t"],
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['n', 'lat', 'lng', 't'])",
+        "n": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
+        "b": { ".validate": "newData.isString() && newData.val().length <= 20" },
+        "lat": { ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90" },
+        "lng": { ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180" },
+        "c": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 360" },
+        "v": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 100" },
+        "t": { ".validate": "newData.val() === now" },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}
