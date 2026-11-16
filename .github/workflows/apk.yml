@@ -35,7 +35,13 @@ jobs:
           cd build
           npm init -y > /dev/null
           npm install --no-audit --no-fund leaflet@1.9.4 @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
-          cp ../index.html ../app.js ../water.js ../channels.js ../enc.js ../seamarks.js ../sw.js ../manifest.webmanifest ../icon-192.png ../icon-512.png ../traffico.html www/
+          # accesso con Google per "Barche con Rotta Nautica": serve il file google-services.json di Firebase nel repository
+          if [ -f ../google-services.json ]; then
+            npm install --no-audit --no-fund @capacitor-firebase/authentication@^6
+          else
+            echo "google-services.json non presente: APK senza accesso con Google"
+          fi
+          cp ../index.html ../app.js ../water.js ../channels.js ../enc.js ../seamarks.js ../firebase-config.js ../flotta.js ../sw.js ../manifest.webmanifest ../icon-192.png ../icon-512.png ../traffico.html www/
           cp -r node_modules/leaflet/dist/* www/leaflet/
           # dati nautici locali (canali e briccole), se presenti nel repository
           cp ../nautica_locale.geojson www/ 2>/dev/null || echo "nautica_locale.geojson non presente"
@@ -46,7 +52,16 @@ jobs:
         working-directory: build
         run: |
           npx cap init "Rotta Nautica" it.capofusnez.rottanautica --web-dir=www
+          if [ -f ../google-services.json ]; then
+            # il componente nativo fa solo l'accesso con Google; la sessione la gestisce flotta.js
+            node -e "const fs=require('fs');const f=fs.existsSync('capacitor.config.json')?'capacitor.config.json':null;if(!f){console.log('capacitor.config.json non trovato');process.exit(0)}const c=JSON.parse(fs.readFileSync(f,'utf8'));c.plugins=Object.assign(c.plugins||{},{FirebaseAuthentication:{skipNativeAuth:true,providers:['google.com']}});fs.writeFileSync(f,JSON.stringify(c,null,2))"
+          fi
           npx cap add android
+          if [ -f ../google-services.json ]; then
+            cp ../google-services.json android/app/google-services.json
+            sed -i 's/minSdkVersion = 2[0-2]$/minSdkVersion = 23/' android/variables.gradle
+            printf '\next.rgcfaIncludeGoogle = true\n' >> android/variables.gradle
+          fi
           npx cap sync android
 
       - name: Permessi, versione e icona
@@ -94,7 +109,7 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk ../../rotta-nautica.apk
           # stampa l'impronta della firma: deve essere sempre la stessa a ogni costruzione
           APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
-          "$APKSIGNER" verify --print-certs ../../rotta-nautica.apk | grep -i "SHA-256"
+          "$APKSIGNER" verify --print-certs ../../rotta-nautica.apk | grep -iE "SHA-256|SHA-1"
 
       - name: Pubblica l'APK
         uses: actions/upload-artifact@v4
