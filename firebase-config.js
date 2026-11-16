@@ -1,11 +1,22 @@
-/* Configurazione Firebase per vedere le altre barche (flotta.js).
-   La copi da Firebase → Impostazioni progetto → Le tue app → app Web → "Configurazione SDK" (opzione "Config").
-   Questi valori non sono segreti: identificano il progetto, la protezione dei dati la fanno le regole del database.
-   Finché restano vuoti la funzione "Barche con Rotta Nautica" resta spenta e il resto dell'app funziona normalmente. */
-window.RN_FIREBASE = {
-  apiKey: '',
-  authDomain: '',
-  databaseURL: '',
-  projectId: '',
-  appId: ''
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyBipUhbJpinTshZt7JRdPDyjVZ2s-RYnbs",
+  authDomain: "rotta-nautica.firebaseapp.com",
+  databaseURL: "https://rotta-nautica-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "rotta-nautica",
+  storageBucket: "rotta-nautica.firebasestorage.app",
+  messagingSenderId: "30930294461",
+  appId: "1:30930294461:web:fd415f1a5896016e0d49d4",
+  measurementId: "G-DTCZ9CKDRF"
 };
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
