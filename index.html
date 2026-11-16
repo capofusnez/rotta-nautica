@@ -74,7 +74,23 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 .fab.search{border-color:var(--warn);color:var(--warn)}
 .fab.mob{background:var(--bad);border-color:var(--bad);color:#fff}
 /* ingranaggio delle impostazioni: in alto a sinistra, così la colonna di destra (e il MOB) non si allunga */
-#fabsL{position:fixed;z-index:890;left:max(8px,env(safe-area-inset-left,0px));top:calc(var(--hudH, 96px) + 8px)}
+#fabsL{position:fixed;z-index:890;left:max(8px,env(safe-area-inset-left,0px));top:calc(var(--hudH, 96px) + 8px);display:flex;flex-direction:column;gap:6px}
+/* traffico navale: finestra sopra la carta */
+#aisBox{position:fixed;z-index:1200;left:0;right:0;top:var(--hudH, 96px);bottom:0;display:flex;flex-direction:column;background:var(--panel)}
+#aisBox[hidden]{display:none}
+.aisBar{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:13px}
+.aisBar span{flex:1;opacity:.85}
+#aisFrame{flex:1;width:100%;border:0;background:#0d1b26}
+/* relitti */
+.wk{width:16px;height:16px;border-radius:50%;background:#7d8a94;border:2px solid #fff;box-shadow:0 0 0 1px #0006;display:flex;align-items:center;justify-content:center;color:#fff;font:700 10px/1 system-ui}
+.wk.dive{background:#e8811a;width:20px;height:20px;box-shadow:0 0 0 2px #e8811a66,0 0 0 1px #0006}
+.wkLeg{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;font-size:13px;margin:6px 0}
+.wkLeg span{display:inline-flex;align-items:center;gap:6px}
+#wreckList button{display:flex;width:100%;justify-content:space-between;gap:8px;text-align:left;margin:4px 0;font-weight:400}
+#wreckList b{font-weight:600}
+.wkPop{min-width:190px;font-size:13px;line-height:1.4}
+.wkPop b{font-size:14px}
+.wkPop button{margin-top:6px;width:100%}
 .fab.gear{display:flex;align-items:center;justify-content:center}
 .fab.gear svg{width:24px;height:24px;display:block}
 
@@ -207,6 +223,7 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 
 <div id="fabsL">
   <button id="bSet" class="fab gear" aria-label="Impostazioni: barca e patente" title="Impostazioni: barca e patente"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(0 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(45 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(90 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(135 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(180 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(225 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(270 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(315 12 12)"/></g><circle cx="12" cy="12" r="6.4" fill="none" stroke="currentColor" stroke-width="2.6"/><circle cx="12" cy="12" r="2.1" fill="currentColor"/></svg></button>
+  <button id="bAis" class="fab" hidden aria-label="Traffico navale (AIS)" title="Traffico navale (AIS)">AIS</button>
 </div>
 <div id="fabs">
   <button id="bGps" class="fab" aria-label="Attiva o disattiva il GPS">GPS</button>
@@ -214,6 +231,11 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
   <button id="bNight" class="fab" aria-label="Modalità notte">NOTTE</button>
   <button id="bMute" class="fab" aria-label="Audio allarmi">AUDIO</button>
   <button id="bMob" class="fab mob" aria-label="Uomo in mare">MOB</button>
+</div>
+
+<div id="aisBox" hidden>
+  <div class="aisBar"><span>Traffico navale (AIS) · VesselFinder</span><button id="aisClose">Chiudi</button></div>
+  <iframe id="aisFrame" title="Traffico navale (AIS)" loading="lazy"></iframe>
 </div>
 
 <div id="pickBar" hidden><span id="pickTxt"></span><button id="pickDone">Fine</button></div>
@@ -299,6 +321,13 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
     <label class="chk"><input type="checkbox" id="lSea"> Segnali nautici (OpenSeaMap): toccali per vedere la scheda</label>
     <label class="chk"><input type="checkbox" id="lBathy"> Profondità (EMODnet, indicativa)</label>
     <label class="chk"><input type="checkbox" id="lTrack"> Mostra la traccia percorsa</label>
+    <label class="chk"><input type="checkbox" id="lAis"> Traffico navale (AIS): mostra il pulsante AIS</label>
+    <p class="note">Il traffico navale viene dalla mappa gratuita di VesselFinder e richiede internet. Mostra solo le navi con trasponditore AIS acceso, con qualche minuto di ritardo: non sostituisce la vedetta né il radar.</p>
+    <h4>Relitti per immersioni</h4>
+    <label class="chk"><input type="checkbox" id="lWrecks"> Mostra i relitti sulla carta</label>
+    <div class="wkLeg"><span><i class="wk dive"></i> Sito d'immersione</span><span><i class="wk"></i> Relitto (segnalato per la navigazione)</span></div>
+    <div id="wreckList"></div>
+    <p class="note">Relitti da OpenStreetMap/OpenSeaMap: posizione e profondità sono indicative, verificale con un diving o con le carte ufficiali. Immergiti solo con il brevetto adatto alla profondità, segnala l'immersione con boa o bandiera sub e rispetta divieti, aree marine protette e relitti tutelati.</p>
     <div id="encBox" hidden>
     <h4>Carte ENC ufficiali (S-57)</h4>
     <p class="note" id="encStatus">Nessuna carta ENC caricata.</p>
