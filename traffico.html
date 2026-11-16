@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traffico navale</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d1b26; color: #e6eef3; font: 14px system-ui, sans-serif; }
+  #msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+</style>
+</head>
+<body>
+<div id="msg">Carico il traffico navale (AIS)…</div>
+<script>
+/* Mappa del traffico navale (AIS) di VesselFinder, servizio gratuito da incorporare nei siti.
+   Centro e zoom arrivano dall'app: traffico.html?lat=..&lon=..&zoom=..&names=1
+   Lo script di VesselFinder scrive la mappa nella pagina mentre si carica: per questo vive in una pagina a parte. */
+(function () {
+  var q = new URLSearchParams(location.search);
+  var n = function (k, d) { var v = parseFloat(q.get(k)); return isFinite(v) ? v : d; };
+  window.width = '100%';
+  window.height = String(Math.max(200, window.innerHeight));
+  window.latitude = n('lat', 45.5).toFixed(4);
+  window.longitude = n('lon', 13).toFixed(4);
+  window.zoom = String(Math.max(3, Math.min(18, Math.round(n('zoom', 10)))));
+  window.names = q.get('names') === '1';
+  window.show_track = false;
+  if (!navigator.onLine) document.getElementById('msg').textContent = 'Il traffico navale richiede la connessione a internet.';
+})();
+</script>
+<script src="https://www.vesselfinder.com/aismap.js"></script>
+<script>
+  /* se lo script è stato caricato, la mappa ha preso il posto del messaggio */
+  setTimeout(function () { var m = document.getElementById('msg'); if (document.querySelector('iframe') && m) m.remove(); }, 1500);
+  window.addEventListener('error', function () { var m = document.getElementById('msg'); if (m) m.textContent = 'Traffico navale non disponibile: controlla la connessione.'; }, true);
+</script>
+</body>
+</html>
