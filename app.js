@@ -83,7 +83,8 @@ function fmtClock(ms) {
 /* ---------- Stato ---------- */
 const DEF = { xte: 0.1, arr: 80, spd: 0, wind: 25, hz: 300, plan: 5, anc: 40, coast: 300, draft: 1, ukc: 0.5, enc: true,
   mute: false, night: false, base: 'osm', sea: true, bathy: false, track: true, follow: true,
-  boat: 'motore', hp: 40, len: 6, lic: 'none', vlim: 'auto', ce: 'ce', pref: 1, pkg: 'all', pkgWifi: true };
+  boat: 'motore', hp: 40, len: 6, lic: 'none', vlim: 'auto', ce: 'ce', pref: 1, pkg: 'all', pkgWifi: true,
+  wrecks: false, ais: false };
 const S = {
   set: Object.assign({}, DEF, store.get('set', {})),
   route: store.get('route', { start: null, via: [], dest: null }),
@@ -117,6 +118,9 @@ const bathy = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
 const routeLine = L.polyline([], { color: '#e254ff', weight: 4, opacity: .85, dashArray: '10 8' }).addTo(map);
 const legLine = L.polyline([], { color: '#e254ff', weight: 6, opacity: .95 }).addTo(map);
 const trackLine = L.polyline([], { color: '#ff9f1c', weight: 4, opacity: .95 }).addTo(map);
+/* relitti per immersioni (vedi "Relitti per immersioni" più sotto) */
+const wreckLayer = L.layerGroup();
+let WRECKS = null, wreckLoading = null;
 const toTgtLine = L.polyline([], { color: '#35c8ff', weight: 2, dashArray: '2 6' }).addTo(map);
 const predLine = L.polyline([], { color: '#ffffff', weight: 2, opacity: .9 }).addTo(map);
 const wpLayer = L.layerGroup().addTo(map);
@@ -203,6 +207,8 @@ function applyLayers() {
   if (S.set.sea) { if (!map.hasLayer(sea)) sea.addTo(map); } else map.removeLayer(sea);
   if (S.set.bathy) { if (!map.hasLayer(bathy)) bathy.addTo(map); } else map.removeLayer(bathy);
   if (S.set.track) { if (!map.hasLayer(trackLine)) trackLine.addTo(map); } else map.removeLayer(trackLine);
+  { if (S.set.wrecks) { if (!map.hasLayer(wreckLayer)) { wreckLayer.addTo(map); loadWrecks(); } } else map.removeLayer(wreckLayer); }
+  if ($('bAis')) { $('bAis').hidden = !S.set.ais; if (!S.set.ais) closeAis(); }
   seamarkInspector.refresh();
   encView.render();
 }
@@ -900,12 +906,18 @@ async function closeSolve(a, b, via, depth, k, n, plan, seq) {
     }
   }
   if (depth >= 3 || via.length < 3) return null;
-  const i = via.length >> 1, m = { lat: via[i].lat, lng: via[i].lng, mid: true };
-  busy.set(`Tratto ${k}/${n}: zoom ravvicinato, pezzo ${depth + 2}…`, k, 0.4);
-  const A = await closeSolve(a, m, via.slice(0, i + 1), depth + 1, k, n, plan, seq);
-  if (!A) return null;
-  const B = await closeSolve(m, b, via.slice(i), depth + 1, k, n, plan, seq);
-  return B ? A.concat(B) : null;
+  /* punto di divisione: a metà, poi (solo al primo livello) a un terzo e a due terzi del percorso, se il primo cade male */
+  const fr = depth ? [0.5] : [0.5, 0.35, 0.65];
+  for (const f of fr) {
+    const i = Math.max(1, Math.min(via.length - 2, Math.round((via.length - 1) * f)));
+    const m = { lat: via[i].lat, lng: via[i].lng, mid: true };
+    busy.set(`Tratto ${k}/${n}: zoom ravvicinato, pezzo ${depth + 2}…`, k, 0.4);
+    const A = await closeSolve(a, m, via.slice(0, i + 1), depth + 1, k, n, plan, seq);
+    if (!A) continue;
+    const B = await closeSolve(m, b, via.slice(i), depth + 1, k, n, plan, seq);
+    if (B) return A.concat(B);
+  }
+  return null;
 }
 async function loadGrid(a, b, k, n, plan, via, pad, zmin, close) {
   let pts = [a, b, ...(via || [])];
@@ -1008,7 +1020,10 @@ function routeLeg(prep, a, b) {
   const msg = { rgba, W, H, box, extra: masks, a: { lat: a.lat, lng: a.lng }, b: { lat: b.lat, lng: b.lng }, relaxM: 500,
     /* spostamento massimo degli estremi se cadono in una sacca: poco per i punti scelti dall'utente, di più per i raccordi
        tra un tratto e l'altro decisi dalla griglia costiera (possono cadere fuori dal canale) */
-    pocket: [a, b].map(p => p.ui != null ? 250 : 1200) };
+    /* l'inizio di un tratto è già l'arrivo del tratto precedente: se si spostasse, il tratto precedente finirebbe con una
+       linea dritta fino al nuovo punto, anche sopra la terra (es. Canale Zemole -> Canale Tiel). Si sposta solo di pochi
+       metri, salvo la partenza della rotta; l'arrivo del tratto invece può spostarsi (il tratto dopo parte da lì) */
+    pocket: [a.ui === 0 ? 250 : 30, b.ui != null ? 250 : 1200] };
   return workerRun(msg, [rgba.buffer], () => Water.solve(msg));
 }
 function workerRun(msg, transfer, local) {
@@ -1527,8 +1542,17 @@ async function autoRouteRun() {
       if (res.deepM > 0) deepLegs.push(`tratto ${k}: ${fmtDist(res.deepM)}`);
       const lp = cells.map(i => Water.cellLL(g, i));
       lp[0] = sa; lp[lp.length - 1] = sb;
+      lp.detail = k;
       legs.push(lp);
       }
+    }
+    /* controllo finale dei raccordi: il primo e l'ultimo segmento di ogni tratto calcolato sulla carta devono stare in
+       acqua navigabile (un punto spostato troppo li trasformerebbe in una linea dritta sopra la terra) */
+    const seg = (p, q) => { for (let t = 1; t < 10; t++) if (!inWater({ lat: p.lat + (q.lat - p.lat) * t / 10, lng: p.lng + (q.lng - p.lng) * t / 10 })) return false; return true; };
+    for (const lp of legs) {
+      if (!lp.detail || lp.length < 2) continue;
+      const n = lp.length, bad = [[lp[0], lp[1]], [lp[n - 2], lp[n - 1]]].find(([p, q]) => dist(p, q) > 25 && !seg(p, q));
+      if (bad) throw new Error(`Tratto ${lp.detail}: il raccordo con il tratto vicino passa sopra la terra. Aggiungi una tappa nel canale che vuoi seguire`);
     }
   } catch (e) {
     if (seq !== autoSeq) return;
@@ -1734,6 +1758,7 @@ function openSheet(t) {
   $('bSet').classList.toggle('on', t === 'imp');
   if (t === 'rotta') renderRoute();
   if (t === 'avvisi') renderHaz();
+  if (t === 'mappa') renderWrecks();
   ui();
 }
 function closeSheet() {
@@ -1867,6 +1892,70 @@ function stopSim() {
   stopNav(); fabs(); ui(); toast('Simulazione terminata');
 }
 
+/* ---------- Relitti per immersioni (relitti.json, da OpenStreetMap/OpenSeaMap) ---------- */
+const WK_CAT = { dangerous: 'pericoloso per la navigazione', 'non-dangerous': 'non pericoloso per la navigazione',
+  distributed_remains: 'resti sparsi', mast_showing: 'alberi visibili', hull_showing: 'scafo visibile' };
+const WK_LEVEL = { submerged: 'sommerso', awash: 'affiorante', dry: 'emerso', covers: 'coperto dalla marea', always_dry: 'sempre emerso' };
+const WK_TYPE = { ship: 'nave', submarine: 'sottomarino', aircraft: 'aereo', boat: 'barca', fishing_boat: 'peschereccio', tanker: 'petroliera', cargo: 'mercantile' };
+const wkName = w => w.name || 'Relitto senza nome';
+const wkDepth = w => w.depth && w.maxDepth ? `${w.depth}–${w.maxDepth} m` : w.depth ? `${w.depth} m` : w.maxDepth ? `fino a ${w.maxDepth} m` : null;
+function wikiUrl(v) { const m = /^([a-z]{2,3}):(.+)$/.exec(v || ''); return m ? `https://${m[1]}.wikipedia.org/wiki/${encodeURIComponent(m[2].replace(/ /g, '_'))}` : null; }
+function safeUrl(v) { return /^https?:\/\//i.test(v || '') ? v : v && /^www\./i.test(v) ? 'https://' + v : null; }
+function wreckPopup(w) {
+  const rows = [];
+  if (w.dive) rows.push('Sito d\'immersione');
+  if (wkDepth(w)) rows.push(`Profondità: ${esc(wkDepth(w))}`);
+  if (w.type) rows.push(`Tipo: ${esc(WK_TYPE[w.type] || w.type)}`);
+  if (w.sunk) rows.push(`Affondato: ${esc(w.sunk)}`);
+  if (w.cat) rows.push(`Relitto ${esc(WK_CAT[w.cat] || w.cat)}`);
+  if (w.level) rows.push(`Livello: ${esc(WK_LEVEL[w.level] || w.level)}`);
+  if (w.note) rows.push(esc(w.note));
+  rows.push(`${w.lat.toFixed(5)}, ${w.lng.toFixed(5)}`);
+  const web = safeUrl(w.web), wiki = wikiUrl(w.wiki);
+  const links = [web && `<a href="${esc(web)}" target="_blank" rel="noopener">Sito</a>`, wiki && `<a href="${esc(wiki)}" target="_blank" rel="noopener">Wikipedia</a>`].filter(Boolean).join(' · ');
+  return `<div class="wkPop"><b>${esc(wkName(w))}</b><br>${rows.join('<br>')}${links ? '<br>' + links : ''}` +
+    `<button data-act="wreckDest" data-lat="${w.lat}" data-lng="${w.lng}">Imposta come destinazione</button></div>`;
+}
+function loadWrecks() {
+  if (WRECKS || wreckLoading) return wreckLoading;
+  wreckLoading = getData('relitti.json').then(d => {
+    WRECKS = (d && d.items) || [];
+    WRECKS.forEach(w => {
+      w.marker = L.marker([w.lat, w.lng], { title: wkName(w), icon: L.divIcon({ className: '', iconSize: w.dive ? [20, 20] : [16, 16], iconAnchor: w.dive ? [10, 10] : [8, 8], html: `<div class="wk${w.dive ? ' dive' : ''}"></div>` }) })
+        .bindPopup(() => wreckPopup(w)).addTo(wreckLayer);
+    });
+    renderWrecks();
+    return WRECKS;
+  }).catch(() => { wreckLoading = null; toast('Elenco dei relitti non disponibile'); });
+  return wreckLoading;
+}
+/* elenco dei relitti più vicini (alla barca se c'è il GPS, altrimenti al centro della carta) */
+function renderWrecks() {
+  const el = $('wreckList'); if (!el) return;
+  if (!S.set.wrecks) { el.innerHTML = ''; return; }
+  if (!WRECKS) { el.innerHTML = '<p class="note">Carico i relitti…</p>'; loadWrecks(); return; }
+  const c = S.pos || map.getCenter(), from = S.pos ? 'dalla barca' : 'dal centro della carta';
+  const list = WRECKS.map((w, i) => ({ w, i, d: dist(c, w) })).filter(x => x.d < 60 * 1852).sort((a, b) => a.d - b.d).slice(0, 12);
+  el.innerHTML = list.length
+    ? `<p class="note">Più vicini ${from}:</p>` + list.map(x => `<button data-act="wreckGo" data-i="${x.i}"><span><i class="wk${x.w.dive ? ' dive' : ''}" style="display:inline-block;vertical-align:middle;margin-right:6px"></i><b>${esc(wkName(x.w))}</b>${wkDepth(x.w) ? ' · ' + esc(wkDepth(x.w)) : ''}</span><span>${(x.d / 1852).toFixed(1)} mn</span></button>`).join('')
+    : '<p class="note">Nessun relitto entro 60 miglia.</p>';
+}
+map.on('moveend', () => { if (S.tab === 'mappa' && S.set.wrecks && !S.pos) renderWrecks(); });
+
+/* ---------- Traffico navale (AIS, mappa gratuita di VesselFinder in traffico.html) ---------- */
+function openAis() {
+  if (!navigator.onLine) { toast('Il traffico navale richiede la connessione a internet'); return; }
+  const c = map.getCenter(), z = Math.max(3, Math.min(18, Math.round(map.getZoom())));
+  $('aisFrame').src = `${DATA_BASE}traffico.html?lat=${c.lat.toFixed(4)}&lon=${c.lng.toFixed(4)}&zoom=${z}`;
+  $('aisBox').hidden = false; $('bAis').classList.add('on');
+}
+function closeAis() {
+  if (!$('aisBox') || $('aisBox').hidden) return;
+  $('aisBox').hidden = true; $('aisFrame').src = 'about:blank'; $('bAis').classList.remove('on');
+}
+$('bAis').onclick = () => { $('aisBox').hidden ? openAis() : closeAis(); };
+$('aisClose').onclick = closeAis;
+
 /* ---------- Azioni (pulsanti) ---------- */
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
@@ -1876,6 +1965,8 @@ document.addEventListener('click', e => {
       if (!S.pos) { toast('In attesa della posizione GPS'); break; }
       place('start', S.pos); toast('Partenza: posizione attuale'); break;
     case 'pickStart': pick('start'); break;
+    case 'wreckDest': place('dest', { lat: +d.lat, lng: +d.lng }); map.closePopup(); toast('Destinazione: relitto'); break;
+    case 'wreckGo': { const w = WRECKS && WRECKS[i]; if (!w) break; minSheet(true); map.setView([w.lat, w.lng], Math.max(map.getZoom(), 14)); w.marker.openPopup(); break; }
     case 'pickDest': pick('dest'); break;
     case 'pickVia': pick('via'); break;
     case 'pickHazard': pick('hazard'); break;
@@ -1981,7 +2072,7 @@ document.querySelectorAll('input[name=base]').forEach(r => {
   r.checked = r.value === S.set.base;
   r.addEventListener('change', () => { S.set.base = r.value; saveSet(); applyLayers(); });
 });
-[['lSea', 'sea'], ['lBathy', 'bathy'], ['lTrack', 'track'], ['lEnc', 'enc']].filter(([id]) => $(id)).forEach(([id, k]) => {
+[['lSea', 'sea'], ['lBathy', 'bathy'], ['lTrack', 'track'], ['lEnc', 'enc'], ['lWrecks', 'wrecks'], ['lAis', 'ais']].filter(([id]) => $(id)).forEach(([id, k]) => {
   $(id).checked = !!S.set[k];
   $(id).addEventListener('change', () => { S.set[k] = $(id).checked; saveSet(); applyLayers(); });
 });
