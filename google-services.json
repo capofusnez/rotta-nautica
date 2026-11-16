@@ -15,6 +15,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "30930294461-866scmdsao5gqs1pfblhis08kj9vo72c.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "it.capofusnez.rottanautica",
+            "certificate_hash": "3961236dcb131032f3a167ec25ffca4dcb00931b"
+          }
+        },
+        {
           "client_id": "30930294461-1seacetbg8dj7ats8sfbdie6pgr49es6.apps.googleusercontent.com",
           "client_type": 3
         }
