@@ -90,6 +90,14 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 #wreckList b{font-weight:600}
 .wkPop{min-width:190px;font-size:13px;line-height:1.4}
 .wkPop b{font-size:14px}
+/* barche con Rotta Nautica */
+.fl{position:relative;width:30px;height:30px}
+.fl svg{display:block}
+.fl span{position:absolute;left:50%;top:29px;transform:translateX(-50%);white-space:nowrap;font:600 11px/1.3 system-ui;color:#fff;background:#0b6e4fdd;padding:0 5px;border-radius:6px;pointer-events:none}
+.fl.old{opacity:.5}
+#fleetList button{display:flex;width:100%;justify-content:space-between;gap:8px;text-align:left;margin:4px 0;font-weight:400}
+#fleetList b{font-weight:600}
+.flLeg{display:inline-block;width:10px;height:10px;border-radius:50%;background:#1fbf7a;border:2px solid #fff;box-shadow:0 0 0 1px #0006;vertical-align:middle;margin-right:6px}
 .wkPop button{margin-top:6px;width:100%}
 .fab.gear{display:flex;align-items:center;justify-content:center}
 .fab.gear svg{width:24px;height:24px;display:block}
@@ -323,6 +331,9 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
     <label class="chk"><input type="checkbox" id="lTrack"> Mostra la traccia percorsa</label>
     <label class="chk"><input type="checkbox" id="lAis"> Traffico navale (AIS): mostra il pulsante AIS</label>
     <p class="note">Il traffico navale viene dalla mappa gratuita di VesselFinder e richiede internet. Mostra solo le navi con trasponditore AIS acceso, con qualche minuto di ritardo: non sostituisce la vedetta né il radar.</p>
+    <h4>Barche con Rotta Nautica</h4>
+    <div id="fleetBox"></div>
+    <p class="note">Con l'accesso Google e la condivisione accesa, il nome che scegli, il tipo di mezzo, la posizione, la rotta e la velocità sono visibili a tutti gli utenti dell'app che hanno fatto l'accesso. Vale solo mentre l'app è aperta: quando la chiudi o perdi la rete sparisci dalla carta entro pochi minuti. Puoi spegnere la condivisione o uscire quando vuoi. Le barche degli altri possono avere fino a un minuto di ritardo: non serve a evitare collisioni, guarda sempre fuori.</p>
     <h4>Relitti per immersioni</h4>
     <label class="chk"><input type="checkbox" id="lWrecks"> Mostra i relitti sulla carta</label>
     <div class="wkLeg"><span><i class="wk dive"></i> Sito d'immersione</span><span><i class="wk"></i> Relitto (segnalato per la navigazione)</span></div>
@@ -378,6 +389,8 @@ window.addEventListener('error', function (e) { if (!window.rnStarted) window.rn
 <script src="channels.js"></script>
 <script src="enc.js"></script>
 <script src="seamarks.js"></script>
+<script src="firebase-config.js"></script>
+<script src="flotta.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
