@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "30930294461",
+    "firebase_url": "https://rotta-nautica-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "rotta-nautica",
+    "storage_bucket": "rotta-nautica.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:30930294461:android:e85eb574fd9aee620d49d4",
+        "android_client_info": {
+          "package_name": "it.capofusnez.rottanautica"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "30930294461-1seacetbg8dj7ats8sfbdie6pgr49es6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAEDKaiO2JKHQWDu5f2Fr7odumwk6qXtUM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "30930294461-1seacetbg8dj7ats8sfbdie6pgr49es6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
