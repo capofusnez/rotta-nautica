@@ -36,6 +36,8 @@ way["natural"="coastline"]->.coast;
   relation["seamark:type"="fairway"];
   node["seamark:type"~"^(beacon_lateral|buoy_lateral|beacon_cardinal|buoy_cardinal|beacon_isolated_danger|buoy_isolated_danger|beacon_safe_water|buoy_safe_water|beacon_special_purpose|buoy_special_purpose|pile|light_major|light_minor|light_float|light_vessel|rock|wreck|obstruction|mooring|landmark|fog_signal)$"];
   node["man_made"="dolphin"];
+  // relitti anche senza segnalamento nautico (siti d'immersione): servono all'elenco dei relitti (tools/build_relitti.mjs)
+  node["historic"="wreck"];
   // piattaforme in mare e allevamenti di mitili / acquacoltura: da evitare
   nwr["man_made"="offshore_platform"];
   nwr["seamark:type"~"^(platform|marine_farm)$"];
