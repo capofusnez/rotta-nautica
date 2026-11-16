@@ -84,7 +84,7 @@ function fmtClock(ms) {
 const DEF = { xte: 0.1, arr: 80, spd: 0, wind: 25, hz: 300, plan: 5, anc: 40, coast: 300, draft: 1, ukc: 0.5, enc: true,
   mute: false, night: false, base: 'osm', sea: true, bathy: false, track: true, follow: true,
   boat: 'motore', hp: 40, len: 6, lic: 'none', vlim: 'auto', ce: 'ce', pref: 1, pkg: 'all', pkgWifi: true,
-  wrecks: false, ais: false };
+  wrecks: false, ais: false, fleetShare: true, fleetName: '', fleetIn: false };
 const S = {
   set: Object.assign({}, DEF, store.get('set', {})),
   route: store.get('route', { start: null, via: [], dest: null }),
@@ -121,6 +121,9 @@ const trackLine = L.polyline([], { color: '#ff9f1c', weight: 4, opacity: .95 }).
 /* relitti per immersioni (vedi "Relitti per immersioni" più sotto) */
 const wreckLayer = L.layerGroup();
 let WRECKS = null, wreckLoading = null;
+/* barche con Rotta Nautica (vedi "Barche con Rotta Nautica" più sotto) */
+const fleetLayer = L.layerGroup().addTo(map);
+const fleetMk = new Map();
 const toTgtLine = L.polyline([], { color: '#35c8ff', weight: 2, dashArray: '2 6' }).addTo(map);
 const predLine = L.polyline([], { color: '#ffffff', weight: 2, opacity: .9 }).addTo(map);
 const wpLayer = L.layerGroup().addTo(map);
@@ -488,6 +491,7 @@ function onFix(f) {
   if (!S.centered) { S.centered = true; map.setView([f.lat, f.lng], Math.max(map.getZoom(), 13)); }
   else if (S.set.follow) map.panTo([f.lat, f.lng], { animate: false });
 
+  if (!S.sim && window.Flotta) Flotta.update(fleetPos());
   checks(); ui(); fabs();
 }
 
@@ -1956,6 +1960,83 @@ function closeAis() {
 $('bAis').onclick = () => { $('aisBox').hidden ? openAis() : closeAis(); };
 $('aisClose').onclick = closeAis;
 
+/* ---------- Barche con Rotta Nautica (accesso Google, flotta.js) ---------- */
+const BOAT_L = { motore: 'Barca a motore', gommone: 'Gommone', vela: 'Barca a vela', moto: "Moto d'acqua", remi: 'Canoa, kayak, SUP, pedalò' };
+const FL = window.Flotta || null;
+function fleetName() {
+  const n = (S.set.fleetName || '').trim() || (FL && FL.user && FL.user.name.split(' ')[0]) || 'Barca';
+  return n.slice(0, 30);
+}
+const fleetPos = () => ({ lat: S.pos.lat, lng: S.pos.lng, cog: S.pos.cog, sog: S.pos.sog, name: fleetName(), boat: S.set.boat });
+function ago(ms) { const s = Math.round(ms / 1000); return s < 20 ? 'adesso' : s < 90 ? s + ' s fa' : Math.round(s / 60) + ' min fa'; }
+function fleetIcon(o) {
+  const moving = o.cog != null && o.sog != null && o.sog > 0.5;
+  const shape = moving ? '<path d="M0-12 L8 10 L0 5 L-8 10Z" fill="#1fbf7a" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>'
+    : '<circle r="6" fill="#1fbf7a" stroke="#fff" stroke-width="2"/>';
+  return L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15],
+    html: `<div class="fl${FL.age(o) > 180e3 ? ' old' : ''}"><svg viewBox="-15 -15 30 30" width="30" height="30"><g transform="rotate(${moving ? o.cog : 0})">${shape}</g></svg><span>${esc(o.name)}</span></div>` });
+}
+function fleetPopup(id) {
+  const o = FL && FL.list().find(x => x.id === id);
+  if (!o) return 'Barca non più collegata';
+  const rows = [BOAT_L[o.boat] || o.boat, o.sog != null ? `Velocità: ${o.sog.toFixed(1)} nodi` : null,
+    o.cog != null && o.sog > 0.5 ? `Rotta: ${String(o.cog).padStart(3, '0')}°` : null,
+    S.pos ? `Distanza: ${fmtDist(dist(S.pos, o))}` : null, `Aggiornata ${ago(FL.age(o))}`].filter(Boolean).map(esc);
+  return `<div class="wkPop"><b>${esc(o.name)}</b><br>${rows.join('<br>')}` +
+    `<button data-act="fleetDest" data-lat="${o.lat}" data-lng="${o.lng}">Imposta come destinazione</button></div>`;
+}
+function renderFleetMarkers() {
+  const list = FL && FL.user ? FL.list() : [], ids = new Set(list.map(o => o.id));
+  fleetMk.forEach((m, id) => { if (!ids.has(id)) { fleetLayer.removeLayer(m); fleetMk.delete(id); } });
+  list.forEach(o => {
+    let m = fleetMk.get(o.id);
+    if (!m) { m = L.marker([o.lat, o.lng], { title: o.name, zIndexOffset: 500 }).bindPopup(() => fleetPopup(o.id)).addTo(fleetLayer); fleetMk.set(o.id, m); }
+    else m.setLatLng([o.lat, o.lng]);
+    m.setIcon(fleetIcon(o));
+    if (m.isPopupOpen()) m.setPopupContent(fleetPopup(o.id));
+  });
+}
+let fleetKey = '';
+function renderFleetBox() {
+  const el = $('fleetBox'); if (!el) return;
+  if (!FL || !FL.available) { el.innerHTML = '<p class="note">Funzione non ancora attiva in questa versione dell\'app.</p>'; fleetKey = ''; return; }
+  const key = [FL.user && FL.user.uid, FL.sharing, FL.loading, FL.error, !!S.pos].join('|');
+  if (key !== fleetKey) {
+    fleetKey = key;
+    if (!FL.user) {
+      el.innerHTML = `<button data-act="fleetLogin"${FL.loading ? ' disabled' : ''}>${FL.loading ? 'Collegamento…' : 'Accedi con Google'}</button>` +
+        (FL.error ? `<p class="note warn">${esc(FL.error)}</p>` : '');
+      return;
+    }
+    el.innerHTML = `<p class="note">Collegato come <b>${esc(FL.user.name || FL.user.email)}</b> · <a href="#" data-act="fleetLogout">Esci</a></p>` +
+      `<label class="chk"><input type="checkbox" id="lFleetShare"${FL.sharing ? ' checked' : ''}> Condividi la mia posizione con le altre barche</label>` +
+      `<form class="search" onsubmit="return false"><input id="fleetNameIn" maxlength="30" placeholder="Nome da mostrare (es. nome della barca)" autocomplete="off"><button type="button" data-act="fleetName">Salva</button></form>` +
+      (FL.error ? `<p class="note warn">${esc(FL.error)}</p>` : '') +
+      (FL.sharing && !S.pos ? '<p class="note">La tua posizione partirà appena il GPS la trova.</p>' : '') +
+      '<div id="fleetList"></div>';
+    $('fleetNameIn').value = S.set.fleetName || '';
+    $('lFleetShare').onchange = () => { S.set.fleetShare = $('lFleetShare').checked; saveSet(); FL.share(S.set.fleetShare); toast(S.set.fleetShare ? 'Posizione condivisa' : 'Condivisione spenta'); };
+  }
+  const lst = $('fleetList'); if (!lst) return;
+  const ref = S.pos || map.getCenter();
+  const list = FL.list().map(o => ({ o, d: dist(ref, o) })).sort((a, b) => a.d - b.d);
+  lst.innerHTML = list.length
+    ? `<p class="note">${list.length === 1 ? '1 barca collegata' : list.length + ' barche collegate'}${S.pos ? ', dalla più vicina' : ''}:</p>` +
+      list.slice(0, 10).map(x => `<button data-act="fleetGo" data-id="${esc(x.o.id)}"><span><i class="flLeg"></i><b>${esc(x.o.name)}</b> · ${esc(ago(FL.age(x.o)))}</span><span>${(x.d / NM).toFixed(1)} mn</span></button>`).join('')
+    : '<p class="note">Nessun\'altra barca collegata in questo momento.</p>';
+}
+let fleetT = null, fleetWasIn = false;
+if (FL) FL.on(() => {
+  const inNow = !!FL.user;
+  if (inNow !== fleetWasIn) {
+    fleetWasIn = inNow;
+    if (S.set.fleetIn !== inNow) { S.set.fleetIn = inNow; saveSet(); }
+    if (inNow) { if (S.pos && !S.sim) FL.update(fleetPos()); FL.share(S.set.fleetShare); }
+  }
+  clearTimeout(fleetT);
+  fleetT = setTimeout(() => { renderFleetMarkers(); renderFleetBox(); }, 250);
+});
+
 /* ---------- Azioni (pulsanti) ---------- */
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
@@ -1966,6 +2047,19 @@ document.addEventListener('click', e => {
       place('start', S.pos); toast('Partenza: posizione attuale'); break;
     case 'pickStart': pick('start'); break;
     case 'wreckDest': place('dest', { lat: +d.lat, lng: +d.lng }); map.closePopup(); toast('Destinazione: relitto'); break;
+    case 'fleetDest': place('dest', { lat: +d.lat, lng: +d.lng }); map.closePopup(); toast('Destinazione: barca (posizione attuale)'); break;
+    case 'fleetGo': { const m = fleetMk.get(d.id); if (!m) break; minSheet(true); map.setView(m.getLatLng(), Math.max(map.getZoom(), 14)); m.openPopup(); break; }
+    case 'fleetLogin':
+      if (!navigator.onLine) { toast('Serve la connessione a internet'); break; }
+      S.set.fleetShare = true; saveSet();
+      FL.login().then(() => toast('Accesso fatto: la tua posizione è visibile alle altre barche')).catch(err => { toast(err && err.message ? err.message : 'Accesso non riuscito'); renderFleetBox(); });
+      break;
+    case 'fleetLogout': e.preventDefault(); FL.logout().then(() => toast('Sei uscito: la tua posizione non è più condivisa')); break;
+    case 'fleetName': {
+      const v = $('fleetNameIn').value.trim().slice(0, 30);
+      S.set.fleetName = v; saveSet(); toast(v ? 'Nome salvato: ' + v : 'Nome predefinito'); if (S.pos && !S.sim) { FL.update(fleetPos()); FL.rename(); }
+      break;
+    }
     case 'wreckGo': { const w = WRECKS && WRECKS[i]; if (!w) break; minSheet(true); map.setView([w.lat, w.lng], Math.max(map.getZoom(), 14)); w.marker.openPopup(); break; }
     case 'pickDest': pick('dest'); break;
     case 'pickVia': pick('via'); break;
@@ -2094,8 +2188,10 @@ setInterval(() => {
   if (gpsActive && S.lastFix && Date.now() - S.lastFix > 12000) raise('gps', 'Segnale GPS assente da ' + Math.round((Date.now() - S.lastFix) / 1000) + ' s', 'bad');
   if ([...A.values()].some(a => a.level === 'bad') && Date.now() - lastBeep > 8000) { pattern('bad'); vib('bad'); lastBeep = Date.now(); }
   if (S.pos && Date.now() - S.wxT > 600000) fetchWx();
+  if (FL && FL.user && ++fleetTick % 15 === 0) { renderFleetMarkers(); if (S.tab === 'mappa') renderFleetBox(); }
   ui(); fabs();
 }, 1000);
+let fleetTick = 0;
 setInterval(() => {
   store.set('track', S.track.slice(-3000).map(p => [+p.lat.toFixed(6), +p.lng.toFixed(6), p.t]));
   store.set('trip', S.trip);
@@ -2118,6 +2214,8 @@ if ('serviceWorker' in navigator) {
 }
 window.rnStarted = true;
 if (window.ENC) ENC.load().then(() => { encStatus(); encView.render(); }); else encStatus();
+renderFleetBox();
+if (FL) FL.init(S.set.fleetIn);
 startGps();
 /* pacchetto dati: controllo a ogni avvio (dopo che la carta è partita) e quando torna la rete */
 setTimeout(() => syncPackage(), 4000);
