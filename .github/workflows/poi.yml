@@ -1,0 +1,44 @@
+# Punti di fonda (ancoraggi) e aree marine protette da OpenStreetMap / OpenSeaMap → poi.json.
+# Si avvia a mano (Actions → Punti di fonda e aree protette → Run workflow) e da solo il 2 di ogni mese.
+# Dura pochi minuti; se Overpass non risponde resta il file precedente.
+name: Punti di fonda e aree protette
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 4 2 * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dati-nautici
+  cancel-in-progress: false
+
+jobs:
+  poi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Scarica il codice
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Punti di fonda e aree marine protette
+        run: |
+          npm install --no-save --no-audit --no-fund osmtogeojson
+          node tools/build_poi.mjs
+
+      - name: Salva nel repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add poi.json
+          if git diff --cached --quiet; then echo "Dati invariati"; exit 0; fi
+          git commit -m "Aggiorna punti di fonda e aree marine protette (OpenStreetMap)"
+          git pull --rebase
+          git push
