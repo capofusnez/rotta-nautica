@@ -1,5 +1,5 @@
 /* Service worker: l'app e le tiles della carta già viste restano disponibili senza rete. */
-const SHELL_CACHE = 'rn-shell-v39';
+const SHELL_CACHE = 'rn-shell-v42';
 const TILE_CACHE = 'rn-tiles-v2';
 const SHELL = ['./', 'index.html', 'app.js', 'water.js', 'channels.js', 'enc.js', 'seamarks.js', 'firebase-config.js', 'flotta.js', 'traffico.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 const EXTERNAL = /(tile\.openstreetmap\.org|tiles\.openseamap\.org|server\.arcgisonline\.com|ows\.emodnet-bathymetry\.eu|unpkg\.com)$/;
@@ -7,7 +7,7 @@ const MAX_TILES = 4000;
 let puts = 0;
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(SHELL_CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(SHELL_CACHE).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -50,12 +50,16 @@ self.addEventListener('fetch', e => {
   if (url.origin === self.location.origin && /\/(nautica|depth)\//.test(url.pathname)) return;
 
   if (url.origin === self.location.origin) {
+    /* prima la rete (così un aggiornamento del sito arriva subito), la copia salvata se manca la rete
+       o se la risposta tarda più di 3 secondi */
     e.respondWith(caches.match(req).then(hit => {
-      const net = fetch(req).then(res => {
+      const net = fetch(req, { cache: 'no-cache' }).then(res => {
         if (res.ok) { const copy = res.clone(); caches.open(SHELL_CACHE).then(c => c.put(req, copy)); }
         return res;
-      }).catch(() => hit || caches.match('index.html'));
-      return hit || net;
+      });
+      const fallback = () => hit || caches.match('index.html');
+      if (!hit) return net.catch(fallback);
+      return Promise.race([net.catch(fallback), new Promise(r => setTimeout(() => r(hit), 3000))]);
     }));
   }
 });
