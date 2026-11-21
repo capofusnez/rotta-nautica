@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#07151f" id="themeColor">
+<meta name="theme-color" content="#ffffff" id="themeColor">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -254,37 +254,197 @@ button.danger{border-color:#d32f2f;color:#fff;background:#d32f2f}
 .sm td{padding:1px 4px;border-top:1px solid #eef3f5;word-break:break-all;font-family:var(--mono)}
 .sm .smw{margin:6px 0 0;font-size:11px;color:#8a6d1a}
 .sm hr{border:0;border-top:2px solid #c7d6dd;margin:8px 0}
-.ctx button{min-height:40px}
+.ctx button{min-height:48px}
+body.dusk .leaflet-tile-pane{filter:brightness(.82) contrast(1.05)}
+/* ===== Interfaccia: tre temi (giorno chiaro per il sole, sera scura, notte rossa), comandi grandi per l'uso in barca ===== */
+:root{
+  --bg:#e6edf1; --panel:#ffffff; --panel2:#eef3f6; --line:#c3d1d9;
+  --fg:#0c2433; --mut:#4c6979; --acc:#a8177e; --accFg:#ffffff; --route:#d01fa3; --track:#e07a00;
+  --ok:#157a3a; --warn:#9a5600; --bad:#d22b2b; --hudBg:#ffffff; --sel:#f6e3f0;
+  --tabH:calc(62px + env(safe-area-inset-bottom,0px));
+  --sheetH:48dvh;
+  --mono:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:light;
+}
+body.dusk{
+  --bg:#07151f; --panel:#0d2230; --panel2:#163a4e; --line:#2a5670;
+  --fg:#eef6f9; --mut:#9dbccb; --acc:#f06acb; --accFg:#2a0620; --route:#f05cd0; --track:#ff9f1c;
+  --ok:#4ade80; --warn:#fbbf24; --bad:#ff5252; --hudBg:#0a1c28; --sel:#3a1c34;
+  color-scheme:dark;
+}
+body.night{
+  --bg:#140404; --panel:#1d0707; --panel2:#2e0f0f; --line:#5a1c1c;
+  --fg:#ff8f84; --mut:#c0574f; --acc:#ff6b5e; --accFg:#200808; --route:#ff6b5e; --track:#ff9f1c;
+  --ok:#ff8f84; --warn:#ffb08a; --bad:#ff3b30; --hudBg:#170505; --sel:#3a1010;
+  color-scheme:dark;
+}
+html,body{font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.leaflet-bottom{bottom:var(--tabH)}
+.leaflet-control-attribution{font-size:9px;opacity:.8}
+
+/* comandi */
+button{min-height:48px;border-radius:12px;padding:10px 14px;font-weight:600;background:var(--panel2);border:1px solid var(--line);color:var(--fg)}
+button:active{filter:none;background:var(--sel)}
+button.primary{background:var(--acc);border-color:var(--acc);color:var(--accFg);font-weight:700}
+body.night button.primary{color:var(--accFg)}
+input,select,textarea{min-height:48px;border-radius:12px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);color:var(--fg);font:inherit}
+input[type=number]{width:6em;text-align:right}
+input[type=checkbox],input[type=radio]{min-height:0;width:22px;height:22px;flex:none}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+
+/* strumenti in alto: lettura grande, etichette in italiano */
+#hud{display:block;padding:calc(env(safe-area-inset-top,0px) + 6px) max(10px,env(safe-area-inset-right,0px)) 6px max(10px,env(safe-area-inset-left,0px));
+  background:var(--hudBg);border-bottom:1px solid var(--line);box-shadow:0 2px 10px rgba(12,36,51,.12)}
+.hudRow{display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr;gap:0}
+.hudRow>div{min-width:0;padding:0 8px;border-left:1px solid var(--line)}
+.hudRow>div:first-child{border-left:0;padding-left:2px}
+.hudRow .lbl{display:block;font-size:11.5px;letter-spacing:0;text-transform:none;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hudRow b{display:block;font:700 23px/1.1 var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em}
+.hudRow .big b{font-size:34px;line-height:1}
+.hudRow .big b small{font-size:13px;font-weight:600;color:var(--mut);margin-left:3px;letter-spacing:0}
+.hud2{display:none;grid-template-columns:1fr 1fr 1fr;margin-top:6px;padding-top:5px;border-top:1px solid var(--line)}
+.hud2>div{display:flex;align-items:baseline;gap:6px;padding:0 8px;border-left:1px solid var(--line);min-width:0}
+.hud2>div:first-child{border-left:0;padding-left:2px}
+.hud2 .lbl{font-size:11.5px;text-transform:none;letter-spacing:0;color:var(--mut);white-space:nowrap}
+.hud2 b{font:700 16px/1.2 var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hud.tgt .hud2{display:grid}
+/* avanzamento della rotta: la linea magenta sotto gli strumenti */
+#hudProg{position:absolute;left:0;bottom:-1px;height:3px;width:0;background:var(--route);transition:width .6s linear}
+
+/* comandi sulla carta */
+#fabs,#fabsL{gap:8px;top:calc(var(--hudH, 96px) + 10px)}
+.fab{width:52px;min-height:52px;padding:4px 2px 3px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  font-size:10.5px;font-weight:700;letter-spacing:0;background:var(--panel);color:var(--fg);border:1px solid var(--line);box-shadow:0 2px 8px rgba(12,36,51,.18)}
+.fab svg{width:24px;height:24px;display:block}
+.fab span{line-height:1.1}
+.fab.on{color:var(--acc);border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc),0 2px 8px rgba(12,36,51,.18)}
+.fab.ok{color:var(--ok);border-color:var(--ok)}
+.fab.search{color:var(--warn);border-color:var(--warn)}
+.fab.mob{width:56px;min-height:56px;border-radius:50%;background:var(--bad);border:3px solid #fff;color:#fff;font-size:13px;margin-top:6px;box-shadow:0 3px 12px rgba(210,43,43,.45)}
+.fab.gear{display:flex}
+
+/* allarmi */
+#alarms{left:calc(max(10px,env(safe-area-inset-left,0px)) + 62px);right:72px;top:calc(var(--hudH, 96px) + 10px)}
+.al{border-radius:12px;padding:10px 10px 10px 14px;box-shadow:0 3px 12px rgba(12,36,51,.2);font-size:15px}
+.al button{min-height:40px}
+
+/* barra delle sezioni */
+#tabs{grid-template-columns:repeat(5,1fr);background:var(--panel);border-top:1px solid var(--line);box-shadow:0 -2px 10px rgba(12,36,51,.08)}
+#tabs button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:62px;padding:6px 2px 4px;
+  font-size:12px;font-weight:600;color:var(--mut);border-radius:0;background:transparent;border:0;box-shadow:none}
+#tabs button svg{width:26px;height:26px;padding:2px 12px;box-sizing:content-box;border-radius:14px}
+#tabs button.on{color:var(--acc);box-shadow:none}
+#tabs button.on svg{background:var(--sel)}
+
+/* pannello */
+#sheet{bottom:var(--tabH);max-height:var(--sheetH);padding:0 max(14px,env(safe-area-inset-right,0px)) 16px max(14px,env(safe-area-inset-left,0px));
+  border-radius:20px 20px 0 0;background:var(--panel);box-shadow:0 -8px 28px rgba(12,36,51,.22);border-top:0}
+#sheet.tall{--sheetH:86dvh}
+#sheetHead{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;margin:0 -14px 8px;padding:0 6px 0 16px;background:var(--panel);border-radius:20px 20px 0 0}
+#sheetClose{position:static;flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:6px;width:auto;margin:0;min-height:56px;padding:8px 0 8px;border:0;background:transparent;border-radius:0}
+#sheetClose::before{align-self:center;width:40px;height:5px;background:var(--line);margin-bottom:2px}
+#sheetTitle{font-size:18px;font-weight:700;letter-spacing:0;text-transform:none;color:var(--fg)}
+#sheetX{flex:none;width:44px;min-height:44px;padding:0;border-radius:50%;border:0;background:var(--panel2);color:var(--mut);display:grid;place-items:center}
+#sheetX svg{width:20px;height:20px}
+#sheet.min{max-height:64px}
+#sheet:not([hidden]):not(.min) ~ #routeBusy{bottom:calc(var(--tabH) + var(--sheetH) + 6px)}
+.pane{gap:10px}
+.pane h4{margin:14px 0 0;font-size:15px;font-weight:700;letter-spacing:0;text-transform:none;color:var(--fg)}
+.pane>h4:first-child{margin-top:2px}
+.pt{padding:10px 0;gap:8px 10px}
+.pt label{font-size:13px;letter-spacing:0;text-transform:none;font-weight:600;color:var(--mut)}
+.pt .val{font:600 15px var(--mono);font-variant-numeric:tabular-nums}
+.btns{gap:8px}
+.btns.big button{min-height:56px;font-size:17px}
+.note{font-size:13.5px;line-height:1.45;color:var(--mut)}
+details.info{border-radius:12px;background:var(--panel2);padding:0 12px}
+details.info summary{min-height:44px;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--mut);cursor:pointer;list-style:none}
+details.info summary::-webkit-details-marker{display:none}
+details.info summary::before{content:"i";display:grid;place-items:center;width:20px;height:20px;border-radius:50%;border:1.5px solid currentColor;font:700 12px/1 Georgia,serif;font-style:italic;flex:none}
+details.info[open]{padding-bottom:10px}
+details.info .note+.note{margin-top:8px}
+.form{gap:2px}
+.form label{min-height:56px;padding:4px 0;border-bottom:1px solid var(--line);font-size:15px}
+.form label:last-child{border-bottom:0}
+.chk{min-height:48px;font-size:15px;gap:12px;flex-wrap:nowrap}
+.pt .btns{width:100%}
+.form label>span{margin-left:auto;display:flex;align-items:center;gap:6px}
+.form label>span select{max-width:62vw}
+.seg{gap:8px}
+.seg label{flex:1 1 9em;min-height:48px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);font-weight:600}
+.seg label:has(input:checked){border-color:var(--acc);background:var(--sel);color:var(--acc)}
+.grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.grid .g{background:var(--panel2);border-radius:14px;padding:10px 12px}
+.grid .g .lbl{font-size:12.5px;text-transform:none;letter-spacing:0}
+.grid .g b{font:700 22px/1.2 var(--mono);font-variant-numeric:tabular-nums}
+.sum{font:600 15px var(--mono);gap:6px 18px}
+.sum .wr{flex-basis:100%;font-weight:600}
+.leg span,.row span{font-family:var(--mono)}
+.leg button,.row button{min-height:40px}
+.res .btns button{min-height:44px}
+#results:empty{display:none}
+.search input{min-width:0}
+/* elenchi tappabili (punti, barche, relitti, fonde) */
+#poiList button,#fondaList button,#wreckList button,#fleetList button{min-height:56px;padding:8px 12px;border-radius:12px;background:var(--panel2);align-items:center}
+
+/* menu principale */
+#home{background:var(--bg);gap:22px}
+.hmTop b{font-size:24px}
+.hmGrid{gap:12px}
+.hmGrid button{min-height:156px;border-radius:20px;padding:18px 16px;background:var(--panel);border:1px solid var(--line);box-shadow:0 2px 10px rgba(12,36,51,.08)}
+.hmGrid button svg{width:44px;height:44px;color:var(--acc)}
+.hmGrid button b{font-size:17px}
+.hmGrid button span{font-size:13.5px;color:var(--mut)}
+#homeGo{max-width:560px;width:100%;margin:0 auto;min-height:60px;font-size:17px;border-radius:16px}
+
+/* scelta sulla carta, avvisi brevi, calcolo */
+#pickBar{bottom:calc(var(--tabH) + 10px);border-radius:16px;padding:8px 8px 8px 16px;font-size:16px;background:var(--acc);color:var(--accFg);box-shadow:0 4px 16px rgba(12,36,51,.3)}
+#pickBar button{background:var(--panel);color:var(--fg);border:0;min-height:44px}
+#toast{bottom:calc(var(--tabH) + 18px);border-radius:14px;padding:12px 16px;font-weight:600;background:var(--fg);color:var(--panel);border:0;box-shadow:0 4px 16px rgba(12,36,51,.3)}
+#sheet:not([hidden]):not(.min) ~ #toast{bottom:calc(var(--tabH) + var(--sheetH) + 12px)}
+#routeBusy{bottom:calc(var(--tabH) + 8px);border-radius:16px}
+#aisBox{background:var(--panel)}
+@media (orientation:landscape) and (max-height:500px){
+  #sheet{--sheetH:62dvh}
+  body.sheetOpen #fabsL{left:calc(min(420px,55vw) + 10px)}
+  #sheet:not([hidden]):not(.min) ~ #routeBusy,#sheet:not([hidden]):not(.min) ~ #toast{bottom:calc(var(--tabH) + 8px);left:calc(min(420px,55vw) + 10px);transform:none}
+  body.sheetOpen #alarms{left:calc(min(420px,55vw) + 72px)}
+  .hudRow .big b{font-size:28px}
+}
 </style>
 </head>
 <body>
 <div id="map" aria-label="Carta nautica"></div>
 
 <header id="hud">
-  <div class="sog"><span class="lbl">SOG</span><b id="sog">0.0</b><span class="u">nodi</span></div>
-  <div class="cells">
-    <div class="c"><span class="lbl">COG</span><b id="cog">---°</b></div>
-    <div class="c"><span class="lbl" id="tgtLbl">BRG</span><b id="brg">---°</b></div>
-    <div class="c"><span class="lbl">DTW</span><b id="dtw">--</b></div>
-    <div class="c"><span class="lbl">XTE</span><b id="xte">--</b></div>
-    <div class="c"><span class="lbl">ETA</span><b id="eta">--:--</b></div>
-    <div class="c"><span class="lbl">VMG kn</span><b id="vmg">--</b></div>
+  <div class="hudRow">
+    <div class="big"><span class="lbl">Velocità</span><b><span id="sog">0.0</span><small>kn</small></b></div>
+    <div><span class="lbl">Direzione</span><b id="cog">---°</b></div>
+    <div><span class="lbl">Distanza</span><b id="dtw">--</b></div>
+    <div><span class="lbl">Arrivo</span><b id="eta">--:--</b></div>
   </div>
+  <div class="hud2">
+    <div><span class="lbl" id="tgtLbl">Rilevamento</span><b id="brg">---°</b></div>
+    <div><span class="lbl">Fuori rotta</span><b id="xte">--</b></div>
+    <div><span class="lbl">VMG</span><b id="vmg">--</b></div>
+  </div>
+  <div id="hudProg"></div>
 </header>
 
 <div id="alarms" aria-live="assertive"></div>
 
 <div id="fabsL">
-  <button id="bHome" class="fab gear" aria-label="Menu principale" title="Menu principale"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg></button>
-  <button id="bSet" class="fab gear" aria-label="Barche e impostazioni" title="Barche e impostazioni"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(0 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(45 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(90 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(135 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(180 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(225 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(270 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(315 12 12)"/></g><circle cx="12" cy="12" r="6.4" fill="none" stroke="currentColor" stroke-width="2.6"/><circle cx="12" cy="12" r="2.1" fill="currentColor"/></svg></button>
-  <button id="bAis" class="fab" hidden aria-label="Traffico navale (AIS)" title="Traffico navale (AIS)">AIS</button>
+  <button id="bHome" class="fab" aria-label="Menu principale" title="Menu principale"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span>Menu</span></button>
+  <button id="bMob" class="fab mob" aria-label="Uomo in mare: segna la posizione">MOB</button>
+  <button id="bSet" class="fab" hidden aria-label="Barca e account">Barca</button>
+  <button id="bAis" class="fab" hidden aria-label="Traffico navale (AIS)" title="Traffico navale (AIS)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l3 3h12l3-3"/><path d="M6 17V11h12v6"/><path d="M12 4v7"/><path d="M8.5 8a5 5 0 017 0M6 5.5a8.5 8.5 0 0112 0"/></svg><span>AIS</span></button>
 </div>
 <div id="fabs">
-  <button id="bGps" class="fab" aria-label="Attiva o disattiva il GPS">GPS</button>
-  <button id="bFollow" class="fab" aria-label="Centra la carta sulla barca">SEGUI</button>
-  <button id="bNight" class="fab" aria-label="Modalità notte">NOTTE</button>
-  <button id="bMute" class="fab" aria-label="Audio allarmi">AUDIO</button>
-  <button id="bMob" class="fab mob" aria-label="Uomo in mare">MOB</button>
+  <button id="bGps" class="fab" aria-label="Attiva o disattiva il GPS"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3.5M12 18.5V22M2 12h3.5M18.5 12H22"/></svg><span id="bGpsL">GPS</span></button>
+  <button id="bFollow" class="fab" aria-label="Centra la carta sulla barca"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 18-7-4-7 4z"/></svg><span>Segui</span></button>
+  <button id="bLayers" class="fab" aria-label="Carta e livelli"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg><span>Carta</span></button>
+  <button id="bNight" class="fab" aria-label="Tema: giorno, sera o notte"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path id="bNightI" d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z"/></svg><span id="bNightL">Giorno</span></button>
+  <button id="bMute" class="fab" aria-label="Audio allarmi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h4l5-4.5v14l-5-4.5H4z"/><path id="bMuteW" d="M16.5 9a4 4 0 010 6M19 6.5a7.5 7.5 0 010 11"/></svg><span id="bMuteL">Audio</span></button>
 </div>
 
 <div id="aisBox" hidden>
@@ -293,9 +453,8 @@ button.danger{border-color:#d32f2f;color:#fff;background:#d32f2f}
 </div>
 
 <div id="pickBar" hidden><span id="pickTxt"></span><button id="pickDone">Fine</button></div>
-<div id="toast" hidden></div>
 <section id="sheet" hidden>
-  <button id="sheetClose" aria-label="Abbassa o alza il pannello"><span id="sheetTitle"></span></button>
+  <div id="sheetHead"><button id="sheetClose" aria-label="Abbassa o alza il pannello"><span id="sheetTitle"></span></button><button id="sheetX" aria-label="Chiudi il pannello"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="pane" id="p-rotta" hidden>
     <form id="fSearch" class="search"><input id="q" type="search" placeholder="Cerca porto, luogo o lat, lon" enterkeyhint="search" autocomplete="off"><button>Cerca</button></form>
     <div id="results"></div>
@@ -306,7 +465,7 @@ button.danger{border-color:#d32f2f;color:#fff;background:#d32f2f}
     <div class="btns"><button data-act="autoRoute" id="bAuto">Ricalcola rotta</button><span id="bUndo" hidden></span></div>
     <div class="btns"><button data-act="water" id="bWater" hidden>Mostra acque navigabili</button></div>
     <p class="note" id="autoMsg" hidden></p>
-    <p class="note">La rotta si calcola da sola: in laguna e nei fiumi segue solo i canali e le briccole presenti nei dati OpenStreetMap/OpenSeaMap, in mare si tiene lontana dalla costa. Per scegliere il passaggio (es. via mare o via canali) aggiungi una tappa lungo il percorso voluto.</p>
+    <details class="info"><summary>Come funziona</summary><p class="note">La rotta si calcola da sola: in laguna e nei fiumi segue solo i canali e le briccole presenti nei dati OpenStreetMap/OpenSeaMap, in mare si tiene lontana dalla costa. Per scegliere il passaggio (es. via mare o via canali) aggiungi una tappa lungo il percorso voluto.</p></details>
     <div id="legs"></div>
     <div class="sum" id="sum"></div>
     <label class="inl">Velocità prevista <input id="sPlan" type="number" min="0.5" max="40" step="0.5"> nodi</label>
@@ -321,13 +480,29 @@ button.danger{border-color:#d32f2f;color:#fff;background:#d32f2f}
 
   <div class="pane" id="p-dati" hidden>
     <div id="grid" class="grid"></div>
-    <p class="note">XTE: D = sei a dritta della rotta, S = a sinistra. DTW = distanza al punto successivo, VMG = velocità utile verso il punto.</p>
+    <p class="note">Fuori rotta: D = sei a dritta della rotta, S = a sinistra. VMG = velocità utile verso il punto.</p>
+    <h4>Soglie di allarme</h4>
+    <div class="form">
+      <label>Fuori rotta (XTE) <span><input id="sXte" type="number" step="0.01" min="0.01"> nm</span></label>
+      <label>Raggio di arrivo punto <span><input id="sArr" type="number" step="5" min="10"> m</span></label>
+      <label>Velocità massima (0 = off) <span><input id="sSpd" type="number" step="0.5" min="0"> nodi</span></label>
+      <label>Raffica di vento (0 = off) <span><input id="sWind" type="number" step="1" min="0"> nodi</span></label>
+      <label>Raggio di sicurezza ostacoli <span><input id="sHz" type="number" step="25" min="25"> m</span></label>
+      <label>Distanza minima dalla costa (0 = off) <span><input id="sCoast" type="number" step="50" min="0"> m</span></label>
+    </div>
+    <h4>Allarme ancora</h4>
+    <div class="form"><label>Raggio di deriva <span><input id="sAnc" type="number" step="5" min="10"> m</span></label></div>
+    <div class="btns"><button data-act="anchor" id="bAnchor">Getta ancora qui</button></div>
+    <h4>Secche e ostacoli</h4>
+    <div class="btns"><select id="hType"><option>Secca</option><option>Scoglio</option><option>Relitto</option><option>Ostacolo</option></select><button data-act="pickHazard">Segna sulla carta</button></div>
+    <div id="hList"></div>
+    <details class="info"><summary>Come funziona</summary><p class="note">Le secche segnate qui generano un allarme se la prua le raggiunge entro 5 minuti o se la rotta ci passa vicino. Tieni premuto sulla carta per un menu rapido.</p></details>
   </div>
 
   <div class="pane" id="p-imp" hidden>
     <h4>Barche con Rotta Nautica</h4>
     <div id="fleetBox"></div>
-    <p class="note">Con l'accesso Google e la condivisione accesa, il nome che scegli, il tipo di mezzo, la posizione, la rotta e la velocità sono visibili a tutti gli utenti dell'app che hanno fatto l'accesso. Vale solo mentre l'app è aperta: quando la chiudi o perdi la rete sparisci dalla carta entro pochi minuti. Puoi spegnere la condivisione o uscire quando vuoi. Le barche degli altri possono avere fino a un minuto di ritardo: non serve a evitare collisioni, guarda sempre fuori.</p>
+    <details class="info"><summary>Come funziona</summary><p class="note">Con l'accesso Google e la condivisione accesa, il nome che scegli, il tipo di mezzo, la posizione, la rotta e la velocità sono visibili a tutti gli utenti dell'app che hanno fatto l'accesso. Vale solo mentre l'app è aperta: quando la chiudi o perdi la rete sparisci dalla carta entro pochi minuti. Puoi spegnere la condivisione o uscire quando vuoi. Le barche degli altri possono avere fino a un minuto di ritardo: non serve a evitare collisioni, guarda sempre fuori.</p></details>
     <h4>Barca e patente</h4>
     <div class="form">
       <label>Mezzo <span><select id="sBoat">
@@ -347,27 +522,8 @@ button.danger{border-color:#d32f2f;color:#fff;background:#d32f2f}
       <label>Margine sotto la chiglia <span><input id="sUkc" type="number" step="0.1" min="0"> m</span></label>
     </div>
     <p class="note" id="licInfo"></p>
-    <p class="note">La rotta resta entro il limite più stretto tra patente e mezzo (distanza vera dalla costa, isole comprese, dai dati EMODnet) e in laguna e nei fiumi segue canali e briccole. Codice della nautica, art. 27 e 39: senza patente entro 6 miglia e motore fino a 40,8 CV (30 kW); natanti fino a 10 m entro 12 miglia con marcatura CE, entro 6 senza; moto d'acqua, canoe, kayak, pedalò e tavole entro 1 miglio. La categoria di progettazione CE (vento e onda) va rispettata a parte. Valgono anche le ordinanze delle Capitanerie (fascia di 300 m dalle spiagge in estate, aree marine protette, zone vietate): verificale sempre prima di partire.</p>
+    <details class="info"><summary>Come funziona</summary><p class="note">La rotta resta entro il limite più stretto tra patente e mezzo (distanza vera dalla costa, isole comprese, dai dati EMODnet) e in laguna e nei fiumi segue canali e briccole. Codice della nautica, art. 27 e 39: senza patente entro 6 miglia e motore fino a 40,8 CV (30 kW); natanti fino a 10 m entro 12 miglia con marcatura CE, entro 6 senza; moto d'acqua, canoe, kayak, pedalò e tavole entro 1 miglio. La categoria di progettazione CE (vento e onda) va rispettata a parte. Valgono anche le ordinanze delle Capitanerie (fascia di 300 m dalle spiagge in estate, aree marine protette, zone vietate): verificale sempre prima di partire.</p></details>
     <p class="note">Pescaggio e margine servono a evitare i fondali troppo bassi nel calcolo della rotta (profondità EMODnet, indicative).</p>
-  </div>
-
-  <div class="pane" id="p-avvisi" hidden>
-    <h4>Soglie di allarme</h4>
-    <div class="form">
-      <label>Fuori rotta (XTE) <span><input id="sXte" type="number" step="0.01" min="0.01"> nm</span></label>
-      <label>Raggio di arrivo punto <span><input id="sArr" type="number" step="5" min="10"> m</span></label>
-      <label>Velocità massima (0 = off) <span><input id="sSpd" type="number" step="0.5" min="0"> nodi</span></label>
-      <label>Raffica di vento (0 = off) <span><input id="sWind" type="number" step="1" min="0"> nodi</span></label>
-      <label>Raggio di sicurezza ostacoli <span><input id="sHz" type="number" step="25" min="25"> m</span></label>
-      <label>Distanza minima dalla costa (0 = off) <span><input id="sCoast" type="number" step="50" min="0"> m</span></label>
-    </div>
-    <h4>Allarme ancora</h4>
-    <div class="form"><label>Raggio di deriva <span><input id="sAnc" type="number" step="5" min="10"> m</span></label></div>
-    <div class="btns"><button data-act="anchor" id="bAnchor">Getta ancora qui</button></div>
-    <h4>Secche e ostacoli</h4>
-    <div class="btns"><select id="hType"><option>Secca</option><option>Scoglio</option><option>Relitto</option><option>Ostacolo</option></select><button data-act="pickHazard">Segna sulla carta</button></div>
-    <div id="hList"></div>
-    <p class="note">Le secche segnate qui generano un allarme se la prua le raggiunge entro 5 minuti o se la rotta ci passa vicino. Tieni premuto sulla carta per un menu rapido.</p>
   </div>
 
   <div class="pane" id="p-punti" hidden>
@@ -380,38 +536,38 @@ button.danger{border-color:#d32f2f;color:#fff;background:#d32f2f}
     <p class="note" id="poiSync"></p>
     <div class="btns"><button data-act="poiGpxOut">Esporta GPX</button><button data-act="poiGpxIn">Importa GPX</button></div>
     <input id="poiFileIn" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" hidden>
-    <p class="note">Tocca un punto sulla carta per aggiungere note, cambiarne il tipo o eliminarlo. Puoi anche tenere premuto sulla carta e scegliere "Salva come mio punto".</p>
+    <details class="info"><summary>Come funziona</summary><p class="note">Tocca un punto sulla carta per aggiungere note, cambiarne il tipo o eliminarlo. Puoi anche tenere premuto sulla carta e scegliere "Salva come mio punto".</p></details>
     <h4>Punti di fonda</h4>
     <label class="chk"><input type="checkbox" id="lFonde"> Mostra i punti di fonda sulla carta</label>
     <div id="fondaList"></div>
-    <p class="note">Zone di ancoraggio segnate sulle carte nautiche, da OpenStreetMap/OpenSeaMap: possono mancare o essere incomplete. Quelle grigie sono riservate alle navi. Prima di dare fondo controlla fondale, tenuta, vento previsto, divieti e ordinanze locali.</p>
+    <details class="info"><summary>Come funziona</summary><p class="note">Zone di ancoraggio segnate sulle carte nautiche, da OpenStreetMap/OpenSeaMap: possono mancare o essere incomplete. Quelle grigie sono riservate alle navi. Prima di dare fondo controlla fondale, tenuta, vento previsto, divieti e ordinanze locali.</p></details>
     <h4>Aree marine protette</h4>
     <label class="chk"><input type="checkbox" id="lAmp"> Mostra le aree marine protette e le loro zone</label>
     <div class="zLeg"><span><i style="border-color:#e53935;background:#e5393533"></i> Zona A – riserva integrale</span><span><i style="border-color:#fb8c00;background:#fb8c0033"></i> Zona B – riserva generale</span><span><i style="border-color:#fdd835;background:#fdd83533"></i> Zona C – riserva parziale</span><span><i style="border-color:#43a047;background:#43a04733"></i> Zona D – protezione</span><span><i style="border-color:#1e88e5;border-style:dashed"></i> Area senza zone nei dati</span></div>
-    <p class="note">In zona A di norma non si può entrare né ancorare; in B e C la navigazione e l'ancoraggio hanno limiti di velocità e di luogo. Ogni area ha il suo regolamento, che fa fede: i confini mostrati vengono da OpenStreetMap e possono essere incompleti. Se la rotta attraversa una zona A, la scheda Rotta te lo segnala.</p>
+    <details class="info"><summary>Come funziona</summary><p class="note">In zona A di norma non si può entrare né ancorare; in B e C la navigazione e l'ancoraggio hanno limiti di velocità e di luogo. Ogni area ha il suo regolamento, che fa fede: i confini mostrati vengono da OpenStreetMap e possono essere incompleti. Se la rotta attraversa una zona A, la scheda Rotta te lo segnala.</p></details>
     <h4>Relitti per immersioni</h4>
     <label class="chk"><input type="checkbox" id="lWrecks"> Mostra i relitti sulla carta</label>
     <div class="wkLeg"><span><i class="wk dive"></i> Sito d'immersione</span><span><i class="wk"></i> Relitto (segnalato per la navigazione)</span></div>
     <div id="wreckList"></div>
-    <p class="note">Relitti da OpenStreetMap/OpenSeaMap: posizione e profondità sono indicative, verificale con un diving o con le carte ufficiali. Immergiti solo con il brevetto adatto alla profondità, segnala l'immersione con boa o bandiera sub e rispetta divieti, aree marine protette e relitti tutelati.</p>
+    <details class="info"><summary>Come funziona</summary><p class="note">Relitti da OpenStreetMap/OpenSeaMap: posizione e profondità sono indicative, verificale con un diving o con le carte ufficiali. Immergiti solo con il brevetto adatto alla profondità, segnala l'immersione con boa o bandiera sub e rispetta divieti, aree marine protette e relitti tutelati.</p></details>
   </div>
 
   <div class="pane" id="p-meteo" hidden>
     <div class="btns"><button data-act="wxGps">La mia posizione</button><button data-act="wxCenter">Centro della carta</button><button data-act="wxRefresh">Aggiorna</button></div>
     <div id="wxBox"></div>
-    <p class="note">Previsioni dei modelli meteo di Open-Meteo, indicative. Prima di uscire controlla anche il bollettino del mare ufficiale e ricorda che vicino alla costa vento e onda possono essere diversi. Per vedere il meteo di un punto qualsiasi tieni premuto sulla carta e scegli "Coordinate e meteo qui".</p>
+    <details class="info"><summary>Come funziona</summary><p class="note">Previsioni dei modelli meteo di Open-Meteo, indicative. Prima di uscire controlla anche il bollettino del mare ufficiale e ricorda che vicino alla costa vento e onda possono essere diversi. Per vedere il meteo di un punto qualsiasi tieni premuto sulla carta e scegli "Coordinate e meteo qui".</p></details>
   </div>
 
   <div class="pane" id="p-mappa" hidden>
     <div class="seg"><label><input type="radio" name="base" value="osm"> Carta</label><label><input type="radio" name="base" value="sat"> Satellite</label></div>
     <div class="seg"><label><input type="radio" name="base" value="gmap"> Google strade</label><label><input type="radio" name="base" value="gsat"> Google satellite</label></div>
     <form class="search" onsubmit="return false"><input id="gKey" type="password" placeholder="Chiave API Google (Map Tiles API)" autocomplete="off"><button id="gKeySave" type="button">Salva</button></form>
-    <p class="note">Per Google Maps serve una chiave API: su console.cloud.google.com crea un progetto, attiva la "Map Tiles API" e crea una chiave. La chiave resta solo su questo telefono. Google offre un credito mensile gratuito; oltre si paga.</p>
+    <details class="info"><summary>Come funziona</summary><p class="note">Per Google Maps serve una chiave API: su console.cloud.google.com crea un progetto, attiva la "Map Tiles API" e crea una chiave. La chiave resta solo su questo telefono. Google offre un credito mensile gratuito; oltre si paga.</p></details>
     <label class="chk"><input type="checkbox" id="lSea"> Segnali nautici (OpenSeaMap): toccali per vedere la scheda</label>
     <label class="chk"><input type="checkbox" id="lBathy"> Profondità (EMODnet, indicativa)</label>
     <label class="chk"><input type="checkbox" id="lTrack"> Mostra la traccia percorsa</label>
     <label class="chk"><input type="checkbox" id="lAis"> Traffico navale (AIS): mostra il pulsante AIS</label>
-    <p class="note">Il traffico navale viene dalla mappa gratuita di VesselFinder e richiede internet. Mostra solo le navi con trasponditore AIS acceso, con qualche minuto di ritardo: non sostituisce la vedetta né il radar.</p>
+    <details class="info"><summary>Come funziona</summary><p class="note">Il traffico navale viene dalla mappa gratuita di VesselFinder e richiede internet. Mostra solo le navi con trasponditore AIS acceso, con qualche minuto di ritardo: non sostituisce la vedetta né il radar.</p></details>
     <div id="encBox" hidden>
     <h4>Carte ENC ufficiali (S-57)</h4>
     <p class="note" id="encStatus">Nessuna carta ENC caricata.</p>
@@ -427,9 +583,9 @@ button.danger{border-color:#d32f2f;color:#fff;background:#d32f2f}
     <label class="chk"><input type="checkbox" id="lPkgWifi"> Scarica solo con il Wi-Fi</label>
     <p class="note" id="pkgInfo"></p>
     <div class="btns"><button data-act="pkgSync">Aggiorna ora</button></div>
-    <p class="note">Al primo avvio l'app scarica tutti i dati nautici d'Italia (canali, briccole, segnali, piattaforme, schemi di traffico) e, se scelto, le profondità. A ogni avvio controlla se sul sito ci sono dati nuovi e scarica solo i riquadri cambiati. Le immagini della carta invece si salvano solo per le zone viste o usate per le rotte.</p>
+    <details class="info"><summary>Come funziona</summary><p class="note">Al primo avvio l'app scarica tutti i dati nautici d'Italia (canali, briccole, segnali, piattaforme, schemi di traffico) e, se scelto, le profondità. A ogni avvio controlla se sul sito ci sono dati nuovi e scarica solo i riquadri cambiati. Le immagini della carta invece si salvano solo per le zone viste o usate per le rotte.</p></details>
     <div class="btns"><button data-act="trackClear">Azzera traccia e statistiche</button><button data-act="trackGpx">Esporta traccia GPX</button></div>
-    <p class="note">Le zone di carta già visualizzate restano disponibili anche senza rete. Prima di partire scorri la carta sulla zona di navigazione, a vari livelli di zoom.</p>
+    <details class="info"><summary>Come funziona</summary><p class="note">Le zone di carta già visualizzate restano disponibili anche senza rete. Prima di partire scorri la carta sulla zona di navigazione, a vari livelli di zoom.</p></details>
     <p class="note warn">Ausilio alla navigazione. Non sostituisce carte ufficiali, strumenti di bordo, bollettini meteo e buona condotta marinaresca. Le profondità e le secche mostrate possono essere incomplete.</p>
   </div>
 </section>
@@ -439,11 +595,14 @@ button.danger{border-color:#d32f2f;color:#fff;background:#d32f2f}
   <div class="rbTrack"><div id="rbBar"></div></div>
 </div>
 
+<div id="toast" hidden></div>
+
 <nav id="tabs">
-  <button data-t="rotta">Rotta</button>
-  <button data-t="dati">Dati</button>
-  <button data-t="avvisi">Avvisi</button>
-  <button data-t="mappa">Carta</button>
+  <button data-t="rotta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8 17c5-1 1-7 5.5-9.5L16 6.5" stroke-dasharray="2.6 2.6"/></svg><span>Rotta</span></button>
+  <button data-t="dati"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16a8 8 0 1115 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1.4" fill="currentColor"/></svg><span>Bordo</span></button>
+  <button data-t="punti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.5s7-6.4 7-12a7 7 0 10-14 0c0 5.6 7 12 7 12z"/><circle cx="12" cy="9.5" r="2.4"/></svg><span>Punti</span></button>
+  <button data-t="meteo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18.5h9.5a4 4 0 00.4-8 5.5 5.5 0 00-10.6 1.4A3.3 3.3 0 007 18.5z"/></svg><span>Meteo</span></button>
+  <button data-t="imp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15.5h18l-2.6 4.5H5.6z"/><path d="M12 3v12.5M12 4l6.5 9.5H12"/></svg><span>Barca</span></button>
 </nav>
 
 <div id="home" hidden>
@@ -452,8 +611,9 @@ button.danger{border-color:#d32f2f;color:#fff;background:#d32f2f}
     <button data-home="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M15.8 8.2l-2.3 5.3-5.3 2.3 2.3-5.3z" fill="currentColor"/></svg><b>Navigazione</b><span>Rotta, dati di bordo, allarmi e carta</span></button>
     <button data-home="punti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.5s7-6.4 7-12a7 7 0 10-14 0c0 5.6 7 12 7 12z"/><circle cx="12" cy="9.5" r="2.6" fill="currentColor"/></svg><b>Punti di interesse</b><span>Punti pesca, fonde, aree marine protette, relitti</span></button>
     <button data-home="meteo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18.5h9.5a4 4 0 00.4-8 5.5 5.5 0 00-10.6 1.4A3.3 3.3 0 007 18.5z"/><path d="M4 22c1.3-.9 2.7-.9 4 0s2.7.9 4 0 2.7-.9 4 0 2.7.9 4 0"/></svg><b>Meteo</b><span>Vento, onde e previsioni</span></button>
-    <button data-home="imp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 15.5h18l-2.6 4.5H5.6z"/><path d="M12 3v12.5M12 4l6.5 9.5H12M12 6.5L7 13.5h5"/></svg><b>Barche e impostazioni</b><span>Barche collegate, account, barca e patente</span></button>
+    <button data-home="imp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 15.5h18l-2.6 4.5H5.6z"/><path d="M12 3v12.5M12 4l6.5 9.5H12M12 6.5L7 13.5h5"/></svg><b>Barca e account</b><span>Barca, patente, account e barche collegate</span></button>
   </div>
+  <button id="homeGo" class="primary" hidden>Riprendi la rotta</button>
   <p class="note">Ausilio alla navigazione: non sostituisce carte ufficiali, strumenti di bordo, bollettini e buona condotta marinaresca.</p>
 </div>
 
