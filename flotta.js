@@ -18,6 +18,7 @@
     user: null, sharing: false, error: null, loading: false
   };
   let fb = null, loadP = null, auth = null, db = null, offset = 0, unsub = [], lastSent = null, meRef = null, cur = null;
+  let poiCb = null, poiUnsub = null;
   const others = new Map(), listeners = new Set();
   const emit = () => listeners.forEach(f => { try { f(F); } catch (e) { /* ignora */ } });
   const now = () => Date.now() + offset;
@@ -44,7 +45,7 @@
         a.onAuthStateChanged(auth, u => {
           F.user = u ? { uid: u.uid, name: u.displayName || '', email: u.email || '' } : null;
           F.loading = false;
-          if (u) listen(); else { quiet(); others.clear(); }
+          if (u) { listen(); listenPois(); } else { quiet(); others.clear(); if (poiUnsub) { poiUnsub(); poiUnsub = null; } }
           emit();
         });
         return fb;
@@ -66,6 +67,13 @@
     };
     unsub = [d.onChildAdded(q, put), d.onChildChanged(q, put),
       d.onChildRemoved(q, s => { if (others.delete(s.key)) emit(); }, () => { F.error = 'Accesso ai dati negato'; emit(); })];
+  }
+  /* punti personali (pesca, fonda...): privati, in punti/<id utente>, li legge e scrive solo il proprietario */
+  function listenPois() {
+    if (poiUnsub) { poiUnsub(); poiUnsub = null; }
+    if (!fb || !F.user || !poiCb) return;
+    const { d } = fb;
+    poiUnsub = d.onValue(d.ref(db, 'punti/' + F.user.uid), s => poiCb(s.val() || {}), () => { F.error = 'Punti salvati: accesso ai dati negato'; emit(); });
   }
   function quiet() { unsub.forEach(u => { try { u(); } catch (e) { /* ignora */ } }); unsub = []; }
 
@@ -93,6 +101,12 @@
     meRef = null;
   }
 
+  F.onPois = cb => { poiCb = cb; listenPois(); };
+  F.putPoi = p => {
+    if (!fb || !F.user) return Promise.resolve(false);
+    const v = {}; Object.keys(p).forEach(k => { if (p[k] != null && p[k] !== '') v[k] = p[k]; });
+    return fb.d.set(fb.d.ref(db, `punti/${F.user.uid}/${p.id}`), v).then(() => true);
+  };
   F.on = f => { listeners.add(f); return () => listeners.delete(f); };
   /* all'avvio: se l'accesso era già stato fatto, si ricollega da solo */
   F.init = wasIn => { if (F.available && wasIn) load().catch(() => {}); };
