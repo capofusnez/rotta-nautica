@@ -55,7 +55,7 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 .c{min-width:0}
 .c b{display:block;font:600 15px/1.15 var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-#alarms{position:fixed;z-index:890;left:max(8px,env(safe-area-inset-left,0px));right:62px;
+#alarms{position:fixed;z-index:890;left:calc(max(8px,env(safe-area-inset-left,0px)) + 56px);right:62px;
   top:calc(var(--hudH, 96px) + 8px);display:flex;flex-direction:column;gap:6px}
 .al{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 8px 8px 12px;border-radius:10px;
   font-weight:600;background:var(--panel);border:2px solid var(--warn);color:var(--fg)}
@@ -101,12 +101,57 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 .wkPop button{margin-top:6px;width:100%}
 .fab.gear{display:flex;align-items:center;justify-content:center}
 .fab.gear svg{width:24px;height:24px;display:block}
+/* menu principale */
+#home{position:fixed;inset:0;z-index:1100;overflow-y:auto;background:radial-gradient(120% 80% at 50% 0%,var(--panel2),var(--bg) 70%);
+  padding:calc(env(safe-area-inset-top,0px) + 22px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 20px) max(16px,env(safe-area-inset-left,0px));
+  display:flex;flex-direction:column;gap:18px}
+.hmTop{display:flex;align-items:center;gap:12px}
+.hmTop img{width:52px;height:52px;border-radius:14px}
+.hmTop b{display:block;font-size:22px;letter-spacing:.01em}
+.hmTop span{font-size:13px;color:var(--mut)}
+.hmGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-width:560px;width:100%;margin:0 auto}
+.hmGrid button{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;padding:16px 14px;min-height:150px;border-radius:18px;
+  background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line)}
+.hmGrid button svg{width:40px;height:40px;color:var(--acc);margin-bottom:auto}
+.hmGrid button b{font-size:16px}
+.hmGrid button span{font-size:12.5px;color:var(--mut);line-height:1.3}
+#home .note{max-width:560px;margin:0 auto;text-align:center}
+@media (min-width:700px){.hmGrid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+/* punto cercato e miei punti */
+.mut{color:#5d7886;font-size:12px}
+.pbtn{display:flex;gap:6px;margin-top:6px}
+.pbtn button{flex:1;min-height:36px;padding:2px 6px;font-size:12.5px;margin:0}
+.wkPop .pbtn button{width:auto}
+.pnote{margin:6px 0 0;white-space:pre-wrap}
+.pedit{margin-top:6px}
+.pedit summary{cursor:pointer;color:#245068;font-weight:600;padding:4px 0}
+.pedit input,.pedit select,.pedit textarea{width:100%;margin-top:6px;color:#10222c;background:#fff;border:1px solid #b8cad3;border-radius:8px;padding:6px 8px;font:inherit}
+button.danger{border-color:#d32f2f;color:#fff;background:#d32f2f}
+.poi{position:relative;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:15px;line-height:1;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.poi span{position:absolute;left:50%;top:28px;transform:translateX(-50%);white-space:nowrap;font:600 11px/1.3 system-ui;color:#fff;background:#07151fcc;padding:0 5px;border-radius:6px;pointer-events:none}
+.poiDot{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font-style:normal;font-size:12px;vertical-align:middle;margin-right:6px;border:1px solid #fff}
+.fd{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;background:#2f6fd6;color:#fff;border:2px solid #fff;box-shadow:0 0 0 1px #0006}
+.fd.ship{background:#7d8a94}
+.fd.sm{display:inline-grid;width:20px;height:20px;font-style:normal;vertical-align:middle;margin-right:6px}
+#poiList button,#fondaList button{display:flex;width:100%;justify-content:space-between;gap:8px;text-align:left;margin:4px 0;font-weight:400}
+#poiList b,#fondaList b{font-weight:600}
+.zLeg{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 12px;font-size:12.5px;margin:4px 0}
+.zLeg span{display:flex;align-items:center;gap:6px}
+.zLeg i{width:16px;height:12px;border-radius:3px;border:2px solid;flex:none}
+.zt{display:inline-block;margin:2px 0;padding:0 6px;border-left:4px solid;font-weight:600}
+/* meteo */
+.wa{display:inline-block;font-style:normal;font-weight:700;color:var(--acc)}
+.wxt{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.wxt th{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);text-align:left;font-weight:600;padding:4px 4px}
+.wxt td{padding:5px 4px;border-top:1px solid var(--line);white-space:nowrap}
+.wxt .mut,.grid .note{color:var(--mut)}
+.grid .g .note{display:block;font-size:11.5px;margin-top:2px}
 
 #pickBar{position:fixed;z-index:940;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));
   bottom:calc(58px + env(safe-area-inset-bottom,0px));display:flex;justify-content:space-between;align-items:center;gap:8px;
   background:var(--acc);color:#04222a;padding:8px 8px 8px 14px;border-radius:12px;font-weight:700}
 #pickBar button{background:#04222a;color:var(--fg);border-color:#04222a;min-height:38px}
-#toast{position:fixed;z-index:970;left:50%;transform:translateX(-50%);
+#toast{position:fixed;z-index:1300;left:50%;transform:translateX(-50%);
   bottom:calc(150px + env(safe-area-inset-bottom,0px));max-width:88vw;background:var(--panel2);border:1px solid var(--line);
   padding:9px 14px;border-radius:10px;text-align:center}
 
@@ -230,7 +275,8 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 <div id="alarms" aria-live="assertive"></div>
 
 <div id="fabsL">
-  <button id="bSet" class="fab gear" aria-label="Impostazioni: barca e patente" title="Impostazioni: barca e patente"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(0 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(45 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(90 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(135 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(180 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(225 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(270 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(315 12 12)"/></g><circle cx="12" cy="12" r="6.4" fill="none" stroke="currentColor" stroke-width="2.6"/><circle cx="12" cy="12" r="2.1" fill="currentColor"/></svg></button>
+  <button id="bHome" class="fab gear" aria-label="Menu principale" title="Menu principale"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg></button>
+  <button id="bSet" class="fab gear" aria-label="Barche e impostazioni" title="Barche e impostazioni"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(0 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(45 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(90 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(135 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(180 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(225 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(270 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="4.6" rx="0.9" transform="rotate(315 12 12)"/></g><circle cx="12" cy="12" r="6.4" fill="none" stroke="currentColor" stroke-width="2.6"/><circle cx="12" cy="12" r="2.1" fill="currentColor"/></svg></button>
   <button id="bAis" class="fab" hidden aria-label="Traffico navale (AIS)" title="Traffico navale (AIS)">AIS</button>
 </div>
 <div id="fabs">
@@ -279,6 +325,9 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
   </div>
 
   <div class="pane" id="p-imp" hidden>
+    <h4>Barche con Rotta Nautica</h4>
+    <div id="fleetBox"></div>
+    <p class="note">Con l'accesso Google e la condivisione accesa, il nome che scegli, il tipo di mezzo, la posizione, la rotta e la velocità sono visibili a tutti gli utenti dell'app che hanno fatto l'accesso. Vale solo mentre l'app è aperta: quando la chiudi o perdi la rete sparisci dalla carta entro pochi minuti. Puoi spegnere la condivisione o uscire quando vuoi. Le barche degli altri possono avere fino a un minuto di ritardo: non serve a evitare collisioni, guarda sempre fuori.</p>
     <h4>Barca e patente</h4>
     <div class="form">
       <label>Mezzo <span><select id="sBoat">
@@ -321,6 +370,38 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
     <p class="note">Le secche segnate qui generano un allarme se la prua le raggiunge entro 5 minuti o se la rotta ci passa vicino. Tieni premuto sulla carta per un menu rapido.</p>
   </div>
 
+  <div class="pane" id="p-punti" hidden>
+    <h4>I miei punti</h4>
+    <div class="btns"><select id="poiCat" aria-label="Tipo di punto"><option value="pesca">🐟 Punto pesca</option><option value="fonda">⚓ Punto di fonda</option><option value="immersione">🤿 Immersione</option><option value="bagno">🏖️ Sosta e bagno</option><option value="altro">📍 Altro</option></select></div>
+    <div class="btns"><button data-act="poiGps">Salva qui (GPS)</button><button data-act="poiPick">Tocca la carta</button></div>
+    <form id="fPoiCoord" class="search"><input id="poiQ" placeholder="Coordinate, es. 45°34'22.7&quot;N 13°15'47.1&quot;E" autocomplete="off" enterkeyhint="done"><button>Aggiungi</button></form>
+    <label class="chk"><input type="checkbox" id="lPois"> Mostra i miei punti sulla carta</label>
+    <div id="poiList"></div>
+    <p class="note" id="poiSync"></p>
+    <div class="btns"><button data-act="poiGpxOut">Esporta GPX</button><button data-act="poiGpxIn">Importa GPX</button></div>
+    <input id="poiFileIn" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" hidden>
+    <p class="note">Tocca un punto sulla carta per aggiungere note, cambiarne il tipo o eliminarlo. Puoi anche tenere premuto sulla carta e scegliere "Salva come mio punto".</p>
+    <h4>Punti di fonda</h4>
+    <label class="chk"><input type="checkbox" id="lFonde"> Mostra i punti di fonda sulla carta</label>
+    <div id="fondaList"></div>
+    <p class="note">Zone di ancoraggio segnate sulle carte nautiche, da OpenStreetMap/OpenSeaMap: possono mancare o essere incomplete. Quelle grigie sono riservate alle navi. Prima di dare fondo controlla fondale, tenuta, vento previsto, divieti e ordinanze locali.</p>
+    <h4>Aree marine protette</h4>
+    <label class="chk"><input type="checkbox" id="lAmp"> Mostra le aree marine protette e le loro zone</label>
+    <div class="zLeg"><span><i style="border-color:#e53935;background:#e5393533"></i> Zona A – riserva integrale</span><span><i style="border-color:#fb8c00;background:#fb8c0033"></i> Zona B – riserva generale</span><span><i style="border-color:#fdd835;background:#fdd83533"></i> Zona C – riserva parziale</span><span><i style="border-color:#43a047;background:#43a04733"></i> Zona D – protezione</span><span><i style="border-color:#1e88e5;border-style:dashed"></i> Area senza zone nei dati</span></div>
+    <p class="note">In zona A di norma non si può entrare né ancorare; in B e C la navigazione e l'ancoraggio hanno limiti di velocità e di luogo. Ogni area ha il suo regolamento, che fa fede: i confini mostrati vengono da OpenStreetMap e possono essere incompleti. Se la rotta attraversa una zona A, la scheda Rotta te lo segnala.</p>
+    <h4>Relitti per immersioni</h4>
+    <label class="chk"><input type="checkbox" id="lWrecks"> Mostra i relitti sulla carta</label>
+    <div class="wkLeg"><span><i class="wk dive"></i> Sito d'immersione</span><span><i class="wk"></i> Relitto (segnalato per la navigazione)</span></div>
+    <div id="wreckList"></div>
+    <p class="note">Relitti da OpenStreetMap/OpenSeaMap: posizione e profondità sono indicative, verificale con un diving o con le carte ufficiali. Immergiti solo con il brevetto adatto alla profondità, segnala l'immersione con boa o bandiera sub e rispetta divieti, aree marine protette e relitti tutelati.</p>
+  </div>
+
+  <div class="pane" id="p-meteo" hidden>
+    <div class="btns"><button data-act="wxGps">La mia posizione</button><button data-act="wxCenter">Centro della carta</button><button data-act="wxRefresh">Aggiorna</button></div>
+    <div id="wxBox"></div>
+    <p class="note">Previsioni dei modelli meteo di Open-Meteo, indicative. Prima di uscire controlla anche il bollettino del mare ufficiale e ricorda che vicino alla costa vento e onda possono essere diversi. Per vedere il meteo di un punto qualsiasi tieni premuto sulla carta e scegli "Coordinate e meteo qui".</p>
+  </div>
+
   <div class="pane" id="p-mappa" hidden>
     <div class="seg"><label><input type="radio" name="base" value="osm"> Carta</label><label><input type="radio" name="base" value="sat"> Satellite</label></div>
     <div class="seg"><label><input type="radio" name="base" value="gmap"> Google strade</label><label><input type="radio" name="base" value="gsat"> Google satellite</label></div>
@@ -331,14 +412,6 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
     <label class="chk"><input type="checkbox" id="lTrack"> Mostra la traccia percorsa</label>
     <label class="chk"><input type="checkbox" id="lAis"> Traffico navale (AIS): mostra il pulsante AIS</label>
     <p class="note">Il traffico navale viene dalla mappa gratuita di VesselFinder e richiede internet. Mostra solo le navi con trasponditore AIS acceso, con qualche minuto di ritardo: non sostituisce la vedetta né il radar.</p>
-    <h4>Barche con Rotta Nautica</h4>
-    <div id="fleetBox"></div>
-    <p class="note">Con l'accesso Google e la condivisione accesa, il nome che scegli, il tipo di mezzo, la posizione, la rotta e la velocità sono visibili a tutti gli utenti dell'app che hanno fatto l'accesso. Vale solo mentre l'app è aperta: quando la chiudi o perdi la rete sparisci dalla carta entro pochi minuti. Puoi spegnere la condivisione o uscire quando vuoi. Le barche degli altri possono avere fino a un minuto di ritardo: non serve a evitare collisioni, guarda sempre fuori.</p>
-    <h4>Relitti per immersioni</h4>
-    <label class="chk"><input type="checkbox" id="lWrecks"> Mostra i relitti sulla carta</label>
-    <div class="wkLeg"><span><i class="wk dive"></i> Sito d'immersione</span><span><i class="wk"></i> Relitto (segnalato per la navigazione)</span></div>
-    <div id="wreckList"></div>
-    <p class="note">Relitti da OpenStreetMap/OpenSeaMap: posizione e profondità sono indicative, verificale con un diving o con le carte ufficiali. Immergiti solo con il brevetto adatto alla profondità, segnala l'immersione con boa o bandiera sub e rispetta divieti, aree marine protette e relitti tutelati.</p>
     <div id="encBox" hidden>
     <h4>Carte ENC ufficiali (S-57)</h4>
     <p class="note" id="encStatus">Nessuna carta ENC caricata.</p>
@@ -373,6 +446,17 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
   <button data-t="mappa">Carta</button>
 </nav>
 
+<div id="home" hidden>
+  <div class="hmTop"><img src="icon-192.png" alt=""><div><b>Rotta Nautica</b><span>Navigazione da diporto in Italia</span></div></div>
+  <div class="hmGrid">
+    <button data-home="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M15.8 8.2l-2.3 5.3-5.3 2.3 2.3-5.3z" fill="currentColor"/></svg><b>Navigazione</b><span>Rotta, dati di bordo, allarmi e carta</span></button>
+    <button data-home="punti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.5s7-6.4 7-12a7 7 0 10-14 0c0 5.6 7 12 7 12z"/><circle cx="12" cy="9.5" r="2.6" fill="currentColor"/></svg><b>Punti di interesse</b><span>Punti pesca, fonde, aree marine protette, relitti</span></button>
+    <button data-home="meteo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18.5h9.5a4 4 0 00.4-8 5.5 5.5 0 00-10.6 1.4A3.3 3.3 0 007 18.5z"/><path d="M4 22c1.3-.9 2.7-.9 4 0s2.7.9 4 0 2.7-.9 4 0 2.7.9 4 0"/></svg><b>Meteo</b><span>Vento, onde e previsioni</span></button>
+    <button data-home="imp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 15.5h18l-2.6 4.5H5.6z"/><path d="M12 3v12.5M12 4l6.5 9.5H12M12 6.5L7 13.5h5"/></svg><b>Barche e impostazioni</b><span>Barche collegate, account, barca e patente</span></button>
+  </div>
+  <p class="note">Ausilio alla navigazione: non sostituisce carte ufficiali, strumenti di bordo, bollettini e buona condotta marinaresca.</p>
+</div>
+
 <div id="fatal" hidden></div>
 <script>
 /* Mostra sullo schermo gli errori che impediscono all'app di partire, invece di lasciare la carta vuota. */
@@ -382,7 +466,10 @@ window.rnFail = function (msg) {
   el.innerHTML = '<b>L\'app non è partita correttamente.</b><br>' + String(msg).replace(/[<&]/g, function (c) { return c === '<' ? '&lt;' : '&amp;'; }) +
     '<br><button onclick="location.reload()">Ricarica</button>';
 };
-window.addEventListener('error', function (e) { if (!window.rnStarted) window.rnFail((e.message || 'errore') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+window.addEventListener('error', function (e) {
+  /* un errore nella condivisione delle barche (firebase-config.js, flotta.js) non deve fermare l'app */
+  if (e.filename && /(firebase-config|flotta)\.js/.test(e.filename)) return;
+  if (!window.rnStarted) window.rnFail((e.message || 'errore') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 </script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="water.js"></script>
