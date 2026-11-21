@@ -295,9 +295,13 @@ let seamarkInspector = { refresh() {} };
 /* i segnali vengono dal file locale: niente rete, disegno immediato */
 try { if (window.Seamarks) seamarkInspector = Seamarks.attach(map, { isOn: () => S.set.sea, isPicking: () => !!S.pick, nodes: b => nauticaFor(b).then(D => D.nodes) }); }
 catch (e) { console.error(e); }
+const THEMES = ['day', 'dusk', 'night'], THEME_L = { day: 'Giorno', dusk: 'Sera', night: 'Notte' };
 function applyNight() {
-  document.body.classList.toggle('night', !!S.set.night);
-  $('themeColor').setAttribute('content', S.set.night ? '#140404' : '#07151f');
+  if (!THEMES.includes(S.set.theme)) S.set.theme = S.set.night ? 'night' : 'day';
+  S.set.night = S.set.theme === 'night';
+  document.body.classList.toggle('night', S.set.theme === 'night');
+  document.body.classList.toggle('dusk', S.set.theme === 'dusk');
+  $('themeColor').setAttribute('content', { day: '#ffffff', dusk: '#0a1c28', night: '#170505' }[S.set.theme]);
 }
 const saveSet = () => store.set('set', S.set);
 
@@ -1724,9 +1728,9 @@ function showWater(on) {
 }
 
 /* ---------- Interfaccia ---------- */
-const GRID = [['sog', 'SOG nodi'], ['cog', 'COG'], ['brg', 'BRG al punto'], ['dtw', 'DTW'], ['xte', 'XTE'], ['vmg', 'VMG nodi'],
-  ['ttg', 'TTG punto'], ['eta', 'ETA punto'], ['rem', 'Distanza rimanente'], ['fin', 'Arrivo finale'], ['pos', 'Posizione', 1],
-  ['trip', 'Percorso'], ['time', 'Tempo'], ['avg', 'Media nodi'], ['max', 'Max nodi'], ['acc', 'Precisione GPS'],
+const GRID = [['sog', 'Velocità (kn)'], ['cog', 'Direzione (COG)'], ['brg', 'Rilevamento del punto'], ['dtw', 'Distanza dal punto'], ['xte', 'Fuori rotta'], ['vmg', 'VMG (kn)'],
+  ['ttg', 'Tempo al punto'], ['eta', 'Arrivo al punto'], ['rem', 'Distanza rimanente'], ['fin', 'Arrivo finale'], ['pos', 'Posizione', 1],
+  ['trip', 'Percorso'], ['time', 'Tempo'], ['avg', 'Media (kn)'], ['max', 'Massima (kn)'], ['acc', 'Precisione GPS'],
   ['wind', 'Vento'], ['gust', 'Raffica'], ['wave', 'Onda'], ['pres', 'Pressione'], ['anc', 'Deriva ancora'], ['utc', 'Ora UTC']];
 $('grid').innerHTML = GRID.map(g => `<div class="g${g[2] ? ' w' : ''}"><span class="lbl">${g[1]}</span><b id="d-${g[0]}">--</b></div>`).join('');
 const setD = (id, v) => { const e = $('d-' + id); if (e) e.textContent = v; };
@@ -1735,8 +1739,12 @@ function ui() {
   const p = S.pos, N = nav();
   $('sog').textContent = p ? p.sog.toFixed(1) : '0.0';
   $('cog').textContent = p ? fmtAng(p.cog) : '---°';
-  $('tgtLbl').textContent = N.label;
+  $('tgtLbl').textContent = N.label === 'MOB' ? 'Verso MOB' : 'Rilevamento';
   $('brg').textContent = fmtAng(N.brg);
+  $('hud').classList.toggle('tgt', N.brg != null && Number.isFinite(N.brg));
+  { const w = wps(); let tot = 0; for (let i = 1; i < w.length; i++) tot += dist(w[i - 1], w[i]);
+    const pr = S.active && tot > 0 && N.rem != null ? Math.max(0, Math.min(1, 1 - N.rem / tot)) : 0;
+    $('hudProg').style.width = (pr * 100).toFixed(1) + '%'; }
   $('dtw').textContent = fmtDist(N.dtw);
   $('xte').textContent = N.xte != null ? (N.xte >= 0 ? 'D ' : 'S ') + fmtDist(Math.abs(N.xte)) : '--';
   $('eta').textContent = N.eta ? fmtClock(N.eta) : '--:--';
@@ -1765,11 +1773,16 @@ function ui() {
 function fabs() {
   const g = $('bGps');
   g.className = 'fab' + (S.sim ? ' on' : !S.gpsOn ? '' : (Date.now() - S.lastFix < 8000 ? ' ok' : ' search'));
-  g.textContent = S.sim ? 'SIM' : 'GPS';
+  $('bGpsL').textContent = S.sim ? 'Sim' : !S.gpsOn ? 'GPS off' : (Date.now() - S.lastFix < 8000 ? 'GPS' : 'Cerco');
   $('bFollow').className = 'fab' + (S.set.follow ? ' on' : '');
-  $('bNight').className = 'fab' + (S.set.night ? ' on' : '');
+  $('bNight').className = 'fab' + (S.set.theme !== 'day' ? ' on' : '');
+  $('bNightL').textContent = THEME_L[S.set.theme] || 'Giorno';
+  $('bNightI').setAttribute('d', S.set.theme === 'day' ? 'M12 7.5a4.5 4.5 0 110 9 4.5 4.5 0 010-9zM12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8' : 'M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z');
+  $('bLayers').className = 'fab' + (S.tab === 'mappa' ? ' on' : '');
   $('bMute').className = 'fab' + (S.set.mute ? '' : ' on');
-  $('bMute').textContent = S.set.mute ? 'MUTO' : 'AUDIO';
+  $('bMuteL').textContent = S.set.mute ? 'Muto' : 'Audio';
+  $('bMuteW').setAttribute('d', S.set.mute ? 'M16 9.5l5 5M21 9.5l-5 5' : 'M16.5 9a4 4 0 010 6M19 6.5a7.5 7.5 0 010 11');
+  const hg = $('homeGo'); if (hg) { hg.hidden = !wps().length; hg.textContent = S.active ? 'Torna alla navigazione' : 'Riprendi la rotta'; }
   $('bGo').textContent = S.active ? 'Ferma navigazione' : 'Avvia navigazione';
   $('bSim').textContent = S.sim ? 'Ferma simulazione' : 'Simula';
 }
@@ -1816,30 +1829,33 @@ function renderHaz() {
   $('bAnchor').textContent = S.anchor ? 'Ritira ancora (allarme attivo)' : 'Getta ancora qui';
 }
 
-const TITLES = { rotta: 'Rotta', dati: 'Dati', avvisi: 'Avvisi', mappa: 'Carta', imp: 'Barche e impostazioni', punti: 'Punti di interesse', meteo: 'Meteo' };
+const TITLES = { rotta: 'Rotta', dati: 'Bordo', mappa: 'Carta e livelli', imp: 'Barca e account', punti: 'Punti di interesse', meteo: 'Meteo' };
 function minSheet(on) { $('sheet').classList.toggle('min', on); if (!on) $('sheet').scrollTop = 0; }
 function openSheet(t) {
-  S.tab = t; $('sheet').hidden = false; minSheet(false);
+  if (t === 'avvisi') t = 'dati';
+  if (S.tab !== t) $('sheet').classList.remove('tall');
+  S.tab = t; $('sheet').hidden = false; minSheet(false); document.body.classList.add('sheetOpen');
   $('sheetTitle').textContent = TITLES[t] || '';
   document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + t; });
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   $('bSet').classList.toggle('on', t === 'imp');
   if (t === 'rotta') renderRoute();
-  if (t === 'avvisi') renderHaz();
+  if (t === 'dati') renderHaz();
   if (t === 'punti') renderPunti();
   if (t === 'meteo') openMeteo();
   if (t === 'imp') renderFleetBox();
   $('home').hidden = true;
-  ui();
+  ui(); fabs();
 }
 function closeSheet() {
-  S.tab = null; $('sheet').hidden = true; $('sheet').classList.remove('min');
+  S.tab = null; $('sheet').hidden = true; $('sheet').classList.remove('min', 'tall'); document.body.classList.remove('sheetOpen');
+  if ($('bLayers')) fabs();
   document.querySelectorAll('#tabs button').forEach(b => b.classList.remove('on'));
   $('bSet').classList.remove('on');
 }
 /* ingranaggio: impostazioni della barca e della patente */
 $('bSet').onclick = () => { S.tab === 'imp' ? closeSheet() : openSheet('imp'); };
-document.querySelectorAll('#tabs button').forEach(b => { b.onclick = () => { S.tab === b.dataset.t ? closeSheet() : openSheet(b.dataset.t); }; });
+document.querySelectorAll('#tabs button').forEach(b => { b.onclick = () => { S.tab === b.dataset.t && !$('sheet').classList.contains('min') ? closeSheet() : openSheet(b.dataset.t); }; });
 
 function pick(type) {
   S.pick = type; closeSheet(); map.closePopup();
@@ -1861,15 +1877,16 @@ $('sheet').addEventListener('touchmove', e => {
   const sh = $('sheet'); swDy = e.touches[0].clientY - swY;
   if (swDy > 0 && (sh.scrollTop <= 0 || e.target.closest('#sheetClose'))) {
     e.preventDefault(); sh.classList.add('drag'); sh.style.transform = `translateY(${swDy}px)`;
-  } else if (swDy < 0 && !sh.classList.contains('min')) { swY = null; }
+  } else if (swDy < 0 && !sh.classList.contains('min') && !e.target.closest('#sheetHead')) { swY = null; }
 }, { passive: false });
 $('sheet').addEventListener('touchend', () => {
   if (swY == null) return;
   const sh = $('sheet'), wasMin = sh.classList.contains('min');
   sh.classList.remove('drag'); sh.style.transform = '';
   if (Math.abs(swDy) > 10) swMoved = true;
-  if (swDy > 60) { if (wasMin) closeSheet(); else minSheet(true); }
-  else if (swDy < -30 && wasMin) minSheet(false);
+  const tall = sh.classList.contains('tall');
+  if (swDy > 60) { if (wasMin) closeSheet(); else if (tall) sh.classList.remove('tall'); else minSheet(true); }
+  else if (swDy < -30) { if (wasMin) minSheet(false); else sh.classList.add('tall'); }
   swY = null;
   setTimeout(() => { swMoved = false; }, 350);
 });
@@ -2506,7 +2523,10 @@ $('bFollow').onclick = () => {
   S.set.follow = !S.set.follow; saveSet(); fabs();
   if (S.set.follow && S.pos) map.panTo([S.pos.lat, S.pos.lng]);
 };
-$('bNight').onclick = () => { S.set.night = !S.set.night; saveSet(); applyNight(); fabs(); };
+$('bNight').onclick = () => { S.set.theme = THEMES[(THEMES.indexOf(S.set.theme) + 1) % 3]; saveSet(); applyNight(); fabs(); toast('Tema: ' + THEME_L[S.set.theme]); };
+$('bLayers').onclick = () => { S.tab === 'mappa' ? closeSheet() : openSheet('mappa'); };
+$('sheetX').onclick = () => closeSheet();
+$('homeGo').onclick = () => { $('home').hidden = true; closeSheet(); };
 $('bMute').onclick = () => { S.set.mute = !S.set.mute; saveSet(); audio(); fabs(); };
 $('bMob').onclick = mobPress;
 $('fSave').addEventListener('submit', e => {
