@@ -17,26 +17,36 @@ const AREA = 'area["ISO3166-1"="IT"][admin_level=2]->.it;';
 const Q_FONDE = `[out:json][timeout:300];${AREA}
 nwr["seamark:type"~"^(anchorage|anchor_berth)$"](area.it);
 out center tags;`;
-/* ricerca leggera: chiavi fisse (name, protection_title) e non espressioni sulle chiavi, che mandavano in timeout i server */
-const RX = '(area marina|riserva naturale marina|riserva marina|parco sommerso|parco marino|marine protected|zona [abcd]([^a-z]|$))';
-const Q_AMP = `[out:json][timeout:300];${AREA}
+/* ricerca leggera, divisa in 7 zone di mare: una sola richiesta per tutta l'Italia mandava in timeout i server.
+   Chiavi fisse (name, protection_title), niente espressioni sulle chiavi. */
+const RX = '(area marina|riserva naturale marina|riserva marina|parco sommerso|parco marino|marine protected)';
+const BOXES = [
+  [43.0, 7.4, 44.6, 11.0],   // Liguria e Toscana nord
+  [41.0, 9.6, 43.0, 13.0],   // Arcipelago toscano e Lazio
+  [38.7, 8.0, 41.4, 10.0],   // Sardegna
+  [37.8, 13.0, 41.3, 16.4],  // Campania e Calabria tirrenica
+  [35.4, 11.8, 38.9, 15.8],  // Sicilia, Egadi, Pelagie
+  [37.8, 15.8, 42.3, 18.8],  // Ionio e Puglia
+  [42.0, 12.0, 45.9, 15.6]   // Adriatico centro-nord
+];
+const qAmp = ([s, w, n, e]) => { const f = `(area.it)(${s},${w},${n},${e})`; return `[out:json][timeout:110];${AREA}
 (
-  nwr["boundary"="protected_area"]["protection_title"~"marin",i](area.it);
-  nwr["boundary"="protected_area"]["name"~"${RX}",i](area.it);
-  nwr["leisure"="nature_reserve"]["name"~"${RX}",i](area.it);
-  nwr["seamark:type"="restricted_area"]["name"~"${RX}",i](area.it);
-  nwr["seamark:type"="restricted_area"]["seamark:name"~"${RX}",i](area.it);
+  nwr["boundary"="protected_area"]["protection_title"~"marin",i]${f};
+  nwr["boundary"="protected_area"]["name"~"${RX}",i]${f};
+  nwr["leisure"="nature_reserve"]["name"~"${RX}",i]${f};
+  nwr["seamark:type"="restricted_area"]["name"~"${RX}",i]${f};
+  nwr["seamark:type"="restricted_area"]["seamark:name"~"${RX}",i]${f};
 );
 out body;
 >;
-out skel qt;`;
+out skel qt;`; };
 
-async function overpass(q) {
+async function overpass(q, rounds = 2, ms = 330000) {
   const errs = [];
-  for (let round = 1; round <= 2; round++) {
+  for (let round = 1; round <= rounds; round++) {
     for (const url of SERVERS) {
       try {
-        const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 330000);
+        const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms);
         const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal,
           headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA } });
         const txt = await r.text();
@@ -48,7 +58,7 @@ async function overpass(q) {
       } catch (e) { errs.push(`${url}: ${e.name === 'AbortError' ? 'timeout' : e.message}`); }
       await sleep(5000);
     }
-    await sleep(30000);
+    if (round < rounds) await sleep(30000);
   }
   throw new Error(errs.slice(-3).join(' | '));
 }
@@ -107,9 +117,13 @@ try {
   log.push(`${fonde.length} punti di fonda`);
 } catch (e) { log.push('punti di fonda non scaricati: ' + e.message); }
 
-try {
-  const osm = await overpass(Q_AMP);
-  const gj = osmtogeojson(osm, { flatProperties: true });
+const boxErr = [];
+{
+  const gj = { features: [] };
+  for (const bx of BOXES) {
+    try { gj.features.push(...osmtogeojson(await overpass(qAmp(bx), 1, 125000), { flatProperties: true }).features); }
+    catch (e) { boxErr.push(`zona ${bx.join(',')}: ${e.message}`); }
+  }
   for (const f of gj.features) {
     if (!f.geometry || !/Polygon/.test(f.geometry.type)) continue;
     const t = f.properties || {};
@@ -128,7 +142,8 @@ try {
     }) });
   }
   log.push(`${amp.length} aree marine protette o zone (${amp.filter(f => f.properties.zone).length} con la zona A/B/C/D)`);
-} catch (e) { log.push('aree marine protette non scaricate: ' + e.message); }
+  if (boxErr.length) log.push(`${boxErr.length} zone di mare non scaricate: ${boxErr.join(' | ')}`);
+}
 
 /* se una delle due richieste fallisce si tiene la parte del file precedente */
 let old = null;
@@ -136,7 +151,7 @@ try { old = JSON.parse(fs.readFileSync(OUT, 'utf8')); } catch (e) { /* nessun fi
 const out = {
   format: 'rotta-nautica-poi-1', created: new Date().toISOString(), source: 'OpenStreetMap / OpenSeaMap',
   fonde: fonde.length ? fonde.sort((a, b) => a.lat - b.lat || a.lng - b.lng) : (old && old.fonde) || [],
-  amp: amp.length ? amp : (old && old.amp) || []
+  amp: amp.length && (!boxErr.length || !(old && old.amp && old.amp.length > amp.length)) ? amp : (old && old.amp) || []
 };
 fs.writeFileSync(OUT, JSON.stringify(out));
 console.log(`${OUT}: ` + log.join(', ') + ` (${(fs.statSync(OUT).size / 1e6).toFixed(1)} MB)`);
