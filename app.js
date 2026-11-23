@@ -134,7 +134,7 @@ function fmtClock(ms) {
 const DEF = { xte: 0.1, arr: 80, spd: 0, wind: 25, hz: 300, plan: 5, anc: 40, coast: 300, draft: 1, ukc: 0.5, enc: true,
   mute: false, night: false, base: 'osm', sea: true, bathy: false, track: true, follow: true,
   boat: 'motore', hp: 40, len: 6, lic: 'none', vlim: 'auto', ce: 'ce', pref: 1, pkg: 'all', pkgWifi: true,
-  wrecks: false, ais: false, fleetShare: true, fleetName: '', fleetIn: false, pois: true, fonde: false, amp: false, pesca: true };
+  wrecks: false, ais: false, fleetShare: true, fleetName: '', fleetIn: false, pois: true, fonde: false, amp: false, pesca: true, iso: false };
 const S = {
   set: Object.assign({}, DEF, store.get('set', {})),
   route: store.get('route', { start: null, via: [], dest: null }),
@@ -166,6 +166,8 @@ const bathy = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
   layers: 'emodnet:mean_multicolour', format: 'image/png', transparent: true, opacity: 0.6, zIndex: 2, className: 'bathy', attribution: 'EMODnet Bathymetry'
 });
 
+/* linee batimetriche calcolate sul telefono dalle profondità EMODnet (vedi "Linee batimetriche" più sotto) */
+const isoLayer = L.layerGroup();
 const routeLine = L.polyline([], { color: '#e254ff', weight: 4, opacity: .85, dashArray: '10 8' }).addTo(map);
 const legLine = L.polyline([], { color: '#e254ff', weight: 6, opacity: .95 }).addTo(map);
 const trackLine = L.polyline([], { color: '#ff9f1c', weight: 4, opacity: .95 }).addTo(map);
@@ -269,6 +271,7 @@ function applyLayers() {
   }
   if (S.set.sea) { if (!map.hasLayer(sea)) sea.addTo(map); } else map.removeLayer(sea);
   if (S.set.bathy) { if (!map.hasLayer(bathy)) bathy.addTo(map); } else map.removeLayer(bathy);
+  if (S.set.iso) { if (!map.hasLayer(isoLayer)) { isoLayer.addTo(map); drawIso(); } } else { map.removeLayer(isoLayer); isoLayer.clearLayers(); }
   if (S.set.track) { if (!map.hasLayer(trackLine)) trackLine.addTo(map); } else map.removeLayer(trackLine);
   { if (S.set.wrecks) { if (!map.hasLayer(wreckLayer)) { wreckLayer.addTo(map); loadWrecks(); } } else map.removeLayer(wreckLayer); }
   if (S.set.pois) { if (!map.hasLayer(poiLayer)) poiLayer.addTo(map); } else map.removeLayer(poiLayer);
@@ -550,6 +553,7 @@ function stopGps() {
 
 function onFix(f) {
   const now = f.t || Date.now();
+  if (Date.now() - coastT0 > 8000) { coastT0 = Date.now(); coastHere(f).then(r => { S.coastHere = r; ui(); }).catch(() => {}); }
   S.lastFix = Date.now(); clearAl('gps');
   const lt = S.track[S.track.length - 1];
   let sog = (f.speed != null && isFinite(f.speed)) ? f.speed * KN : null;
@@ -1274,6 +1278,108 @@ function depthIndex() {
   if (!dIndexP) dIndexP = getData('depth/index.json').then(j => (j && j.tiles) ? j : { tiles: [] }).catch(() => ({ tiles: [] }));
   return dIndexP;
 }
+/* ---------- Distanza dalla costa e fondale nel punto (profondità EMODnet, maglia ~115 m, senza rete) ---------- */
+let coastT0 = 0;
+async function coastHere(p) {
+  const idx = await depthIndex(), R = 30000;   // si cerca la costa entro 30 km
+  const kx = Math.cos(p.lat * RAD), dLa = R / 111320, dLo = R / (111320 * kx);
+  const b = { s: p.lat - dLa, n: p.lat + dLa, w: p.lng - dLo, e: p.lng + dLo };
+  const tiles = (await Promise.all(idx.tiles.filter(t => tileHit(t, b)).map(depthTile))).filter(Boolean);
+  if (!tiles.length) return null;
+  /* valore di una cella: profondità in metri (mare), -1 (terra o fuori dai dati) */
+  const at = (lat, lng) => {
+    const d = tiles.find(x => lat >= x.t.s && lat < x.t.n && lng >= x.t.w && lng < x.t.e); if (!d) return -1;
+    const px = Math.min(d.w - 1, ((lng - d.t.w) / (d.t.e - d.t.w) * d.w) | 0), py = Math.min(d.h - 1, ((d.t.n - lat) / (d.t.n - d.t.s) * d.h) | 0), j = (py * d.w + px) * 4;
+    return d.data[j + 2] === 255 ? (d.data[j] * 256 + d.data[j + 1]) / 10 : -1;
+  };
+  const here = at(p.lat, p.lng), res = { t: Date.now(), max: R, depth: here >= 0 ? here : null };
+  if (here < 0) { res.land = true; res.m = 0; return res; }
+  const st = 1 / 960, sy = st * 111320, sx = st * 111320 * kx, N = Math.ceil(R / Math.min(sx, sy));
+  /* anelli quadrati crescenti: alla prima terra trovata si controlla ancora fino a r·√2 per avere la distanza vera minima */
+  let best = Infinity, stop = N;
+  for (let r = 1; r <= stop; r++) {
+    for (let k = -r; k <= r; k++) for (const [dx, dy] of [[k, -r], [k, r], [-r, k], [r, k]]) {
+      const m = Math.hypot(dx * sx, dy * sy); if (m >= best) continue;
+      if (at(p.lat + dy * st, p.lng + dx * st) < 0) { best = m; stop = Math.min(N, Math.ceil(r * 1.42) + 1); }
+    }
+  }
+  res.m = Number.isFinite(best) ? best : null;
+  return res;
+}
+
+/* ---------- Linee batimetriche: isobate calcolate dalle profondità EMODnet della zona visibile ---------- */
+const ISO_C = { 2: '#7fd3ff', 5: '#4fb3f0', 10: '#2a8fd8', 20: '#1f6fb8', 30: '#1a5ca0', 50: '#164b8a', 100: '#123b72', 200: '#0e2d5c', 500: '#0a2048', 1000: '#071634' };
+let isoT = 0, isoJob = 0;
+map.on('moveend', () => { if (S.set.iso) { clearTimeout(isoT); isoT = setTimeout(drawIso, 250); } });
+async function drawIso() {
+  if (!S.set.iso) return;
+  const job = ++isoJob, z = map.getZoom();
+  if (z < 9) { isoLayer.clearLayers(); if (S.tab === 'mappa') toast('Avvicinati per vedere le linee batimetriche'); return; }
+  const B = map.getBounds().pad(0.15), b = { s: B.getSouth(), n: B.getNorth(), w: B.getWest(), e: B.getEast() };
+  const res = await isoLines(b, z);
+  if (job !== isoJob) return;
+  isoLayer.clearLayers();
+  res.forEach(({ L0, segs }) => {
+    const col = ISO_C[L0] || '#123b72';
+    L.polyline(segs, { color: col, weight: L0 <= 5 ? 1.8 : 1.3, opacity: 0.9, interactive: false, renderer: isoRenderer }).addTo(isoLayer);
+    /* etichette: poche, distanziate sullo schermo */
+    const used = [], step = Math.max(1, Math.floor(segs.length / 12));
+    for (let i = 0; i < segs.length && used.length < 6; i += step) {
+      const pt = map.latLngToContainerPoint(segs[i][0]);
+      if (used.some(u => u.distanceTo(pt) < 160)) continue;
+      used.push(pt);
+      L.marker(segs[i][0], { interactive: false, keyboard: false, icon: L.divIcon({ className: 'isoLbl', html: `<span style="color:${col}">${L0} m</span>`, iconSize: null }) }).addTo(isoLayer);
+    }
+  });
+}
+/* isobate della zona b: [{ L0: profondità, segs: [[[lat, lng], [lat, lng]], ...] }] */
+async function isoLines(b, z) {
+  const idx = await depthIndex();
+  const tiles = (await Promise.all(idx.tiles.filter(t => tileHit(t, b)).map(depthTile))).filter(Boolean);
+  const out = [];
+  if (!tiles.length) return out;
+  const levels = z >= 13 ? [2, 5, 10, 20, 50] : z >= 11 ? [5, 10, 20, 50, 100, 200] : [10, 20, 50, 100, 200, 500, 1000];
+  /* griglia sulle celle EMODnet (1/960 di grado), diradata se la zona è grande */
+  const f = Math.max(1, Math.ceil(Math.sqrt((b.n - b.s) * 960 * (b.e - b.w) * 960 / 250000))), st = f / 960;
+  const W = Math.ceil((b.e - b.w) / st) + 1, H = Math.ceil((b.n - b.s) / st) + 1, V = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    const lat = b.n - y * st;
+    for (let x = 0; x < W; x++) {
+      const lng = b.w + x * st, d = tiles.find(q => lat >= q.t.s && lat < q.t.n && lng >= q.t.w && lng < q.t.e);
+      if (!d) { V[y * W + x] = NaN; continue; }
+      const px = Math.min(d.w - 1, ((lng - d.t.w) / (d.t.e - d.t.w) * d.w) | 0), py = Math.min(d.h - 1, ((d.t.n - lat) / (d.t.n - d.t.s) * d.h) | 0), j = (py * d.w + px) * 4;
+      V[y * W + x] = d.data[j + 2] === 255 ? (d.data[j] * 256 + d.data[j + 1]) / 10 : 0;   // terra = 0 m
+    }
+  }
+  const LL = (x, y) => [b.n - y * st, b.w + x * st];
+  levels.forEach(L0 => {
+    /* marching squares: segmenti dove la profondità attraversa L0 */
+    const segs = [];
+    for (let y = 0; y < H - 1; y++) for (let x = 0; x < W - 1; x++) {
+      const a = V[y * W + x], bb = V[y * W + x + 1], c = V[(y + 1) * W + x + 1], d = V[(y + 1) * W + x];
+      if (a !== a || bb !== bb || c !== c || d !== d) continue;
+      const k = (a >= L0 ? 8 : 0) | (bb >= L0 ? 4 : 0) | (c >= L0 ? 2 : 0) | (d >= L0 ? 1 : 0);
+      if (k === 0 || k === 15) continue;
+      const t = (p, q) => (L0 - p) / (q - p);
+      const T = () => LL(x + t(a, bb), y), Rr = () => LL(x + 1, y + t(bb, c)), Bo = () => LL(x + t(d, c), y + 1), Le = () => LL(x, y + t(a, d));
+      switch (k) {
+        case 1: case 14: segs.push([Le(), Bo()]); break;
+        case 2: case 13: segs.push([Bo(), Rr()]); break;
+        case 3: case 12: segs.push([Le(), Rr()]); break;
+        case 4: case 11: segs.push([T(), Rr()]); break;
+        case 6: case 9: segs.push([T(), Bo()]); break;
+        case 7: case 8: segs.push([Le(), T()]); break;
+        case 5: segs.push([Le(), T()], [Bo(), Rr()]); break;
+        case 10: segs.push([T(), Rr()], [Le(), Bo()]); break;
+      }
+    }
+    if (segs.length) out.push({ L0, segs });
+  });
+  return out;
+}
+window.rnDebug = { coastHere, isoLines };
+const isoRenderer = L.canvas({ padding: 0.2 });
+
 /* Tessere intere in memoria: al massimo 16 (3,7 MB l'una), le meno usate di recente escono. */
 function depthTile(t) {
   if (dTiles.has(t.id)) { const p = dTiles.get(t.id); dTiles.delete(t.id); dTiles.set(t.id, p); return p; }
@@ -1767,7 +1873,7 @@ function showWater(on) {
 const GRID = [['sog', 'Velocità (kn)'], ['cog', 'Direzione (COG)'], ['brg', 'Rilevamento del punto'], ['dtw', 'Distanza dal punto'], ['xte', 'Fuori rotta'], ['vmg', 'VMG (kn)'],
   ['ttg', 'Tempo al punto'], ['eta', 'Arrivo al punto'], ['rem', 'Distanza rimanente'], ['fin', 'Arrivo finale'], ['pos', 'Posizione', 1],
   ['trip', 'Percorso'], ['time', 'Tempo'], ['avg', 'Media (kn)'], ['max', 'Massima (kn)'], ['acc', 'Precisione GPS'],
-  ['wind', 'Vento'], ['gust', 'Raffica'], ['wave', 'Onda'], ['pres', 'Pressione'], ['anc', 'Deriva ancora'], ['utc', 'Ora UTC']];
+  ['coast', 'Distanza dalla costa'], ['depth', 'Fondale (EMODnet)'], ['wind', 'Vento'], ['gust', 'Raffica'], ['wave', 'Onda'], ['pres', 'Pressione'], ['anc', 'Deriva ancora'], ['utc', 'Ora UTC']];
 $('grid').innerHTML = GRID.map(g => `<div class="g${g[2] ? ' w' : ''}"><span class="lbl">${g[1]}</span><b id="d-${g[0]}">--</b></div>`).join('');
 const setD = (id, v) => { const e = $('d-' + id); if (e) e.textContent = v; };
 
@@ -1796,6 +1902,9 @@ function ui() {
   setD('vmg', f(N.vmg, 1)); setD('ttg', fmtDur(N.ttg)); setD('eta', N.eta ? fmtClock(N.eta) : '--');
   setD('rem', fmtDist(N.rem)); setD('fin', N.eta && S.active ? fmtClock(N.eta) : '--');
   setD('pos', fmtPos(p)); setD('trip', fmtDist(S.trip.dist)); setD('time', fmtDur(el));
+  { const c = p && S.coastHere && Date.now() - S.coastHere.t < 60000 ? S.coastHere : null;
+    setD('coast', !c ? '--' : c.land ? 'in porto o a riva' : c.m == null ? `oltre ${fmtDist(c.max)}` : fmtDist(c.m));
+    setD('depth', c && c.depth != null ? '~' + (c.depth < 10 ? c.depth.toFixed(1) : Math.round(c.depth)) + ' m' : '--'); }
   setD('avg', Number.isFinite(el) && el > 30 ? (S.trip.dist / el * KN).toFixed(1) : '--');
   setD('max', S.trip.max.toFixed(1)); setD('acc', p && p.acc != null ? '±' + Math.round(p.acc) + ' m' : '--');
   setD('wind', wx.wind_speed_10m != null ? `${fmtAng(wx.wind_direction_10m)} ${Math.round(wx.wind_speed_10m)} kn` : '--');
@@ -2731,7 +2840,7 @@ document.querySelectorAll('input[name=base]').forEach(r => {
   r.checked = r.value === S.set.base;
   r.addEventListener('change', () => { S.set.base = r.value; saveSet(); applyLayers(); });
 });
-[['lSea', 'sea'], ['lBathy', 'bathy'], ['lTrack', 'track'], ['lEnc', 'enc'], ['lWrecks', 'wrecks'], ['lAis', 'ais'], ['lPois', 'pois'], ['lFonde', 'fonde'], ['lAmp', 'amp'], ['lPesca', 'pesca']].filter(([id]) => $(id)).forEach(([id, k]) => {
+[['lSea', 'sea'], ['lBathy', 'bathy'], ['lIso', 'iso'], ['lTrack', 'track'], ['lEnc', 'enc'], ['lWrecks', 'wrecks'], ['lAis', 'ais'], ['lPois', 'pois'], ['lFonde', 'fonde'], ['lAmp', 'amp'], ['lPesca', 'pesca']].filter(([id]) => $(id)).forEach(([id, k]) => {
   $(id).checked = !!S.set[k];
   $(id).addEventListener('change', () => { S.set[k] = $(id).checked; saveSet(); applyLayers(); renderPunti(); });
 });

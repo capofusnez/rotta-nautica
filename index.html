@@ -463,6 +463,7 @@ details.info .note+.note{margin-top:8px}
 .ckM.bad{border-left-color:var(--bad)}.ckM.bad .ckSt{color:var(--bad)}
 .ckM button{flex:none}
 .ckWarn{color:var(--warn);font-weight:600}
+.isoLbl{background:none;border:0}.isoLbl span{font:700 11px/1 system-ui,sans-serif;white-space:nowrap;padding:1px 3px;border-radius:4px;background:rgba(255,255,255,.85);transform:translate(-50%,-50%);display:inline-block}
 .wkT{font-size:20px;margin:4px 0 8px}.wkFacts{font-size:14px;line-height:1.55;color:var(--mut);margin:0 0 10px}.wkFacts b{color:var(--fg);font-weight:600}
 .wkIntro{font-size:16px;line-height:1.5;font-weight:600;margin:0 0 6px}.wkH{font-size:15px;margin:14px 0 4px}.wkP{font-size:15px;line-height:1.55;margin:0 0 8px}
 .linkBtn{border:0;background:none;padding:6px 0 0;min-height:0;color:inherit;font-weight:700;text-decoration:underline}
@@ -643,6 +644,8 @@ details.info .note+.note{margin-top:8px}
     <details class="info"><summary>Come funziona</summary><p class="note">Per Google Maps serve una chiave API: su console.cloud.google.com crea un progetto, attiva la "Map Tiles API" e crea una chiave. La chiave resta solo su questo telefono. Google offre un credito mensile gratuito; oltre si paga.</p></details>
     <label class="chk"><input type="checkbox" id="lSea"> Segnali nautici (OpenSeaMap): toccali per vedere la scheda</label>
     <label class="chk"><input type="checkbox" id="lBathy"> Profondità (EMODnet, indicativa)</label>
+    <label class="chk"><input type="checkbox" id="lIso"> Linee batimetriche (2, 5, 10, 20, 50 m…)</label>
+    <details class="info"><summary>Linee batimetriche</summary><p class="note">Le linee uniscono i punti con la stessa profondità e sono calcolate sul telefono dai dati EMODnet (maglia di circa 115 m), quindi funzionano anche senza rete se hai scaricato il pacchetto dati. Avvicinando la carta compaiono le linee più basse (2 e 5 m). Sono indicative: vicino a riva, in laguna e sui banchi che si spostano la profondità vera può essere diversa. Non sostituiscono le carte nautiche ufficiali.</p></details>
     <label class="chk"><input type="checkbox" id="lTrack"> Mostra la traccia percorsa</label>
     <label class="chk"><input type="checkbox" id="lAis"> Traffico navale (AIS): mostra il pulsante AIS</label>
     <details class="info"><summary>Come funziona</summary><p class="note">Il traffico navale viene dalla mappa gratuita di VesselFinder e richiede internet. Mostra solo le navi con trasponditore AIS acceso, con qualche minuto di ritardo: non sostituisce la vedetta né il radar.</p></details>
