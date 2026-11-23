@@ -361,6 +361,25 @@ function clearAl(id) { if (A.delete(id)) renderAlarms(); }
 
 let toastT = 0;
 window.rnToast = m => toast(m);
+/* sezione Barca collegata alla scheda della check-list (checklist.js): mezzo, potenza totale, lunghezza, pescaggio */
+window.rnBoatSet = () => ({ boat: S.set.boat, hp: S.set.hp, len: S.set.len, draft: S.set.draft });
+window.rnBoatSync = info => {
+  if (!info) return;
+  const ch = [];
+  const put = (k, v, id) => { if (v == null || v === '' || S.set[k] === v) return; S.set[k] = v; ch.push(k); const el = $(id); if (el) el.value = v; };
+  put('boat', info.kind, 'sBoat'); put('hp', info.hp, 'sHp'); put('len', info.len, 'sLen'); put('draft', info.draft, 'sDraft');
+  saveSet(); renderRules(); boatFromCk();
+  if (ch.length) { toast('Sezione Barca aggiornata dalla check-list'); if (S.route.start && S.route.dest && ch.some(k => k !== 'hp')) setTimeout(editRoute, 300); }
+};
+function boatFromCk() {
+  const el = $('ckBoatNote'), info = window.RNCheck && window.RNCheck.boatInfo && window.RNCheck.boatInfo();
+  if (!el) return;
+  el.hidden = !info;
+  if (info) el.innerHTML = `Dati presi dalla scheda della check-list${info.name ? ` (<b>${esc(info.name)}</b>${info.n > 1 ? `, ${info.n} motori` : ''})` : ''}. ` +
+    `Se li cambi qui valgono per la rotta; per cambiarli anche nella check-list modifica la scheda della barca.` +
+    (info.hp == null || !info.len || info.draft == null ? `<br><span class="mut">Nella scheda mancano ${[info.hp == null && 'potenza', !info.len && 'lunghezza', info.draft == null && 'pescaggio'].filter(Boolean).join(', ')}: per questi restano i valori qui sotto.</span>` : '') +
+    `<br><button class="linkBtn" data-act="ckBoatSync">Riprendi i dati della check-list</button>`;
+}
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.hidden = false;
   clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3200);
@@ -1847,6 +1866,7 @@ function openSheet(t) {
   if (t === 'rotta') renderRoute();
   if (t === 'dati') renderHaz();
   if (t === 'punti') renderPunti();
+  if (t === 'imp') boatFromCk();
   if (t === 'meteo') openMeteo();
   if (t === 'imp') renderFleetBox();
   if (t === 'check' && window.RNCheck) window.RNCheck.render();
@@ -2540,6 +2560,7 @@ document.addEventListener('click', e => {
       S.set.fleetName = v; saveSet(); toast(v ? 'Nome salvato: ' + v : 'Nome predefinito'); if (S.pos && !S.sim) { FL.update(fleetPos()); FL.rename(); }
       break;
     }
+    case 'ckBoatSync': if (window.RNCheck) window.RNCheck.syncBoat(); break;
     case 'pescaGo': { const z = PESCA && PESCA[i]; if (!z || !z.marker) break; minSheet(true); map.setView([z.c.lat, z.c.lng], Math.max(map.getZoom(), z.poly ? 13 : 12)); z.marker.openPopup(); break; }
     case 'pescaWreck': { const w = WRECKS && WRECKS[i]; if (!w) break; if (!S.set.wrecks) { S.set.wrecks = true; saveSet(); applyLayers(); if ($('lWrecks')) $('lWrecks').checked = true; } minSheet(true); map.setView([w.lat, w.lng], Math.max(map.getZoom(), 14)); w.marker.openPopup(); break; }
     case 'wreckGo': { const w = WRECKS && WRECKS[i]; if (!w) break; minSheet(true); map.setView([w.lat, w.lng], Math.max(map.getZoom(), 14)); w.marker.openPopup(); break; }

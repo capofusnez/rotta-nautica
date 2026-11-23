@@ -291,7 +291,8 @@
   }
 
   function boatForm() {
-    const b = D.boat || { kind: guessKind(), eng: guessEng(), n: 1 };
+    const B0 = window.rnBoatSet ? window.rnBoatSet() : {};
+    const b = D.boat || { kind: guessKind(), eng: guessEng(), n: 1, len: B0.len || null, draft: B0.draft || null };
     const first = !D.boat;
     return (first ? '' : back('home', 'Check-list')) +
       `<h4>${first ? 'La tua barca' : 'Modifica la barca'}</h4>` +
@@ -304,13 +305,17 @@
         <label>Marchio del motore <span><input id="ckEb" list="ckEbL" maxlength="40" value="${esc(b.ebrand)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
         <label>Modello del motore <span><input id="ckEm" list="ckEmL" maxlength="40" value="${esc(b.emodel)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
         <label>Numero di motori <span><select id="ckN">${[1, 2, 3, 4].map(n => `<option${n === +b.n ? ' selected' : ''}>${n}</option>`).join('')}</select></span></label>
+        <label>Potenza di ogni motore <span><input id="ckHp" type="number" inputmode="decimal" step="1" min="0" value="${esc(b.hp != null ? b.hp : '')}" placeholder="es. 200"> CV</span></label>
+        <label>Lunghezza fuori tutto <span><input id="ckLen" type="number" inputmode="decimal" step="0.1" min="1" value="${esc(b.len != null ? b.len : '')}" placeholder="es. 9,8"> m</span></label>
+        <label>Pescaggio <span><input id="ckDr" type="number" inputmode="decimal" step="0.1" min="0" value="${esc(b.draft != null ? b.draft : '')}" placeholder="es. 0,9"> m</span></label>
         ${first ? '<label>Ore motore attuali <span><input id="ckH0" type="number" inputmode="decimal" step="0.1" min="0" placeholder="es. 245"> h</span></label>' : ''}
         <p class="note ckOk" id="ckProf"${profileOf(b) ? '' : ' hidden'}>${profileOf(b) ? `Programma di manutenzione dal libretto del costruttore: ${esc(profileOf(b).nome)}.` : ''}</p>
+        <p class="note">Mezzo, potenza, lunghezza e pescaggio passano anche nella sezione Barca, dove servono per la rotta e i limiti di distanza dalla costa.</p>
         <p class="note">Tocca una casella per vedere l'elenco o inizia a scrivere: se marchio o modello non ci sono, scrivili tu. Dal modello del motore l'app riconosce se è fuoribordo, entrobordo o entrofuoribordo: controlla comunque la casella "Motore".</p>
         <div class="btns"><button class="primary">${first ? 'Prepara le check-list' : 'Salva'}</button></div>
       </form>
-      <datalist id="ckBbL">${dl(Object.keys(CAT().barche))}</datalist><datalist id="ckBmL">${dl(boatModels(b.brand))}</datalist>
-      <datalist id="ckEbL">${dl(engBrands(b.eng))}</datalist><datalist id="ckEmL">${dl(engModels(b.ebrand, b.eng))}</datalist>` +
+      <datalist id="ckBbL">${dl(boatBrands())}</datalist><datalist id="ckBmL">${dl(boatModels(b.brand))}</datalist>
+      <datalist id="ckEbL">${dl(engBrands())}</datalist><datalist id="ckEmL">${dl(engModels(b.ebrand, b.eng))}</datalist>` +
       (first ? '' : `<p class="note">Se hai cambiato tipo di motore puoi rifare le voci proposte: i report salvati restano.</p>
         <div class="btns"><button data-ck="rebuild"${confirmKey === 'rebuild' ? ' class="danger"' : ''}>${confirmKey === 'rebuild' ? 'Tocca di nuovo: sostituisce tutte le voci' : 'Rifai le voci per questa barca'}</button></div>`) +
       `<details class="info"><summary>Come funziona</summary><p class="note">Per i motori di cui l'app conosce il programma del costruttore, le manutenzioni e gli intervalli sono quelli del libretto (la fonte è scritta in Manutenzione). Per gli altri le voci sono proposte in base al tipo di motore e gli intervalli sono indicativi. Controlla gli intervalli sul libretto di uso e manutenzione del tuo motore e correggili dove serve. Con più motori segna le ore del motore che ne ha di più.</p></details>`;
@@ -320,12 +325,15 @@
   const norm = x => String(x || '').trim().toLowerCase();
   const findKey = (o, name) => Object.keys(o).find(k => norm(k) === norm(name));
   const dl = arr => arr.map(v => `<option value="${esc(v)}"></option>`).join('');
-  const boatModels = brand => { const k = findKey(CAT().barche, brand); return k ? CAT().barche[k].m : []; };
-  const engBrands = type => { const M = CAT().motori, all = Object.keys(M); const fit = all.filter(k => M[k][type]); return fit.concat(all.filter(k => !M[k][type])); };
+  /* elenchi in ordine alfabetico, con i numeri in ordine di grandezza (F9.9 prima di F15) */
+  const abc = arr => [...new Set(arr)].sort((a, b) => a.localeCompare(b, 'it', { numeric: true, sensitivity: 'base' }));
+  const boatBrands = () => abc(Object.keys(CAT().barche));
+  const boatModels = brand => { const k = findKey(CAT().barche, brand); return k ? abc(CAT().barche[k].m) : []; };
+  const engBrands = () => abc(Object.keys(CAT().motori));
   function engModels(brand, type) {
     const k = findKey(CAT().motori, brand); if (!k) return [];
     const M = CAT().motori[k];
-    return (M[type] || []).concat(...Object.keys(M).filter(t => t !== type).map(t => M[t]));
+    return abc([].concat(...Object.keys(M).map(t => M[t])));
   }
   function engTypeOf(brand, model) {
     const k = findKey(CAT().motori, brand); if (!k) return null;
@@ -347,16 +355,18 @@
       if (k && e.type === 'change') {
         setKind(CAT().barche[k].k);
         const pe = CAT().barche[k].e;
-        if (pe && /^fb/.test($('ckE').value) && !$('ckE').dataset.man) { $('ckE').value = pe; $('ckEbL').innerHTML = dl(engBrands(pe)); toast('Motore proposto: ' + ENG[pe] + ' (cambialo se non è così)'); }
+        if (pe && /^fb/.test($('ckE').value) && !$('ckE').dataset.man) { $('ckE').value = pe; $('ckEbL').innerHTML = dl(engBrands()); toast('Motore proposto: ' + ENG[pe] + ' (cambialo se non è così)'); }
       }
     }
     if (t.id === 'ckBm') setKind(/sun odyssey|sun fast|oceanis|^first /i.test(t.value) && boatModels($('ckBb').value).some(m => norm(m) === norm(t.value)) ? 'vela' : null);
     if (t.id === 'ckEb' || t.id === 'ckE') {
       $('ckEmL').innerHTML = dl(engModels($('ckEb').value, $('ckE').value));
-      if (t.id === 'ckE') $('ckEbL').innerHTML = dl(engBrands(t.value));
+      if (t.id === 'ckE') $('ckEbL').innerHTML = dl(engBrands());
       if (t.id === 'ckEb' && e.type === 'change') { const ty = engTypeOf(t.value, ''); if (ty && ty !== $('ckE').value && !CAT().motori[findKey(CAT().motori, t.value)][$('ckE').value]) $('ckE').value = ty; }
     }
     if (t.id === 'ckEm' || (t.id === 'ckEb' && e.type === 'change' && $('ckEm').value)) {
+      const pw = /^fb|^el/.test(engGuess($('ckEb').value, $('ckEm').value) || $('ckE').value) && /(?:^|[a-z\s])(\d{1,3}(?:[.,]\d)?)(?:\s|$|[a-z])/i.exec($('ckEm').value);
+      if (pw && !/^el/.test($('ckE').value) && $('ckHp') && (!$('ckHp').value || $('ckHp').dataset.auto)) { $('ckHp').value = parseFloat(pw[1].replace(',', '.')); $('ckHp').dataset.auto = '1'; }
       const listed = engModels($('ckEb').value, $('ckE').value).some(m => mkey(m) === mkey($('ckEm').value));
       if (e.type === 'change' || listed) {
         const ty = engGuess($('ckEb').value, $('ckEm').value);
@@ -571,8 +581,9 @@
       return;
     }
     if (w === 'boat') {
+      const pnum = id => { const v = parseFloat(String($(id) ? $(id).value : '').replace(',', '.')); return Number.isFinite(v) && v >= 0 ? v : null; };
       const nb = { brand: $('ckBb').value.trim(), model: $('ckBm').value.trim(), kind: $('ckBk').value, eng: $('ckE').value,
-        ebrand: $('ckEb').value.trim(), emodel: $('ckEm').value.trim(), n: +$('ckN').value || 1 };
+        ebrand: $('ckEb').value.trim(), emodel: $('ckEm').value.trim(), n: +$('ckN').value || 1, hp: pnum('ckHp'), len: pnum('ckLen'), draft: pnum('ckDr') };
       if (nb.kind === 'remi' && nb.eng !== 'el') nb.eng = 'none';
       const g = engGuess(nb.ebrand, nb.emodel);
       if (g && g !== nb.eng && !$('ckE').dataset.man && nb.kind !== 'remi') { nb.eng = g; toast('Motore riconosciuto: ' + ENG[g]); }
@@ -584,7 +595,7 @@
         const h0 = $('ckH0') && parseFloat(String($('ckH0').value).replace(',', '.'));
         if (Number.isFinite(h0) && motor()) setHours(h0, true);
       }
-      save(); view = changed ? 'boat' : 'home'; render(); badge();
+      save(); view = changed ? 'boat' : 'home'; render(); badge(); syncBoat();
       toast(first ? 'Check-list pronte: puoi modificare ogni voce' : changed ? 'Barca salvata. Hai cambiato mezzo o motore: tocca "Rifai le voci" per avere i controlli adatti' : 'Barca salvata');
     }
   }
@@ -634,6 +645,15 @@
     } catch (e) { toast('Il file non è una copia valida delle check-list'); }
   }
 
+  /* dati per la sezione Barca della navigazione (mezzo, potenza totale, lunghezza, pescaggio) */
+  function boatInfo() {
+    if (!D.boat) return null;
+    const b = D.boat, noEng = /^(el|none)$/.test(b.eng) && b.eng === 'none';
+    return { name: [b.brand, b.model].filter(Boolean).join(' '), kind: b.kind, hp: noEng ? 0 : b.hp != null ? Math.round(b.hp * (+b.n || 1)) : null,
+      len: b.len || null, draft: b.draft != null ? b.draft : null, n: +b.n || 1 };
+  }
+  function syncBoat() { if (D.boat && window.rnBoatSync) { window.rnBoatSync(boatInfo()); D.boat.synced = 1; save(); } }
+
   /* numero di manutenzioni da fare sul pulsante del menu principale */
   function badge() {
     const n = dueCount();
@@ -648,7 +668,9 @@
   window.RNCheck = {
     render: () => { edit = false; confirmKey = null; render(); },
     badge, dueCount,
-    _data: () => D, _guess: engGuess
+    _data: () => D, _guess: engGuess, boatInfo, syncBoat
   };
-  if (document.readyState !== 'loading') badge(); else document.addEventListener('DOMContentLoaded', badge);
+  /* la prima volta dopo l'aggiornamento: passa alla sezione Barca la scheda già compilata */
+  const boot = () => { badge(); if (D.boat && !D.boat.synced) syncBoat(); };
+  if (document.readyState !== 'loading') boot(); else document.addEventListener('DOMContentLoaded', boot);
 })();
