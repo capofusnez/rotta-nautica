@@ -2110,7 +2110,7 @@ function renderWrecks() {
   const c = S.pos || map.getCenter(), from = S.pos ? 'dalla barca' : 'dal centro della carta';
   const list = WRECKS.map((w, i) => ({ w, i, d: dist(c, w) })).filter(x => x.d < 60 * 1852).sort((a, b) => a.d - b.d).slice(0, 12);
   el.innerHTML = list.length
-    ? `<p class="note">Più vicini ${from}:</p>` + list.map(x => `<button data-act="wreckGo" data-i="${x.i}"><span><i class="wk${x.w.dive ? ' dive' : ''}" style="display:inline-block;vertical-align:middle;margin-right:6px"></i><b>${esc(wkName(x.w))}</b>${x.w.story ? ' 📖' : ''}${wkDepth(x.w) ? ' · ' + esc(wkDepth(x.w)) : ''}</span><span>${(x.d / 1852).toFixed(1)} mn</span></button>`).join('')
+    ? `<p class="note">Più vicini ${from}: tocca un relitto per la sua scheda (📖 = con la storia).</p>` + list.map(x => `<button data-act="wreckInfo" data-id="${esc(x.w.id)}"><span><i class="wk${x.w.dive ? ' dive' : ''}" style="display:inline-block;vertical-align:middle;margin-right:6px"></i><b>${esc(wkName(x.w))}</b>${x.w.story ? ' 📖' : ''}${wkDepth(x.w) ? ' · ' + esc(wkDepth(x.w)) : ''}</span><span>${(x.d / 1852).toFixed(1)} mn</span></button>`).join('')
     : '<p class="note">Nessun relitto entro 60 miglia.</p>';
 }
 map.on('moveend', () => { if (S.tab === 'punti' && !S.pos) renderPunti(); });
