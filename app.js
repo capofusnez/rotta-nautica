@@ -2274,7 +2274,6 @@ function renderModBox() {
         `<div class="btns"><button class="primary" data-act="modOk" data-k="${esc(r.k)}" data-u="${esc(r.uid)}">Approva</button><button class="danger" data-act="modNo" data-k="${esc(r.k)}" data-u="${esc(r.uid)}">Rifiuta</button><button data-act="wreckInfo" data-id="${esc(r.p.id)}">Vedi il relitto</button></div></div>`).join('')
       : '<p class="note">Nessuna proposta da approvare.</p>');
   }
-  h += `<details class="info"><summary>Il tuo codice utente</summary><p class="note">Serve per diventare moderatore: in Firebase → Realtime Database aggiungi <b>moderatori/${esc(me.uid)}</b> con valore <b>true</b>.</p><p class="note"><code>${esc(me.uid)}</code> <button class="linkBtn" data-act="copyUid" data-u="${esc(me.uid)}">Copia</button></p></details>`;
   el.innerHTML = h;
 }
 if (window.RNCom) RNCom.on(() => { if (S.tab === 'imp') renderModBox(); if (S.tab === 'punti') renderPunti(); });
