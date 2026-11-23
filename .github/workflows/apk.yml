@@ -36,12 +36,14 @@ jobs:
           npm init -y > /dev/null
           npm install --no-audit --no-fund leaflet@1.9.4 @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
           # accesso con Google per "Barche con Rotta Nautica": serve il file google-services.json di Firebase nel repository
+          # pubblicità (Google AdMob) per chi non ha la versione senza pubblicità
+          npm install --no-audit --no-fund @capacitor-community/admob@^6
           if [ -f ../google-services.json ]; then
             npm install --no-audit --no-fund @capacitor-firebase/authentication@^6
           else
             echo "google-services.json non presente: APK senza accesso con Google"
           fi
-          cp ../index.html ../app.js ../water.js ../channels.js ../enc.js ../seamarks.js ../firebase-config.js ../flotta.js ../comunita.js ../aiuto.js ../privacy.html ../catalogo.js ../checklist.js ../sw.js ../manifest.webmanifest ../icon-192.png ../icon-512.png ../traffico.html www/
+          cp ../index.html ../app.js ../water.js ../channels.js ../enc.js ../seamarks.js ../firebase-config.js ../flotta.js ../comunita.js ../aiuto.js ../privacy.html ../pro-config.js ../pubblicita.js ../catalogo.js ../checklist.js ../sw.js ../manifest.webmanifest ../icon-192.png ../icon-512.png ../traffico.html www/
           cp -r node_modules/leaflet/dist/* www/leaflet/
           # dati nautici locali (canali e briccole), se presenti nel repository
           cp ../nautica_locale.geojson www/ 2>/dev/null || echo "nautica_locale.geojson non presente"
@@ -67,6 +69,10 @@ jobs:
       - name: Permessi, versione e icona
         working-directory: build/android
         run: |
+          # codice dell'app AdMob: variabile del repository ADMOB_APP_ID; senza, quello di prova di Google
+          ADMOB="${{ vars.ADMOB_APP_ID }}"; ADMOB="${ADMOB:-ca-app-pub-3940256099942544~3347511713}"
+          sed -i "s#</application>#    <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"$ADMOB\"/>\n    </application>#" app/src/main/AndroidManifest.xml
+          grep -n "APPLICATION_ID" app/src/main/AndroidManifest.xml
           sed -i 's#</manifest>#    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n</manifest>#' app/src/main/AndroidManifest.xml
           sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" app/build.gradle
           sudo apt-get install -y -qq imagemagick > /dev/null

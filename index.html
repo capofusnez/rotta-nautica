@@ -385,6 +385,9 @@ details.info[open]{padding-bottom:10px}
 .tmBox ul{padding-left:18px;margin:0 0 12px}.tmBox li{margin:0 0 8px;line-height:1.45;font-size:15px}
 .tmCk{margin:6px 0 12px}.tmCk a{color:inherit;font-weight:700}
 #termsOk{width:100%}#termsOk:disabled{opacity:.45}
+a.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:12px;background:var(--panel2);color:var(--fg);text-decoration:none;font-weight:700;border:1px solid var(--line)}
+a.btn.primary{background:var(--acc);color:var(--accFg,#fff);border-color:transparent}
+body.adOn #sheet{padding-bottom:64px}
 details.info .note+.note{margin-top:8px}
 .form{gap:2px}
 .form label{min-height:56px;padding:4px 0;border-bottom:1px solid var(--line);font-size:15px}
@@ -611,6 +614,7 @@ button.sm{min-height:0;padding:4px 10px;font-size:13px;margin-top:6px}
     <h4>Barche con Rotta Nautica</h4>
     <div id="fleetBox"></div>
     <div id="modBox"></div>
+    <div id="proBox"></div>
     <p class="note"><a href="privacy.html" target="_blank" rel="noopener">Condizioni d'uso e privacy</a> · <a href="#" onclick="rnShowTerms();return false">Rivedi il riepilogo</a></p>
     <details class="info"><summary>Come funziona</summary><p class="note">Con l'accesso Google e la condivisione accesa, il nome che scegli, il tipo di mezzo, la posizione, la rotta e la velocità sono visibili a tutti gli utenti dell'app che hanno fatto l'accesso. Vale solo mentre l'app è aperta: quando la chiudi o perdi la rete sparisci dalla carta entro pochi minuti. Puoi spegnere la condivisione o uscire quando vuoi. Le barche degli altri possono avere fino a un minuto di ritardo: non serve a evitare collisioni, guarda sempre fuori.</p></details>
     <h4>Barca e patente</h4>
@@ -772,6 +776,8 @@ window.addEventListener('error', function (e) {
 <script src="checklist.js"></script>
 <script src="app.js"></script>
 <script src="aiuto.js"></script>
+<script src="pro-config.js"></script>
+<script src="pubblicita.js"></script>
 <div id="infoPop" hidden role="dialog" aria-modal="true" aria-labelledby="infoPopT">
   <div class="ipBox"><h3 id="infoPopT"></h3><p></p><button type="button" class="primary" data-info-close>Ho capito</button></div>
 </div>
@@ -785,6 +791,7 @@ window.addEventListener('error', function (e) {
       <li><b>Account Google (facoltativo).</b> Nome ed email servono per l'accesso, gestito da Google Firebase. I punti che salvi sono privati; recensioni e nomi proposti per i relitti sono pubblici, con il tuo nome.</li>
       <li><b>Servizi esterni.</b> Carte, meteo, profondità e ricerca dei luoghi arrivano da OpenStreetMap, OpenSeaMap, Esri, Open-Meteo, EMODnet e Nominatim: ricevono la zona della carta che guardi e l'indirizzo IP del telefono, non il tuo nome.</li>
       <li><b>Sul telefono.</b> Impostazioni, check-list e traccia restano sul telefono.</li>
+      <li><b>Pubblicità e pagamenti.</b> Nell'app Android ci sono annunci di Google AdMob, che ti chiede il consenso per quelli personalizzati. Chi acquista la versione senza pubblicità paga con Stripe: l'app non vede i dati della carta.</li>
     </ul>
     <label class="chk tmCk"><input type="checkbox" id="termsCk"> <span>Ho letto e accetto le <a href="privacy.html" target="_blank" rel="noopener">Condizioni d'uso e l'Informativa sulla privacy</a></span></label>
     <button type="button" class="primary" id="termsOk" disabled>Accetto e continuo</button>

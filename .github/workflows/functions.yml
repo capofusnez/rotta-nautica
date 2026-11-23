@@ -1,0 +1,48 @@
+# Pubblica su Firebase la funzione che attiva la versione senza pubblicità dopo il pagamento con Stripe (functions/index.js)
+# e le regole del database (database.rules.json). Si avvia a mano: Actions → Pubblica funzioni Firebase → Run workflow.
+# Segreti del repository (Settings → Secrets and variables → Actions), vedi PRO.md:
+#   FIREBASE_SERVICE_ACCOUNT  chiave JSON di un account di servizio del progetto rotta-nautica
+#   STRIPE_SECRET_KEY         chiave segreta di Stripe (sk_live_... o sk_test_...)
+#   STRIPE_WEBHOOK_SECRET     segreto del webhook di Stripe (whsec_...), si crea dopo la prima pubblicazione
+name: Pubblica funzioni Firebase
+
+on:
+  workflow_dispatch:
+    inputs:
+      cosa:
+        description: 'Cosa pubblicare'
+        type: choice
+        options: [funzione e regole, solo regole]
+        default: funzione e regole
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Accesso a Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Chiavi di Stripe per la funzione
+        if: inputs.cosa != 'solo regole'
+        env:
+          SK: ${{ secrets.STRIPE_SECRET_KEY }}
+          WH: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        run: |
+          test -n "$SK" || { echo "Manca il segreto STRIPE_SECRET_KEY"; exit 1; }
+          printf 'STRIPE_SECRET_KEY=%s\nSTRIPE_WEBHOOK_SECRET=%s\n' "$SK" "${WH:-da_impostare}" > functions/.env
+          cd functions && npm install --no-audit --no-fund
+
+      - name: Pubblica
+        run: |
+          if [ "${{ inputs.cosa }}" = "solo regole" ]; then ONLY=database; else ONLY=functions,database; fi
+          npx --yes firebase-tools@13 deploy --only "$ONLY" --project rotta-nautica --non-interactive --force
+          echo "Indirizzo del webhook da mettere in Stripe:"
+          echo "https://europe-west1-rotta-nautica.cloudfunctions.net/stripeWebhook"

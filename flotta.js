@@ -15,10 +15,10 @@
 
   const F = {
     available: !!(CFG.apiKey && CFG.databaseURL && CFG.projectId && CFG.appId),
-    user: null, sharing: false, error: null, loading: false, isMod: false
+    user: null, sharing: false, error: null, loading: false, isMod: false, pro: null
   };
   let fb = null, loadP = null, auth = null, db = null, offset = 0, unsub = [], lastSent = null, meRef = null, cur = null;
-  let poiCb = null, poiUnsub = null, modUnsub = null;
+  let poiCb = null, poiUnsub = null, modUnsub = null, proUnsub = null;
   const others = new Map(), listeners = new Set();
   const emit = () => listeners.forEach(f => { try { f(F); } catch (e) { /* ignora */ } });
   const now = () => Date.now() + offset;
@@ -47,6 +47,9 @@
           F.loading = false; F.isMod = false;
           if (modUnsub) { modUnsub(); modUnsub = null; }
           /* moderatore: si controlla a ogni avvio e resta in ascolto, così aggiungere o togliere un moderatore vale subito */
+          if (proUnsub) { proUnsub(); proUnsub = null; } F.pro = null;
+          /* versione senza pubblicità: pro/<utente> la scrive solo il server dopo il pagamento (functions/index.js) */
+          if (u) proUnsub = d.onValue(d.ref(db, 'pro/' + u.uid), s => { F.pro = s.val() || null; emit(); }, () => { F.pro = null; emit(); });
           if (u) { listen(); listenPois(); modUnsub = d.onValue(d.ref(db, 'moderatori/' + u.uid), s => { const m = s.val() === true; if (m !== F.isMod) { F.isMod = m; emit(); } }, () => { if (F.isMod) { F.isMod = false; emit(); } }); }
           else { quiet(); others.clear(); if (poiUnsub) { poiUnsub(); poiUnsub = null; } }
           emit();
@@ -118,6 +121,8 @@
   F.dbRemove = path => { if (!fb || !F.user) return Promise.reject(new Error('Serve l\'accesso con Google')); return fb.d.remove(fb.d.ref(db, path)); };
   F.dbWatch = (path, cb) => { if (!fb || !F.user) return () => {}; return fb.d.onValue(fb.d.ref(db, path), s => cb(s.val()), () => cb(null)); };
   F.stamp = () => fb ? fb.d.serverTimestamp() : Date.now();
+  /* Pro attivo: acquisto unico o attivato a mano (per sempre), abbonamento fino alla data di scadenza */
+  F.isPro = () => { const p = F.pro; if (!p) return false; if (p.tipo === 'unico' || p.tipo === 'manuale') return true; return +p.fino > now(); };
   /* all'avvio: se l'accesso era già stato fatto, si ricollega da solo */
   F.init = wasIn => { if (F.available && wasIn) load().catch(() => {}); };
   F.login = async () => {

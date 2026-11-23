@@ -174,6 +174,11 @@
           }
         }
       }
+    },
+    "pro": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid"
+      }
     }
   }
 }
