@@ -1,0 +1,35 @@
+# Controllo veloce dei dati della community su Firebase (solo conteggi, nessun dato personale nel registro).
+# Actions → Diagnostica community → Run workflow.
+name: Diagnostica community
+
+on:
+  workflow_dispatch:
+
+jobs:
+  conta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - name: Conteggi
+        run: |
+          for p in moderatori relitti_proposti relitti_utenti relitti_posizioni proposte relitti_nomi recensioni pro; do
+            npx --yes firebase-tools@14 database:get "/$p" --project rotta-nautica --instance rotta-nautica-default-rtdb > "$p.json" 2>/dev/null || echo null > "$p.json"
+          done
+          node -e '
+            const fs = require("fs"), r = p => { try { return JSON.parse(fs.readFileSync(p + ".json", "utf8")) || {}; } catch (e) { return {}; } };
+            const n = o => Object.keys(o || {}).length;
+            console.log("moderatori:", n(r("moderatori")));
+            const P = r("relitti_proposti"); let tot = 0, nuovi = 0, pos = 0, conNome = 0, anon = 0;
+            Object.values(P).forEach(u => Object.values(u || {}).forEach(x => { tot++; if (x.tipo === "posizione") pos++; else nuovi++; if (x.n) conNome++; if (x.anon) anon++; }));
+            console.log("segnalazioni relitti in attesa:", tot, "(nuovi", nuovi + ", posizioni", pos + ", con nome", conNome + ", nome nascosto", anon + ") da", n(P), "utenti");
+            console.log("relitti approvati:", n(r("relitti_utenti")), "· posizioni corrette:", n(r("relitti_posizioni")));
+            let np = 0; Object.values(r("proposte")).forEach(x => { np += n(x); });
+            console.log("nomi proposti in attesa:", np, "· nomi approvati:", n(r("relitti_nomi")));
+            let nr = 0; Object.values(r("recensioni")).forEach(x => { nr += n(x); });
+            console.log("recensioni:", nr, "· utenti senza pubblicità:", n(r("pro")));
+          '
