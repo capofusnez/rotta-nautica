@@ -18,7 +18,8 @@ const Q_FONDE = `[out:json][timeout:300];${AREA}
 nwr["seamark:type"~"^(anchorage|anchor_berth)$"](area.it);
 out center tags;`;
 /* ricerca leggera, divisa in 7 zone di mare: una sola richiesta per tutta l'Italia mandava in timeout i server.
-   Chiavi fisse (name, protection_title), niente espressioni sulle chiavi. */
+   Chiavi fisse (name, protection_title), niente espressioni sulle chiavi e niente confine dell'Italia (troppo pesante):
+   i nomi cercati sono italiani, le poche aree estere coi nomi in inglese si scartano sotto. */
 const RX = '(area marina|riserva naturale marina|riserva marina|parco sommerso|parco marino|marine protected)';
 const BOXES = [
   [43.0, 7.4, 44.6, 11.0],   // Liguria e Toscana nord
@@ -29,7 +30,7 @@ const BOXES = [
   [37.8, 15.8, 42.3, 18.8],  // Ionio e Puglia
   [42.0, 12.0, 45.9, 15.6]   // Adriatico centro-nord
 ];
-const qAmp = ([s, w, n, e]) => { const f = `(area.it)(${s},${w},${n},${e})`; return `[out:json][timeout:110];${AREA}
+const qAmp = ([s, w, n, e]) => { const f = `(${s},${w},${n},${e})`; return `[out:json][timeout:110];
 (
   nwr["boundary"="protected_area"]["protection_title"~"marin",i]${f};
   nwr["boundary"="protected_area"]["name"~"${RX}",i]${f};
@@ -130,6 +131,7 @@ const boxErr = [];
     /* si tengono le aree marine (non i parchi a terra che hanno "Marina" nel nome di un paese) */
     const txt = ['name', 'official_name', 'protection_title', 'designation', 'seamark:name'].map(k => t[k] || '').join(' | ');
     /* il Santuario Pelagos copre quasi tutto il Mar Ligure e non ha zone: coprirebbe la carta */
+    if (/malta|gozo|comino|corse|corsica|hrvatsk|croat|sloven|tunisi|\\bfrance\\b/i.test(txt + ' ' + (t['name:en'] || ''))) continue;
     if (/pelagos|santuario (internazionale )?(per i|dei) mammiferi/i.test(txt)) continue;
     if (!zoneOf(t) && !/area marina|riserva (naturale )?marina(?! di\b)|parco (marino|sommerso)|marine protected|santuario|sanctuary|marine reserve/i.test(txt)) continue;
     const g = simpGeom(f.geometry);
