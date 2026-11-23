@@ -82,6 +82,11 @@ jobs:
       - name: Elenco dei relitti
         run: node tools/build_relitti.mjs
 
+      - name: Togli i relitti a terra
+        run: |
+          python3 -c "import PIL" 2>/dev/null || pip install --quiet pillow
+          python3 tools/relitti_terra.py
+
       - name: Salva i dati nautici nel repository
         run: |
           git config user.name "github-actions[bot]"

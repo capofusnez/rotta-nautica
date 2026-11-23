@@ -2250,13 +2250,36 @@ async function openWreck(id) {
 }
 
 /* ---------- Segnala un relitto o correggi la posizione (va ai moderatori) ---------- */
-let WKF = null;   // { tipo: 'nuovo'|'posizione', id, lat, lng, n, prof, note, anon }
+let WKF = null;   // { tipo: 'nuovo'|'posizione', id, lat, lng, n, prof, note, anon, poi: id del mio punto, share }
+/* punti "Relitto" già segnalati alla community (solo su questo telefono) */
+const wkSent = () => { try { return JSON.parse(localStorage.getItem('rn.wkSent') || '{}') || {}; } catch (e) { return {}; } };
+const wkSentSet = (id, k) => { try { const m = wkSent(); m[id] = k; localStorage.setItem('rn.wkSent', JSON.stringify(m)); } catch (e) { /* ignora */ } };
+/* dal mio punto di tipo Relitto: nome, profondità, note e, se vuoi, invio alla community */
+function wreckFromPoi(id, fresh) {
+  const o = S.pois.find(x => x.id === id && !x.del); if (!o) return;
+  const auto = /^Relitto \d+$/.test(o.name);
+  openWreckForm({ tipo: 'nuovo', id: null, poi: o.id, fresh, lat: o.lat, lng: o.lng, n: auto ? '' : o.name, note: o.note || '', prof: null, share: true });
+}
 function openWreckForm(o) {
   WKF = Object.assign({ tipo: 'nuovo', anon: false }, WKF && o.keep ? WKF : {}, o); delete WKF.keep;
   map.closePopup(); openSheet('relitto'); $('sheet').classList.add('tall');
   const me = window.RNCom && RNCom.me(), w = WKF.id && (WRECKS || []).find(x => x.id === WKF.id);
   const pos = isFinite(WKF.lat) ? `${(+WKF.lat).toFixed(6)}, ${(+WKF.lng).toFixed(6)}` : '';
-  let h = `<h4 class="wkT">${WKF.tipo === 'posizione' ? 'Correggi la posizione' : 'Segnala un relitto'}</h4>`;
+  let h = `<h4 class="wkT">${WKF.tipo === 'posizione' ? 'Correggi la posizione' : WKF.poi ? (WKF.fresh ? 'Nuovo relitto: completa la scheda' : 'Il tuo relitto') : 'Segnala un relitto'}</h4>`;
+  if (WKF.poi) {
+    /* dal mio punto: si salva sempre per me; la condivisione è facoltativa e richiede l'accesso */
+    h += '<p class="note">Il punto è salvato nei tuoi punti. Dagli un nome e, se vuoi, condividilo: un moderatore lo controlla prima di mostrarlo a tutti.</p>' +
+      `<div class="form wkForm"><label>Nome del relitto <span><input id="wkfN" maxlength="60" value="${esc(WKF.n || '')}" placeholder="es. Aereo, Peschereccio Maria…" autocomplete="off"></span></label>` +
+      `<label>Posizione <span><input id="wkfP" value="${esc(pos)}" autocomplete="off"></span></label>` +
+      `<div class="btns"><button type="button" data-act="wkGps">Usa la mia posizione</button><button type="button" data-act="wkPick">Scegli sulla carta</button></div>` +
+      `<label>Profondità del fondo <span><input id="wkfD" type="number" inputmode="decimal" min="0" max="1000" step="0.5" value="${esc(WKF.prof != null ? WKF.prof : '')}"> m</span></label>` +
+      `<label class="wide">Note <textarea id="wkfT" rows="3" maxlength="500" placeholder="Che cos'è, com'è messo, se è adatto alle immersioni, pericoli…">${esc(WKF.note || '')}</textarea></label>` +
+      (me ? `<label class="chk"><input type="checkbox" id="wkfS"${WKF.share === false ? '' : ' checked'}> <span>Condividi con la community</span></label>` +
+        `<label class="chk"><input type="checkbox" id="wkfA"${WKF.anon ? '' : ' checked'}> <span>Mostra il mio nome (${esc(me.name || 'utente')}) con la segnalazione</span></label>`
+        : '<p class="note">Per condividerlo con tutti accedi con Google in <a href="#" data-act="goAccount">Barca e account</a>; intanto resta tra i tuoi punti.</p>') +
+      `</div><div class="btns"><button class="primary" data-act="wkSend">Salva</button><button data-act="wreckBack">Annulla</button></div>`;
+    $('wkBox').innerHTML = h; return;
+  }
   if (!me) { $('wkBox').innerHTML = h + '<p class="note">Per segnalare un relitto o correggerne la posizione accedi con Google in <a href="#" data-act="goAccount">Barca e account</a>.</p><div class="btns"><button data-act="wreckBack">Indietro</button></div>'; return; }
   h += WKF.tipo === 'posizione' ? `<p class="note">Relitto: <b>${esc(w ? wkName(w) : 'relitto')}</b>. Posizione attuale: ${w ? fmtDMS(w.pos0 || w) : ''}. Indica quella giusta: un moderatore la controlla prima di renderla visibile a tutti.</p>`
     : '<p class="note">Indica dove si trova il relitto. Un moderatore controlla la segnalazione prima di renderla visibile a tutti.</p>';
@@ -2278,7 +2301,8 @@ function wkFormRead() {
   if ($('wkfN')) WKF.n = $('wkfN').value;
   if ($('wkfD')) WKF.prof = $('wkfD').value === '' ? null : parseFloat($('wkfD').value.replace(',', '.'));
   if ($('wkfT')) WKF.note = $('wkfT').value;
-  WKF.anon = !$('wkfA').checked;
+  WKF.anon = $('wkfA') ? !$('wkfA').checked : WKF.anon;
+  WKF.share = $('wkfS') ? $('wkfS').checked : false;
 }
 /* scelta del punto sulla carta: mirino al centro, sposti la carta e confermi */
 function wkPickStart() {
@@ -2598,7 +2622,8 @@ function ptPopup(p, label) {
 /* ---------- Punti di interesse: i miei punti (pesca, fonda...), punti di fonda, aree marine protette ---------- */
 const POI_CAT = {
   pesca: { l: 'Punto pesca', i: '🐟', c: '#0f9db0' }, fonda: { l: 'Punto di fonda', i: '⚓', c: '#2f6fd6' },
-  immersione: { l: 'Immersione', i: '🤿', c: '#e8811a' }, bagno: { l: 'Sosta e bagno', i: '🏖️', c: '#c99a06' }, altro: { l: 'Altro', i: '📍', c: '#8e44ad' }
+  immersione: { l: 'Immersione', i: '🤿', c: '#e8811a' }, bagno: { l: 'Sosta e bagno', i: '🏖️', c: '#c99a06' }, relitto: { l: 'Relitto', i: '🚢', c: '#5d4037' },
+  altro: { l: 'Altro', i: '📍', c: '#8e44ad' }
 };
 const poiCat = c => POI_CAT[c] || POI_CAT.altro;
 const livePois = () => S.pois.filter(p => !p.del);
@@ -2614,6 +2639,7 @@ function addPoi(p, opt = {}) {
   if (!S.set.pois) { S.set.pois = true; saveSet(); applyLayers(); if ($('lPois')) $('lPois').checked = true; }
   drawPois(); renderPunti();
   if (!opt.quiet) toast('Punto salvato: ' + o.name);
+  if (cat === 'relitto' && !opt.quiet) setTimeout(() => wreckFromPoi(o.id, true), 200);
   return o;
 }
 function updPoi(id, ch) {
@@ -2650,6 +2676,8 @@ function poiPopup(id) {
   const dd = S.pos ? `<br>Da te: ${fmtDist(dist(S.pos, o))}, ${fmtAng(brg(S.pos, o))}` : '';
   return `<div class="wkPop"><b>${c.i} ${esc(o.name)}</b><br>${esc(c.l)}<br>${fmtDMS(o)}<br><span class="mut">${fmtPos(o)}</span>${dd}` +
     (o.note ? `<p class="pnote">${esc(o.note)}</p>` : '') +
+    (o.cat === 'relitto' ? (wkSent()[o.id] ? '<p class="pnote">Segnalato alla community: compare a tutti dopo il controllo di un moderatore.</p>'
+      : `<div class="pbtn"><button data-act="poiWk" data-id="${o.id}">Condividi il relitto con tutti</button></div>`) : '') +
     `<div class="pbtn"><button data-act="ptUse" data-k="dest" ${a}>Destinazione</button><button data-act="ptMeteo" ${a}>Meteo qui</button></div>` +
     `<details class="pedit"><summary>Modifica</summary>` +
     `<input id="pe-n" maxlength="60" value="${esc(o.name)}" aria-label="Nome">` +
@@ -2964,7 +2992,11 @@ document.addEventListener('click', e => {
       poiLayer.eachLayer(m => { if (m.options.title === o.name && m.getLatLng().lat === o.lat) m.openPopup(); }); break; }
     case 'poiSave': {
       const n = ($('pe-n').value || '').trim().slice(0, 60), c = $('pe-c').value, t = ($('pe-t').value || '').trim().slice(0, 500);
-      updPoi(d.id, { name: n || poiCat(c).l, cat: POI_CAT[c] ? c : 'altro', note: t }); map.closePopup(); toast('Punto aggiornato'); break; }
+      const wasWk = (S.pois.find(x => x.id === d.id) || {}).cat === 'relitto';
+      updPoi(d.id, { name: n || poiCat(c).l, cat: POI_CAT[c] ? c : 'altro', note: t }); map.closePopup(); toast('Punto aggiornato');
+      if (c === 'relitto' && !wasWk && !wkSent()[d.id]) setTimeout(() => wreckFromPoi(d.id, true), 200);
+      break; }
+    case 'poiWk': wreckFromPoi(d.id, false); break;
     case 'poiDel':
       if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Tocca di nuovo per eliminare'; break; }
       updPoi(d.id, { del: true }); map.closePopup(); toast('Punto eliminato'); break;
@@ -2999,6 +3031,17 @@ document.addEventListener('click', e => {
       wkFormRead();
       if (!parseCoords($('wkfP').value)) { toast('Scrivi una posizione valida o sceglila sulla carta'); break; }
       if (WKF.prof != null && !(WKF.prof >= 0 && WKF.prof <= 1000)) { toast('Profondità non valida'); break; }
+      if (WKF.poi) {
+        /* aggiorna il mio punto; poi, se richiesto, invia alla community */
+        const nm = (WKF.n || '').trim(), pid = WKF.poi;
+        const note = [WKF.note && WKF.note.trim(), WKF.prof != null ? `Fondo ${WKF.prof} m` : ''].filter(Boolean).join(' · ').slice(0, 500);
+        updPoi(pid, { name: nm || 'Relitto', lat: +(+WKF.lat).toFixed(6), lng: +(+WKF.lng).toFixed(6), note });
+        if (!WKF.share || !RNCom.me()) { toast('Relitto salvato nei tuoi punti'); WKF = null; openSheet('punti'); break; }
+        if (!nm && !b.dataset.noname) { b.dataset.noname = '1'; toast('Senza nome? Se lo conosci scrivilo; altrimenti tocca di nuovo Salva'); $('wkfN').focus(); break; }
+        RNCom.submitWreck(WKF).then(k => { wkSentSet(pid, k); toast('Salvato e inviato ai moderatori: lo vedranno tutti dopo il controllo'); WKF = null; openSheet('punti'); })
+          .catch(err => toast('Salvato nei tuoi punti, ma non inviato: ' + (err.message || err)));
+        break;
+      }
       RNCom.submitWreck(WKF).then(() => { toast('Segnalazione inviata: la vedranno tutti dopo il controllo di un moderatore'); const id = WKF.id; WKF = null; if (id) openWreck(id); else openSheet('punti'); })
         .catch(err => toast('Segnalazione non inviata: ' + (err.message || err)));
       break;

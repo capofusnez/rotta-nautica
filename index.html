@@ -649,7 +649,7 @@ button.sm{min-height:0;padding:4px 10px;font-size:13px;margin-top:6px}
 
   <div class="pane" id="p-punti" hidden>
     <h4>I miei punti</h4>
-    <div class="btns"><select id="poiCat" aria-label="Tipo di punto"><option value="pesca">🐟 Punto pesca</option><option value="fonda">⚓ Punto di fonda</option><option value="immersione">🤿 Immersione</option><option value="bagno">🏖️ Sosta e bagno</option><option value="altro">📍 Altro</option></select></div>
+    <div class="btns"><select id="poiCat" aria-label="Tipo di punto"><option value="pesca">🐟 Punto pesca</option><option value="fonda">⚓ Punto di fonda</option><option value="immersione">🤿 Immersione</option><option value="bagno">🏖️ Sosta e bagno</option><option value="relitto">🚢 Relitto</option><option value="altro">📍 Altro</option></select></div>
     <div class="btns"><button data-act="poiGps">Salva qui (GPS)</button><button data-act="poiPick">Tocca la carta</button></div>
     <form id="fPoiCoord" class="search"><input id="poiQ" placeholder="Coordinate, es. 45°34'22.7&quot;N 13°15'47.1&quot;E" autocomplete="off" enterkeyhint="done"><button>Aggiungi</button></form>
     <label class="chk"><input type="checkbox" id="lPois"> Mostra i miei punti sulla carta</label>
@@ -679,7 +679,7 @@ button.sm{min-height:0;padding:4px 10px;font-size:13px;margin-top:6px}
     <label class="chk"><input type="checkbox" id="lWrecks"> Mostra i relitti sulla carta</label>
     <div class="wkLeg"><span><i class="wk dive"></i> Sito d'immersione</span><span><i class="wk"></i> Relitto (segnalato per la navigazione)</span></div>
     <div id="wreckList"></div>
-    <div class="btns"><button data-act="wkNew">＋ Segnala un relitto</button></div>
+    <p class="note">Conosci un relitto che manca? In "I miei punti" aggiungi un punto e scegli il tipo 🚢 Relitto: potrai condividerlo con tutti.</p>
     <details class="info"><summary>Come funziona</summary><p class="note">Relitti da OpenStreetMap/OpenSeaMap: posizione e profondità sono indicative, verificale con un diving o con le carte ufficiali. Immergiti solo con il brevetto adatto alla profondità, segnala l'immersione con boa o bandiera sub e rispetta divieti, aree marine protette e relitti tutelati.</p></details>
   </div>
 
