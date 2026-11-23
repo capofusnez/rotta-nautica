@@ -253,19 +253,63 @@
       `<h4>${first ? 'La tua barca' : 'Modifica la barca'}</h4>` +
       (first ? '<p class="note">Inserisci barca e motore: l\'app prepara le quattro check-list e le scadenze di manutenzione adatte. Dopo puoi modificare, cancellare o aggiungere ogni voce.</p>' : '') +
       `<form class="form" data-ckf="boat">
-        <label>Marchio della barca <span><input id="ckBb" maxlength="40" value="${esc(b.brand)}" placeholder="es. Jeanneau"></span></label>
-        <label>Modello <span><input id="ckBm" maxlength="40" value="${esc(b.model)}" placeholder="es. Cap Camarat 6.5"></span></label>
+        <label>Marchio della barca <span><input id="ckBb" list="ckBbL" maxlength="40" value="${esc(b.brand)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
+        <label>Modello <span><input id="ckBm" list="ckBmL" maxlength="40" value="${esc(b.model)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
         <label>Tipo di mezzo <span><select id="ckBk">${opt(KIND, b.kind)}</select></span></label>
         <label>Motore <span><select id="ckE">${opt(ENG, b.eng)}</select></span></label>
-        <label>Marchio del motore <span><input id="ckEb" maxlength="40" value="${esc(b.ebrand)}" placeholder="es. Yamaha"></span></label>
-        <label>Modello del motore <span><input id="ckEm" maxlength="40" value="${esc(b.emodel)}" placeholder="es. F150"></span></label>
+        <label>Marchio del motore <span><input id="ckEb" list="ckEbL" maxlength="40" value="${esc(b.ebrand)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
+        <label>Modello del motore <span><input id="ckEm" list="ckEmL" maxlength="40" value="${esc(b.emodel)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
         <label>Numero di motori <span><select id="ckN">${[1, 2, 3, 4].map(n => `<option${n === +b.n ? ' selected' : ''}>${n}</option>`).join('')}</select></span></label>
         ${first ? '<label>Ore motore attuali <span><input id="ckH0" type="number" inputmode="decimal" step="0.1" min="0" placeholder="es. 245"> h</span></label>' : ''}
+        <p class="note">Tocca una casella per vedere l'elenco o inizia a scrivere: se marchio o modello non ci sono, scrivili tu.</p>
         <div class="btns"><button class="primary">${first ? 'Prepara le check-list' : 'Salva'}</button></div>
-      </form>` +
+      </form>
+      <datalist id="ckBbL">${dl(Object.keys(CAT().barche))}</datalist><datalist id="ckBmL">${dl(boatModels(b.brand))}</datalist>
+      <datalist id="ckEbL">${dl(engBrands(b.eng))}</datalist><datalist id="ckEmL">${dl(engModels(b.ebrand, b.eng))}</datalist>` +
       (first ? '' : `<p class="note">Se hai cambiato tipo di motore puoi rifare le voci proposte: i report salvati restano.</p>
         <div class="btns"><button data-ck="rebuild"${confirmKey === 'rebuild' ? ' class="danger"' : ''}>${confirmKey === 'rebuild' ? 'Tocca di nuovo: sostituisce tutte le voci' : 'Rifai le voci per questa barca'}</button></div>`) +
       `<details class="info"><summary>Come funziona</summary><p class="note">Le voci e gli intervalli di manutenzione sono proposti in base al tipo di barca e di motore, non al modello preciso: marchio e modello servono a riconoscere la barca nei report. Controlla gli intervalli sul libretto di uso e manutenzione del tuo motore e correggili dove serve. Con più motori segna le ore del motore che ne ha di più.</p></details>`;
+  }
+  /* elenchi a tendina di marchi e modelli (catalogo.js); si può sempre scrivere a mano */
+  const CAT = () => window.RN_CAT || { barche: {}, motori: {} };
+  const norm = x => String(x || '').trim().toLowerCase();
+  const findKey = (o, name) => Object.keys(o).find(k => norm(k) === norm(name));
+  const dl = arr => arr.map(v => `<option value="${esc(v)}"></option>`).join('');
+  const boatModels = brand => { const k = findKey(CAT().barche, brand); return k ? CAT().barche[k].m : []; };
+  const engBrands = type => { const M = CAT().motori, all = Object.keys(M); const fit = all.filter(k => M[k][type]); return fit.concat(all.filter(k => !M[k][type])); };
+  function engModels(brand, type) {
+    const k = findKey(CAT().motori, brand); if (!k) return [];
+    const M = CAT().motori[k];
+    return (M[type] || []).concat(...Object.keys(M).filter(t => t !== type).map(t => M[t]));
+  }
+  function engTypeOf(brand, model) {
+    const k = findKey(CAT().motori, brand); if (!k) return null;
+    const M = CAT().motori[k], t = Object.keys(M).find(t => M[t].some(m => norm(m) === norm(model)));
+    return t || (Object.keys(M).length === 1 ? Object.keys(M)[0] : null);
+  }
+  function setKind(kind) {
+    if (!kind || $('ckBk').value === kind) return;
+    $('ckBk').value = kind;
+    if (kind === 'moto') $('ckE').value = 'moto';
+    else if (kind === 'vela' && /^fb/.test($('ckE').value)) $('ckE').value = 'ebD';
+  }
+  function onInput(e) {
+    const t = e.target; if (!t.id || !/^ck(Bb|Bm|Eb|Em|E)$/.test(t.id) || !$('ckBmL')) return;
+    if (t.id === 'ckBb') {
+      $('ckBmL').innerHTML = dl(boatModels(t.value));
+      const k = findKey(CAT().barche, t.value);
+      if (k && e.type === 'change') setKind(CAT().barche[k].k);
+    }
+    if (t.id === 'ckBm') setKind(/sun odyssey|sun fast|oceanis|^first /i.test(t.value) && boatModels($('ckBb').value).some(m => norm(m) === norm(t.value)) ? 'vela' : null);
+    if (t.id === 'ckEb' || t.id === 'ckE') {
+      $('ckEmL').innerHTML = dl(engModels($('ckEb').value, $('ckE').value));
+      if (t.id === 'ckE') $('ckEbL').innerHTML = dl(engBrands(t.value));
+      if (t.id === 'ckEb' && e.type === 'change') { const ty = engTypeOf(t.value, ''); if (ty && ty !== $('ckE').value && !CAT().motori[findKey(CAT().motori, t.value)][$('ckE').value]) $('ckE').value = ty; }
+    }
+    if (t.id === 'ckEm') {
+      const ty = engTypeOf($('ckEb').value, t.value);
+      if (ty && engModels($('ckEb').value, ty).some(m => norm(m) === norm(t.value)) && ty !== $('ckE').value) { $('ckE').value = ty; toast('Motore: ' + ENG[ty]); }
+    }
   }
   function guessKind() { try { const s = JSON.parse(localStorage.getItem('rn.set') || '{}'); return KIND[s.boat] ? s.boat : 'motore'; } catch (e) { return 'motore'; } }
   function guessEng() { const k = guessKind(); return k === 'vela' ? 'ebD' : k === 'moto' ? 'moto' : k === 'remi' ? 'none' : 'fb4'; }
@@ -441,15 +485,15 @@
       const nb = { brand: $('ckBb').value.trim(), model: $('ckBm').value.trim(), kind: $('ckBk').value, eng: $('ckE').value,
         ebrand: $('ckEb').value.trim(), emodel: $('ckEm').value.trim(), n: +$('ckN').value || 1 };
       if (nb.kind === 'remi' && nb.eng !== 'el') nb.eng = 'none';
-      const first = !D.boat;
+      const first = !D.boat, changed = !first && (D.boat.kind !== nb.kind || D.boat.eng !== nb.eng);
       D.boat = nb;
       if (first) {
         D.lists = build(nb);
         const h0 = $('ckH0') && parseFloat(String($('ckH0').value).replace(',', '.'));
         if (Number.isFinite(h0) && motor()) setHours(h0, true);
       }
-      save(); view = 'home'; render(); badge();
-      toast(first ? 'Check-list pronte: puoi modificare ogni voce' : 'Barca salvata');
+      save(); view = changed ? 'boat' : 'home'; render(); badge();
+      toast(first ? 'Check-list pronte: puoi modificare ogni voce' : changed ? 'Barca salvata. Hai cambiato mezzo o motore: tocca "Rifai le voci" per avere i controlli adatti' : 'Barca salvata');
     }
   }
 
@@ -507,6 +551,8 @@
   document.addEventListener('click', onClick);
   document.addEventListener('change', onChange);
   document.addEventListener('submit', onSubmit);
+  document.addEventListener('input', onInput);
+  document.addEventListener('change', onInput);
   window.RNCheck = {
     render: () => { edit = false; confirmKey = null; render(); },
     badge, dueCount,
