@@ -30,7 +30,7 @@ const BOXES = [
   [37.8, 15.8, 42.3, 18.8],  // Ionio e Puglia
   [42.0, 12.0, 45.9, 15.6]   // Adriatico centro-nord
 ];
-const qAmp = ([s, w, n, e]) => { const f = `(${s},${w},${n},${e})`; return `[out:json][timeout:110];
+const qAmp = ([s, w, n, e]) => { const f = `(${s},${w},${n},${e})`; return `[out:json][timeout:200];
 (
   nwr["boundary"="protected_area"]["protection_title"~"marin",i]${f};
   nwr["boundary"="protected_area"]["name"~"${RX}",i]${f};
@@ -122,7 +122,7 @@ const boxErr = [];
 {
   const gj = { features: [] };
   for (const bx of BOXES) {
-    try { gj.features.push(...osmtogeojson(await overpass(qAmp(bx), 1, 125000), { flatProperties: true }).features); }
+    try { gj.features.push(...osmtogeojson(await overpass(qAmp(bx), 1, 230000), { flatProperties: true }).features); }
     catch (e) { boxErr.push(`zona ${bx.join(',')}: ${e.message}`); }
   }
   for (const f of gj.features) {

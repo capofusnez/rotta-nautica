@@ -1,6 +1,6 @@
 # Punti di fonda (ancoraggi) e aree marine protette da OpenStreetMap / OpenSeaMap → poi.json.
 # Si avvia a mano (Actions → Punti di fonda e aree protette → Run workflow) e da solo il 2 di ogni mese.
-# Dura pochi minuti; se Overpass non risponde resta il file precedente.
+# Di solito dura pochi minuti; se Overpass non risponde resta il file precedente (anche solo per la parte che non arriva).
 name: Punti di fonda e aree protette
 
 on:
@@ -18,7 +18,7 @@ concurrency:
 jobs:
   poi:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 130
     steps:
       - name: Scarica il codice
         uses: actions/checkout@v4
