@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: 'Release in bozza da completare con l\'APK e pubblicare (es. V1.7.0), vuoto = solo APK'
+        description: 'Nome della release da pubblicare con questo APK (es. V1.7.0); vuoto = solo APK'
         required: false
         default: ''
   # ricostruisce l'APK quando i dati nautici vengono aggiornati
@@ -136,14 +136,18 @@ jobs:
           name: rotta-nautica-apk
           path: rotta-nautica.apk
 
-      - name: Completa e pubblica la release in bozza
+      - name: Pubblica la release (Run workflow con il nome, es. V1.7.0)
         if: inputs.release != ''
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.release }}
         run: |
-          gh release upload "$TAG" rotta-nautica.apk --clobber
-          gh release edit "$TAG" --draft=false --latest
+          NOTE="release/${TAG}.md"; test -f "$NOTE" || NOTE=/dev/null
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" rotta-nautica.apk --clobber
+          else
+            gh release create "$TAG" rotta-nautica.apk --target "$GITHUB_SHA" --title "Rotta Nautica $TAG" --notes-file "$NOTE" --latest
+          fi
 
       - name: Pubblica la release (solo per i tag V…)
         if: github.ref_type == 'tag'
