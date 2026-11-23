@@ -1,0 +1,270 @@
+{
+ "format": "rotta-nautica-storie-relitti-1",
+ "aggiornato": "2026-11-23",
+ "storie": {
+  "node/5169052206": {
+   "titolo": "Maona (Maona Rosa)",
+   "luogo": "Baia di Pirano, tra Pirano e Salvore (Slovenia)",
+   "intro": "Relitto di una maona, una grande chiatta da carico, affondata durante la Seconda guerra mondiale. È una delle immersioni più facili e frequentate della baia di Pirano.",
+   "sezioni": [
+    {
+     "t": "La nave",
+     "p": [
+      "La maona era una robusta chiatta da carico senza motore proprio, trainata da un rimorchiatore per trasportare merci pesanti. Lo scafo è lungo circa 40 metri."
+     ]
+    },
+    {
+     "t": "Affondamento",
+     "p": [
+      "È affondata nella Seconda guerra mondiale. Data, carico e causa precise (attacco aereo o mina) non sono confermate dalle fonti consultate: circolano versioni diverse."
+     ]
+    },
+    {
+     "t": "Immersione",
+     "p": [
+      "Coperta a circa 16 m, fondale intorno a circa 21 m. A prua c'è una boa d'ormeggio. Di solito è un'immersione facile; si può entrare nella stiva aperta se il piano d'immersione lo prevede.",
+      "D'estate il termoclino può scendere fino alla coperta e ridurre la visibilità."
+     ]
+    },
+    {
+     "t": "Vita marina",
+     "p": [
+      "Sotto lo scafo si nascondono molti pesci; sulla coperta si trovano spesso nudibranchi e altra fauna minuta."
+     ]
+    }
+   ],
+   "fonti": [
+    {
+     "t": "Sharky Diving Piran, siti d'immersione",
+     "url": "https://sharky.si/dive-sites/"
+    }
+   ]
+  },
+  "node/5169048896": {
+   "titolo": "Kec (mezzo da sbarco tedesco)",
+   "luogo": "Baia di Pirano (Slovenia)",
+   "intro": "Mezzo da sbarco tedesco della Seconda guerra mondiale, lungo circa 50 metri, che giace capovolto nella baia di Pirano.",
+   "sezioni": [
+    {
+     "t": "Affondamento",
+     "p": [
+      "Nel 1944, nella nebbia fitta, entrò in collisione con un'altra nave da guerra tedesca. Si tentò di rimorchiarlo verso Trieste, ma il traino non riuscì e la cima fu tagliata: si vede ancora sul relitto."
+     ]
+    },
+    {
+     "t": "Immersione",
+     "p": [
+      "Giace capovolto a circa 23 m; eliche e timoni sono intorno ai 18 m. Il giro esterno è adatto alla maggior parte dei subacquei; entrare nella stiva è solo per esperti con una guida, perché il sedimento si solleva facilmente."
+     ]
+    },
+    {
+     "t": "Vita marina",
+     "p": [
+      "Sotto il relitto c'è molta vita."
+     ]
+    }
+   ],
+   "fonti": [
+    {
+     "t": "Sharky Diving Piran, siti d'immersione",
+     "url": "https://sharky.si/dive-sites/"
+    }
+   ]
+  },
+  "node/5169080930": {
+   "titolo": "Rex",
+   "luogo": "Golfo di Capodistria (Slovenia)",
+   "intro": "Resti del Rex, il celebre transatlantico italiano che nel 1933 conquistò il Nastro Azzurro. Fu affondato da aerei alleati l'8 settembre 1944.",
+   "sezioni": [
+    {
+     "t": "La nave",
+     "p": [
+      "Costruito dall'Ansaldo a Sestri Ponente (Genova) e varato il 1° agosto 1931 per la compagnia Italia. Lungo circa 268 m, 51.062 tonnellate di stazza, poteva portare oltre 2.000 passeggeri.",
+      "Nell'agosto 1933 vinse il Nastro Azzurro della traversata atlantica verso ovest: 4 giorni e 13 ore a una media di quasi 29 nodi. Tenne il primato fino al 1935, quando lo superò la francese Normandie."
+     ]
+    },
+    {
+     "t": "Affondamento",
+     "p": [
+      "Fermo dal 1940, l'8 settembre 1944 fu attaccato nel golfo di Capodistria da cacciabombardieri Beaufighter della RAF, scortati da Mustang americani: colpito da razzi e cannoni, prese fuoco. Un secondo attacco nello stesso giorno lo fece capovolgere e affondare su un fondale basso."
+     ]
+    },
+    {
+     "t": "Il relitto oggi",
+     "p": [
+      "Dopo la guerra il recupero non fu possibile e negli anni '50 gran parte della nave fu demolita sul posto. Ne resta circa un terzo: doppiofondo, caldaie e macchine.",
+      "Si visita solo su richiesta, di solito da appassionati di storia; d'estate la visibilità può essere scarsa."
+     ]
+    }
+   ],
+   "fonti": [
+    {
+     "t": "Wikipedia, SS Rex",
+     "url": "https://en.wikipedia.org/wiki/SS_Rex"
+    },
+    {
+     "t": "Sharky Diving Piran, siti d'immersione",
+     "url": "https://sharky.si/dive-sites/"
+    }
+   ]
+  },
+  "node/663869712": {
+   "titolo": "Baron Gautsch",
+   "luogo": "Al largo di Rovigno, vicino alle isole Brioni (Croazia)",
+   "intro": "Piroscafo passeggeri del Lloyd austriaco affondato su una mina il 13 agosto 1914: è chiamato il \"Titanic dell'Adriatico\".",
+   "sezioni": [
+    {
+     "t": "La nave",
+     "p": [
+      "Costruito a Dundee (Scozia) e varato nel 1908 per il Lloyd austriaco di Trieste. Lungo 84,5 m, portava fino a 300 passeggeri sulla linea veloce tra Trieste e la Dalmazia."
+     ]
+    },
+    {
+     "t": "Affondamento",
+     "p": [
+      "Il 13 agosto 1914, in viaggio da Cattaro a Trieste, entrò a tutta velocità in un campo minato appena posato dalla Marina austro-ungarica davanti a Pola, a circa 7 miglia dalle Brioni. Urtò una mina e seguì una seconda esplosione, probabilmente di una caldaia.",
+      "Morirono 127 persone tra passeggeri ed equipaggio; tre cacciatorpediniere ne salvarono 159."
+     ]
+    },
+    {
+     "t": "Immersione",
+     "p": [
+      "Il relitto giace tra 28 e 40 m su fondo di sabbia e pietre. Dal 1995 è iscritto nel registro dei beni culturali croati: informati presso i centri diving locali sulle regole per immergersi."
+     ]
+    }
+   ],
+   "fonti": [
+    {
+     "t": "Wikipedia, SS Baron Gautsch",
+     "url": "https://en.wikipedia.org/wiki/SS_Baron_Gautsch"
+    }
+   ]
+  },
+  "node/663870669": {
+   "titolo": "HMS Coriolanus",
+   "luogo": "Circa 6 miglia al largo di Cittanova (Croazia)",
+   "intro": "Dragamine della Royal Navy affondato su una mina il 5 maggio 1945, pochi giorni prima della fine della guerra in Europa.",
+   "sezioni": [
+    {
+     "t": "La nave",
+     "p": [
+      "Nato come peschereccio d'altura della classe \"Shakespeariana\", fu varato nel 1941 a Selby (Inghilterra), armato e usato come dragamine. Lungo circa 50 m, con 35 uomini di equipaggio. Nel 1942 ricevette potenti apparati radio."
+     ]
+    },
+    {
+     "t": "Affondamento",
+     "p": [
+      "Il 5 maggio 1945, a circa 6 miglia da Cittanova, urtò una mina e affondò; l'equipaggio si salvò tutto. Secondo l'autore della fonte potrebbe essere stato invece un siluro, ma non ci sono prove certe."
+     ]
+    },
+    {
+     "t": "Immersione",
+     "p": [
+      "Profondità tra 24 e 36 m circa su fondo di sabbia e fango. Il relitto è quasi intatto: si visitano ponte di comando e sala macchine. Fu ritrovato da subacquei italiani nel 1987 ed è tutelato dal Ministero della cultura croato.",
+      "Attenzione a passaggi stretti, sedimento e reti da pesca impigliate. La visibilità è raramente ottima."
+     ]
+    }
+   ],
+   "fonti": [
+    {
+     "t": "ScubaPortal, relitto Coriolanus",
+     "url": "https://scubaportal.it/relitto-coriolanus"
+    }
+   ]
+  },
+  "node/7302512288": {
+   "titolo": "Mercurio",
+   "luogo": "Al largo di Lignano",
+   "intro": "Brick della Marina del Regno d'Italia napoleonico, esploso e affondato il 22 febbraio 1812 durante uno scontro con la flotta inglese. Oggi è un importante sito archeologico.",
+   "sezioni": [
+    {
+     "t": "La nave",
+     "p": [
+      "Brick francese da 16 cannoni costruito a Genova e varato nel 1806 con il nome di Mercure. Nel 1810 passò alla Marina del Regno d'Italia e fu ribattezzato Mercurio."
+     ]
+    },
+    {
+     "t": "Affondamento",
+     "p": [
+      "Il 22 febbraio 1812 scortava il vascello Rivoli quando incontrò una squadra inglese (battaglia di Pirano). Dopo circa 45 minuti di combattimento con il brick HMS Weazel, la santabarbara esplose e la nave affondò quasi subito: si salvarono solo tre uomini."
+     ]
+    },
+    {
+     "t": "Il ritrovamento",
+     "p": [
+      "Nel 2001 una rete da pesca agganciò uno dei suoi cannoni. Dal 2002 sono seguite campagne di scavo archeologico e nel 2005 è stato trovato lo scafo, in buono stato.",
+      "È un sito archeologico tutelato: non si tocca e non si preleva nulla. Prima di immergerti informati presso la Soprintendenza."
+     ]
+    }
+   ],
+   "fonti": [
+    {
+     "t": "Wikipedia, French brig Mercure (1806)",
+     "url": "https://en.wikipedia.org/wiki/French_brig_Mercure_(1806)"
+    }
+   ]
+  },
+  "node/822619945": {
+   "titolo": "Hans Schmidt (Istra)",
+   "luogo": "Al largo dell'Istria sud-occidentale (Croazia)",
+   "intro": "Piroscafo da carico tedesco lungo circa 112 m, affondato nel 1943.",
+   "sezioni": [
+    {
+     "t": "La nave",
+     "p": [
+      "Costruito nel 1920 con il nome di Albireo, fu poi acquistato da Heinrich Schmidt di Flensburg e ribattezzato Hans Schmidt."
+     ]
+    },
+    {
+     "t": "Affondamento",
+     "p": [
+      "Affondò nel 1943 per una mina o una bomba sganciata da un aereo: un'esplosione vicino alle stive di prua lo fece affondare in pochi minuti. L'identità del relitto è stata confermata dall'esploratore subacqueo Mario Arena."
+     ]
+    },
+    {
+     "t": "Immersione",
+     "p": [
+      "Giace in assetto di navigazione; lo scafo d'acciaio è in gran parte integro, gli alberi sono caduti e le sovrastrutture mancano. La visibilità sul fondo è spesso scarsa: immersione da subacquei preparati, con una guida. È vietato portare via qualsiasi oggetto."
+     ]
+    }
+   ],
+   "fonti": [
+    {
+     "t": "Istra.hr, The S/S Hans Schmidt",
+     "url": "https://www.istra.hr/en/experience/sun-and-sea/934"
+    }
+   ]
+  },
+  "node/5862772673": {
+   "titolo": "San Giorgio",
+   "luogo": "Delta del Po, presso la foce del Po di Pila",
+   "intro": "Nave pattuglia costruita nel 1914 e affondata nella notte del 12 febbraio 1944 alla foce del Po, sotto bandiera tedesca. Oggi è sepolta sotto la sabbia.",
+   "sezioni": [
+    {
+     "t": "La nave",
+     "p": [
+      "Costruita a Trieste nel 1914, passò alla Regia Marina dopo la Prima guerra mondiale e fu usata come piccola nave pattuglia. Lunga 54 m e larga circa 8 m. Dopo l'armistizio del 1943 la presero i tedeschi, che la usarono per pattugliare la costa tra il Polesine e Ancona."
+     ]
+    },
+    {
+     "t": "Affondamento",
+     "p": [
+      "Nella notte del 12 febbraio 1944, con mare grosso, cercò riparo nel Po ma si arenò su un banco di sabbia, si inclinò e affondò. I 53 uomini a bordo si salvarono sulle scialuppe."
+     ]
+    },
+    {
+     "t": "Il relitto oggi",
+     "p": [
+      "I pescatori la spogliarono di tutto e col tempo il relitto sprofondò nella sabbia del delta. Nel 2018 un gruppo di appassionati l'ha ritrovata con il georadar, da 3 a 5 metri sotto la sabbia: non è visitabile."
+     ]
+    }
+   ],
+   "fonti": [
+    {
+     "t": "Sky TG24, la \"nave fantasma\" San Giorgio (2018)",
+     "url": "https://tg24.sky.it/cronaca/2018/08/28/nave-san-giorgio-po"
+    }
+   ]
+  }
+ }
+}

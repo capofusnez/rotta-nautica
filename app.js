@@ -1865,7 +1865,7 @@ function renderHaz() {
   $('bAnchor').textContent = S.anchor ? 'Ritira ancora (allarme attivo)' : 'Getta ancora qui';
 }
 
-const TITLES = { rotta: 'Rotta', dati: 'Bordo', mappa: 'Carta e livelli', imp: 'Barca e account', punti: 'Punti di interesse', meteo: 'Meteo', check: 'Check-list' };
+const TITLES = { rotta: 'Rotta', dati: 'Bordo', mappa: 'Carta e livelli', imp: 'Barca e account', punti: 'Punti di interesse', meteo: 'Meteo', check: 'Check-list', relitto: 'Relitto' };
 function minSheet(on) { $('sheet').classList.toggle('min', on); if (!on) $('sheet').scrollTop = 0; }
 function openSheet(t) {
   if (t === 'avvisi') t = 'dati';
@@ -2043,7 +2043,7 @@ function wreckPopup(w) {
   const links = [web && `<a href="${esc(web)}" target="_blank" rel="noopener">Sito</a>`, wiki && `<a href="${esc(wiki)}" target="_blank" rel="noopener">Wikipedia</a>`].filter(Boolean).join(' · ');
   return `<div class="wkPop"><b>${esc(wkName(w))}</b><br>${rows.join('<br>')}${links ? '<br>' + links : ''}` +
     `<br><span class="mut">I relitti sono spesso molto pescosi: controlla che non ci siano divieti di pesca o di ancoraggio.</span>` +
-    `<button data-act="wreckDest" data-lat="${w.lat}" data-lng="${w.lng}">Imposta come destinazione</button>` +
+    `<div class="pbtn"><button data-act="wreckInfo" data-id="${esc(w.id)}">${w.story ? '📖 ' : ''}Approfondisci</button><button data-act="wreckDest" data-lat="${w.lat}" data-lng="${w.lng}">Destinazione</button></div>` +
     `<div class="pbtn"><button data-act="ptSave" data-lat="${w.lat}" data-lng="${w.lng}" data-c="pesca" data-n="${esc(wkName(w).slice(0, 60))}">Salva come punto pesca</button></div></div>`;
 }
 function loadWrecks() {
@@ -2054,11 +2054,54 @@ function loadWrecks() {
       w.marker = L.marker([w.lat, w.lng], { title: wkName(w), icon: L.divIcon({ className: '', iconSize: w.dive ? [20, 20] : [16, 16], iconAnchor: w.dive ? [10, 10] : [8, 8], html: `<div class="wk${w.dive ? ' dive' : ''}"></div>` }) })
         .bindPopup(() => wreckPopup(w)).addTo(wreckLayer);
     });
+    loadStorie().then(() => renderPunti());
     renderPunti();
     return WRECKS;
   }).catch(() => { wreckLoading = null; toast('Elenco dei relitti non disponibile'); });
   return wreckLoading;
 }
+/* ---------- Approfondisci: storia del relitto (relitti-storie.json, scritte dalle fonti indicate) ---------- */
+let STORIE = null, storieP = null;
+function loadStorie() {
+  if (STORIE) return Promise.resolve(STORIE);
+  if (!storieP) storieP = getData('relitti-storie.json').then(d => { STORIE = (d && d.storie) || {}; (WRECKS || []).forEach(w => { w.story = !!STORIE[w.id]; }); return STORIE; })
+    .catch(() => { storieP = null; return {}; });
+  return storieP;
+}
+async function openWreck(id) {
+  if (!WRECKS) await loadWrecks();
+  const w = (WRECKS || []).find(x => x.id === id); if (!w) return;
+  map.closePopup(); openSheet('relitto'); $('sheet').classList.add('tall');
+  const el = $('wkBox'); el.innerHTML = '<p class="note">Carico la scheda…</p>';
+  const st = (await loadStorie())[w.id];
+  const facts = [st && st.luogo ? `<b>Dove:</b> ${esc(st.luogo)}` : null, wkDepth(w) ? `<b>Profondità:</b> ${esc(wkDepth(w))}` : null,
+    w.sunk ? `<b>Affondato:</b> ${esc(w.sunk)}` : null, w.type ? `<b>Tipo:</b> ${esc(WK_TYPE[w.type] || w.type)}` : null, w.dive ? 'Sito d\'immersione' : null,
+    `<b>Posizione:</b> ${fmtDMS(w)}`, S.pos ? `<b>Da te:</b> ${fmtDist(dist(S.pos, w))}, ${fmtAng(brg(S.pos, w))}` : null].filter(Boolean);
+  const a = `data-lat="${w.lat}" data-lng="${w.lng}"`;
+  let h = `<h4 class="wkT">${esc(st ? st.titolo : wkName(w))}</h4><p class="wkFacts">${facts.join('<br>')}</p>`;
+  if (st) {
+    h += `<p class="wkIntro">${esc(st.intro)}</p>` + st.sezioni.map(s => `<h5 class="wkH">${esc(s.t)}</h5>` + s.p.map(p => `<p class="wkP">${esc(p)}</p>`).join('')).join('') +
+      `<p class="note"><b>Fonti:</b> ${st.fonti.map(f => `<a href="${esc(safeUrl(f.url) || '#')}" target="_blank" rel="noopener">${esc(f.t)}</a>`).join(' · ')}. Scheda scritta solo con le informazioni di queste fonti: dove non sono certe, è detto.</p>`;
+  } else {
+    h += `<div id="wkWiki"><p class="note">Per questo relitto non c'è ancora una scheda con la storia${w.note ? '' : ' e nei dati nautici non ci sono altre notizie'}.</p>${w.note ? `<p class="wkP">${esc(w.note)}</p>` : ''}</div>`;
+    const q = encodeURIComponent((w.name ? w.name + ' ' : '') + 'relitto');
+    h += `<p class="note">Cerca notizie: <a href="https://it.wikipedia.org/w/index.php?search=${q}" target="_blank" rel="noopener">Wikipedia</a> · <a href="https://duckduckgo.com/?q=${q}" target="_blank" rel="noopener">web</a></p>`;
+  }
+  h += `<div class="btns"><button data-act="wreckShow" data-id="${esc(w.id)}">Mostra sulla carta</button><button data-act="ptUse" data-k="dest" ${a}>Destinazione</button></div>` +
+    `<div class="btns"><button data-act="ptSave" ${a} data-c="immersione" data-n="${esc(wkName(w).slice(0, 60))}">Salva nei miei punti</button><button data-act="wreckBack">Torna ai punti</button></div>` +
+    '<p class="note">Immergiti solo con il brevetto adatto alla profondità, segnala l\'immersione con boa o bandiera e rispetta i divieti: molti relitti sono tutelati.</p>';
+  el.innerHTML = h;
+  /* niente scheda ma c'è la voce di Wikipedia nei dati: si mostra il riassunto (serve la rete) */
+  const m = !st && /^([a-z]{2,3}):(.+)$/.exec(w.wiki || '');
+  if (m && navigator.onLine) {
+    try {
+      const r = await fetch(`https://${m[1]}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(m[2].replace(/ /g, '_'))}`);
+      const j = r.ok ? await r.json() : null, box = $('wkWiki');
+      if (j && j.extract && box) box.innerHTML = `<p class="wkP">${esc(j.extract)}</p><p class="note">Da <a href="${esc(wikiUrl(w.wiki))}" target="_blank" rel="noopener">Wikipedia (${esc(m[1])})</a>.</p>`;
+    } catch (e) { /* senza rete resta il messaggio */ }
+  }
+}
+
 /* elenco dei relitti più vicini (alla barca se c'è il GPS, altrimenti al centro della carta) */
 function renderWrecks() {
   const el = $('wreckList'); if (!el) return;
@@ -2067,7 +2110,7 @@ function renderWrecks() {
   const c = S.pos || map.getCenter(), from = S.pos ? 'dalla barca' : 'dal centro della carta';
   const list = WRECKS.map((w, i) => ({ w, i, d: dist(c, w) })).filter(x => x.d < 60 * 1852).sort((a, b) => a.d - b.d).slice(0, 12);
   el.innerHTML = list.length
-    ? `<p class="note">Più vicini ${from}:</p>` + list.map(x => `<button data-act="wreckGo" data-i="${x.i}"><span><i class="wk${x.w.dive ? ' dive' : ''}" style="display:inline-block;vertical-align:middle;margin-right:6px"></i><b>${esc(wkName(x.w))}</b>${wkDepth(x.w) ? ' · ' + esc(wkDepth(x.w)) : ''}</span><span>${(x.d / 1852).toFixed(1)} mn</span></button>`).join('')
+    ? `<p class="note">Più vicini ${from}:</p>` + list.map(x => `<button data-act="wreckGo" data-i="${x.i}"><span><i class="wk${x.w.dive ? ' dive' : ''}" style="display:inline-block;vertical-align:middle;margin-right:6px"></i><b>${esc(wkName(x.w))}</b>${x.w.story ? ' 📖' : ''}${wkDepth(x.w) ? ' · ' + esc(wkDepth(x.w)) : ''}</span><span>${(x.d / 1852).toFixed(1)} mn</span></button>`).join('')
     : '<p class="note">Nessun relitto entro 60 miglia.</p>';
 }
 map.on('moveend', () => { if (S.tab === 'punti' && !S.pos) renderPunti(); });
@@ -2574,6 +2617,9 @@ document.addEventListener('click', e => {
       break;
     }
     case 'ckBoatSync': if (window.RNCheck) window.RNCheck.syncBoat(); break;
+    case 'wreckInfo': openWreck(d.id); break;
+    case 'wreckBack': openSheet('punti'); break;
+    case 'wreckShow': { const w = (WRECKS || []).find(x => x.id === d.id); if (!w) break; if (!S.set.wrecks) { S.set.wrecks = true; saveSet(); applyLayers(); if ($('lWrecks')) $('lWrecks').checked = true; } minSheet(true); map.setView([w.lat, w.lng], Math.max(map.getZoom(), 14)); w.marker.openPopup(); break; }
     case 'pescaGo': { const z = PESCA && PESCA[i]; if (!z || !z.marker) break; minSheet(true); map.setView([z.c.lat, z.c.lng], Math.max(map.getZoom(), z.poly ? 13 : 12)); z.marker.openPopup(); break; }
     case 'pescaWreck': { const w = WRECKS && WRECKS[i]; if (!w) break; if (!S.set.wrecks) { S.set.wrecks = true; saveSet(); applyLayers(); if ($('lWrecks')) $('lWrecks').checked = true; } minSheet(true); map.setView([w.lat, w.lng], Math.max(map.getZoom(), 14)); w.marker.openPopup(); break; }
     case 'wreckGo': { const w = WRECKS && WRECKS[i]; if (!w) break; minSheet(true); map.setView([w.lat, w.lng], Math.max(map.getZoom(), 14)); w.marker.openPopup(); break; }
