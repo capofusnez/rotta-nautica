@@ -5,11 +5,16 @@ name: Build APK
 on:
   push:
     branches: [main]
+    # un tag come V1.7.0 costruisce l'APK e pubblica la release con la descrizione in release/V1.7.0.md
+    tags: ['V*']
   workflow_dispatch:
   # ricostruisce l'APK quando i dati nautici vengono aggiornati
   workflow_run:
     workflows: ["Aggiorna dati nautici"]
     types: [completed]
+
+permissions:
+  contents: write
 
 jobs:
   apk:
@@ -74,7 +79,9 @@ jobs:
           sed -i "s#</application>#    <meta-data android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"$ADMOB\"/>\n    </application>#" app/src/main/AndroidManifest.xml
           grep -n "APPLICATION_ID" app/src/main/AndroidManifest.xml
           sed -i 's#</manifest>#    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n</manifest>#' app/src/main/AndroidManifest.xml
-          sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" app/build.gradle
+          VN="1.${{ github.run_number }}"
+          if [ "${{ github.ref_type }}" = "tag" ]; then VN="${GITHUB_REF_NAME#V}"; fi
+          sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"$VN\"/" app/build.gradle
           sudo apt-get install -y -qq imagemagick > /dev/null
           rm -rf app/src/main/res/mipmap-anydpi-v26
           for d in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
@@ -122,3 +129,12 @@ jobs:
         with:
           name: rotta-nautica-apk
           path: rotta-nautica.apk
+
+      - name: Pubblica la release (solo per i tag V…)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTE="release/${GITHUB_REF_NAME}.md"
+          test -f "$NOTE" || NOTE=/dev/null
+          gh release create "$GITHUB_REF_NAME" rotta-nautica.apk --title "Rotta Nautica $GITHUB_REF_NAME" --notes-file "$NOTE" --latest
