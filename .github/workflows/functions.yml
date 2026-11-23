@@ -23,7 +23,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Accesso a Google Cloud
         uses: google-github-actions/auth@v2
@@ -43,6 +43,6 @@ jobs:
       - name: Pubblica
         run: |
           if [ "${{ inputs.cosa }}" = "solo regole" ]; then ONLY=database; else ONLY=functions,database; fi
-          npx --yes firebase-tools@13 deploy --only "$ONLY" --project rotta-nautica --non-interactive --force
+          npx --yes firebase-tools@14 deploy --only "$ONLY" --project rotta-nautica --non-interactive --force
           echo "Indirizzo del webhook da mettere in Stripe:"
           echo "https://europe-west1-rotta-nautica.cloudfunctions.net/stripeWebhook"
