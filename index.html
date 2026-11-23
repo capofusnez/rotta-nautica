@@ -463,6 +463,15 @@ details.info .note+.note{margin-top:8px}
 .ckM.bad{border-left-color:var(--bad)}.ckM.bad .ckSt{color:var(--bad)}
 .ckM button{flex:none}
 .ckWarn{color:var(--warn);font-weight:600}
+.svI{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:13px;color:#fff;border:2px solid #fff;box-shadow:0 0 0 1px #0006}
+.svI.ma{background:#1565c0}.svI.fu{background:#e65100}.svI.sl{background:#5d4037;width:18px;height:18px;font:700 10px/1 system-ui;border-radius:5px}
+.svI.sm{display:inline-grid;width:20px;height:20px;font-size:11px;vertical-align:middle;margin-right:6px;font-style:normal}
+.svcs{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}.svc{font-size:12px;padding:2px 6px;border-radius:10px;background:#e3f2fd;color:#0d3c61;white-space:nowrap}
+.cmBox{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0 12px;background:var(--panel)}
+.stars{color:#f5a623;letter-spacing:1px}.revAvg{font-size:16px;margin:0 0 8px}
+.starIn{display:flex;gap:4px;margin:4px 0 8px}.starIn button{font-size:26px;line-height:1;padding:4px 8px;min-height:0;color:#bbb;background:none;border:0}.starIn button.on{color:#f5a623}
+.revItem{border-top:1px solid var(--line);padding:10px 0}.revItem p{margin:4px 0 0;font-size:15px;line-height:1.45}
+button.sm{min-height:0;padding:4px 10px;font-size:13px;margin-top:6px}
 .isoLbl{background:none;border:0}.isoLbl span{font:700 11px/1 system-ui,sans-serif;white-space:nowrap;padding:1px 3px;border-radius:4px;background:rgba(255,255,255,.85);transform:translate(-50%,-50%);display:inline-block}
 .wkT{font-size:20px;margin:4px 0 8px}.wkFacts{font-size:14px;line-height:1.55;color:var(--mut);margin:0 0 10px}.wkFacts b{color:var(--fg);font-weight:600}
 .wkIntro{font-size:16px;line-height:1.5;font-weight:600;margin:0 0 6px}.wkH{font-size:15px;margin:14px 0 4px}.wkP{font-size:15px;line-height:1.55;margin:0 0 8px}
@@ -570,6 +579,7 @@ details.info .note+.note{margin-top:8px}
   <div class="pane" id="p-imp" hidden>
     <h4>Barche con Rotta Nautica</h4>
     <div id="fleetBox"></div>
+    <div id="modBox"></div>
     <details class="info"><summary>Come funziona</summary><p class="note">Con l'accesso Google e la condivisione accesa, il nome che scegli, il tipo di mezzo, la posizione, la rotta e la velocità sono visibili a tutti gli utenti dell'app che hanno fatto l'accesso. Vale solo mentre l'app è aperta: quando la chiudi o perdi la rete sparisci dalla carta entro pochi minuti. Puoi spegnere la condivisione o uscire quando vuoi. Le barche degli altri possono avere fino a un minuto di ritardo: non serve a evitare collisioni, guarda sempre fuori.</p></details>
     <h4>Barca e patente</h4>
     <p class="note ckOk" id="ckBoatNote" hidden></p>
@@ -606,6 +616,10 @@ details.info .note+.note{margin-top:8px}
     <div class="btns"><button data-act="poiGpxOut">Esporta GPX</button><button data-act="poiGpxIn">Importa GPX</button></div>
     <input id="poiFileIn" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" hidden>
     <details class="info"><summary>Come funziona</summary><p class="note">Tocca un punto sulla carta per aggiungere note, cambiarne il tipo o eliminarlo. Puoi anche tenere premuto sulla carta e scegliere "Salva come mio punto".</p></details>
+    <h4>Marine e distributori</h4>
+    <label class="chk"><input type="checkbox" id="lServizi"> Mostra marine, distributori di carburante e scivoli</label>
+    <div id="servList"></div>
+    <details class="info"><summary>Come funziona</summary><p class="note">Marine, distributori per barche e scivoli vengono da OpenStreetMap, con i servizi che i volontari hanno segnato (carburante, acqua, corrente, bagni, docce, gru...): possono mancare o essere cambiati, conviene chiamare prima. Compaiono sulla carta da vicino. Tocca "★ Recensioni" per leggere o scrivere le recensioni degli altri utenti.</p></details>
     <h4>Zone di pesca conosciute</h4>
     <label class="chk"><input type="checkbox" id="lPesca"> Mostra le zone di pesca sulla carta</label>
     <div class="zLeg"><span><i style="border-color:#0f9db0;background:#0f9db033"></i> 🎣 Pesca consentita</span><span><i style="border-color:#fb8c00;border-style:dashed"></i> ⚠️ Pesca con limiti</span><span><i style="border-color:#e53935;border-style:dashed;background:#e5393533"></i> ⛔ Pesca vietata</span></div>
@@ -627,6 +641,7 @@ details.info .note+.note{margin-top:8px}
   </div>
 
   <div class="pane" id="p-relitto" hidden><div id="wkBox"></div></div>
+  <div class="pane" id="p-recensioni" hidden><div id="revBox"></div></div>
   <div class="pane" id="p-check" hidden>
     <div id="ckBox"></div>
   </div>
@@ -720,6 +735,7 @@ window.addEventListener('error', function (e) {
 <script src="seamarks.js"></script>
 <script src="firebase-config.js"></script>
 <script src="flotta.js"></script>
+<script src="comunita.js"></script>
 <script src="catalogo.js"></script>
 <script src="checklist.js"></script>
 <script src="app.js"></script>

@@ -134,7 +134,7 @@ function fmtClock(ms) {
 const DEF = { xte: 0.1, arr: 80, spd: 0, wind: 25, hz: 300, plan: 5, anc: 40, coast: 300, draft: 1, ukc: 0.5, enc: true,
   mute: false, night: false, base: 'osm', sea: true, bathy: false, track: true, follow: true,
   boat: 'motore', hp: 40, len: 6, lic: 'none', vlim: 'auto', ce: 'ce', pref: 1, pkg: 'all', pkgWifi: true,
-  wrecks: false, ais: false, fleetShare: true, fleetName: '', fleetIn: false, pois: true, fonde: false, amp: false, pesca: true, iso: false };
+  wrecks: false, ais: false, fleetShare: true, fleetName: '', fleetIn: false, pois: true, fonde: false, amp: false, pesca: true, iso: false, servizi: true };
 const S = {
   set: Object.assign({}, DEF, store.get('set', {})),
   route: store.get('route', { start: null, via: [], dest: null }),
@@ -278,6 +278,7 @@ function applyLayers() {
   if (S.set.amp) { if (!map.hasLayer(ampLayer)) { ampLayer.addTo(map); loadPoiData(); } } else map.removeLayer(ampLayer);
   if (S.set.fonde) { if (!map.hasLayer(fondaLayer)) { fondaLayer.addTo(map); loadPoiData(); } } else map.removeLayer(fondaLayer);
   if (S.set.pesca) { if (!map.hasLayer(pescaLayer)) { pescaLayer.addTo(map); loadPesca(); } } else map.removeLayer(pescaLayer);
+  if (S.set.servizi) { if (!map.hasLayer(servLayer)) { servLayer.addTo(map); if (SRV) drawServizi(); else loadServizi(); } } else map.removeLayer(servLayer);
   if ($('bAis')) { $('bAis').hidden = !S.set.ais; if (!S.set.ais) closeAis(); }
   seamarkInspector.refresh();
   encView.render();
@@ -553,7 +554,7 @@ function stopGps() {
 
 function onFix(f) {
   const now = f.t || Date.now();
-  if (Date.now() - coastT0 > 8000) { coastT0 = Date.now(); coastHere(f).then(r => { S.coastHere = r; ui(); }).catch(() => {}); }
+  if (Date.now() - coastT0 > 8000) { coastT0 = Date.now(); coastHere(f).then(r => { if (r) r.center = false; S.coastHere = r; ui(); }).catch(() => {}); }
   S.lastFix = Date.now(); clearAl('gps');
   const lt = S.track[S.track.length - 1];
   let sog = (f.speed != null && isFinite(f.speed)) ? f.speed * KN : null;
@@ -1280,6 +1281,12 @@ function depthIndex() {
 }
 /* ---------- Distanza dalla costa e fondale nel punto (profondità EMODnet, maglia ~115 m, senza rete) ---------- */
 let coastT0 = 0;
+/* con il GPS spento si calcola dal centro della carta, così si vede lo stesso (e si capisce da dove) */
+function refreshCoast() {
+  const ref = S.pos || map.getCenter(), center = !S.pos;
+  coastHere({ lat: ref.lat, lng: ref.lng }).then(r => { if (r) r.center = center; S.coastHere = r; ui(); }).catch(() => {});
+}
+map.on('moveend', () => { if (!S.pos && S.tab === 'dati') refreshCoast(); });
 async function coastHere(p) {
   const idx = await depthIndex(), R = 30000;   // si cerca la costa entro 30 km
   const kx = Math.cos(p.lat * RAD), dLa = R / 111320, dLo = R / (111320 * kx);
@@ -1870,10 +1877,10 @@ function showWater(on) {
 }
 
 /* ---------- Interfaccia ---------- */
-const GRID = [['sog', 'Velocità (kn)'], ['cog', 'Direzione (COG)'], ['brg', 'Rilevamento del punto'], ['dtw', 'Distanza dal punto'], ['xte', 'Fuori rotta'], ['vmg', 'VMG (kn)'],
+const GRID = [['sog', 'Velocità (kn)'], ['cog', 'Direzione (COG)'], ['coast', 'Distanza dalla costa'], ['depth', 'Fondale (EMODnet)'], ['brg', 'Rilevamento del punto'], ['dtw', 'Distanza dal punto'], ['xte', 'Fuori rotta'], ['vmg', 'VMG (kn)'],
   ['ttg', 'Tempo al punto'], ['eta', 'Arrivo al punto'], ['rem', 'Distanza rimanente'], ['fin', 'Arrivo finale'], ['pos', 'Posizione', 1],
   ['trip', 'Percorso'], ['time', 'Tempo'], ['avg', 'Media (kn)'], ['max', 'Massima (kn)'], ['acc', 'Precisione GPS'],
-  ['coast', 'Distanza dalla costa'], ['depth', 'Fondale (EMODnet)'], ['wind', 'Vento'], ['gust', 'Raffica'], ['wave', 'Onda'], ['pres', 'Pressione'], ['anc', 'Deriva ancora'], ['utc', 'Ora UTC']];
+  ['wind', 'Vento'], ['gust', 'Raffica'], ['wave', 'Onda'], ['pres', 'Pressione'], ['anc', 'Deriva ancora'], ['utc', 'Ora UTC']];
 $('grid').innerHTML = GRID.map(g => `<div class="g${g[2] ? ' w' : ''}"><span class="lbl">${g[1]}</span><b id="d-${g[0]}">--</b></div>`).join('');
 const setD = (id, v) => { const e = $('d-' + id); if (e) e.textContent = v; };
 
@@ -1902,8 +1909,9 @@ function ui() {
   setD('vmg', f(N.vmg, 1)); setD('ttg', fmtDur(N.ttg)); setD('eta', N.eta ? fmtClock(N.eta) : '--');
   setD('rem', fmtDist(N.rem)); setD('fin', N.eta && S.active ? fmtClock(N.eta) : '--');
   setD('pos', fmtPos(p)); setD('trip', fmtDist(S.trip.dist)); setD('time', fmtDur(el));
-  { const c = p && S.coastHere && Date.now() - S.coastHere.t < 60000 ? S.coastHere : null;
-    setD('coast', !c ? '--' : c.land ? 'in porto o a riva' : c.m == null ? `oltre ${fmtDist(c.max)}` : fmtDist(c.m));
+  { const c = S.coastHere && Date.now() - S.coastHere.t < 60000 && (p ? !S.coastHere.center : S.coastHere.center) ? S.coastHere : null;
+    const sfx = c && c.center ? ' (centro carta)' : '';
+    setD('coast', !c ? (p ? 'calcolo…' : '--') : (c.land ? 'in porto o a riva' : c.m == null ? `oltre ${fmtDist(c.max)}` : fmtDist(c.m)) + sfx);
     setD('depth', c && c.depth != null ? '~' + (c.depth < 10 ? c.depth.toFixed(1) : Math.round(c.depth)) + ' m' : '--'); }
   setD('avg', Number.isFinite(el) && el > 30 ? (S.trip.dist / el * KN).toFixed(1) : '--');
   setD('max', S.trip.max.toFixed(1)); setD('acc', p && p.acc != null ? '±' + Math.round(p.acc) + ' m' : '--');
@@ -1974,7 +1982,7 @@ function renderHaz() {
   $('bAnchor').textContent = S.anchor ? 'Ritira ancora (allarme attivo)' : 'Getta ancora qui';
 }
 
-const TITLES = { rotta: 'Rotta', dati: 'Bordo', mappa: 'Carta e livelli', imp: 'Barca e account', punti: 'Punti di interesse', meteo: 'Meteo', check: 'Check-list', relitto: 'Relitto' };
+const TITLES = { rotta: 'Rotta', dati: 'Bordo', mappa: 'Carta e livelli', imp: 'Barca e account', punti: 'Punti di interesse', meteo: 'Meteo', check: 'Check-list', relitto: 'Relitto', recensioni: 'Recensioni' };
 function minSheet(on) { $('sheet').classList.toggle('min', on); if (!on) $('sheet').scrollTop = 0; }
 function openSheet(t) {
   if (t === 'avvisi') t = 'dati';
@@ -1986,11 +1994,11 @@ function openSheet(t) {
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   $('bSet').classList.toggle('on', t === 'imp');
   if (t === 'rotta') renderRoute();
-  if (t === 'dati') renderHaz();
+  if (t === 'dati') { renderHaz(); refreshCoast(); }
   if (t === 'punti') renderPunti();
   if (t === 'imp') boatFromCk();
   if (t === 'meteo') openMeteo();
-  if (t === 'imp') renderFleetBox();
+  if (t === 'imp') { renderFleetBox(); renderModBox(); }
   if (t === 'check' && window.RNCheck) window.RNCheck.render();
   $('home').hidden = true;
   ui(); fabs();
@@ -2134,7 +2142,7 @@ const WK_CAT = { dangerous: 'pericoloso per la navigazione', 'non-dangerous': 'n
   distributed_remains: 'resti sparsi', mast_showing: 'alberi visibili', hull_showing: 'scafo visibile' };
 const WK_LEVEL = { submerged: 'sommerso', awash: 'affiorante', dry: 'emerso', covers: 'coperto dalla marea', always_dry: 'sempre emerso' };
 const WK_TYPE = { ship: 'nave', submarine: 'sottomarino', aircraft: 'aereo', boat: 'barca', fishing_boat: 'peschereccio', tanker: 'petroliera', cargo: 'mercantile' };
-const wkName = w => w.name || 'Relitto senza nome';
+const wkName = w => w.name || (window.RNCom && RNCom.wreckName(w)) || 'Relitto senza nome';
 const wkDepth = w => w.depth && w.maxDepth ? `${w.depth}–${w.maxDepth} m` : w.depth ? `${w.depth} m` : w.maxDepth ? `fino a ${w.maxDepth} m` : null;
 function wikiUrl(v) { const m = /^([a-z]{2,3}):(.+)$/.exec(v || ''); return m ? `https://${m[1]}.wikipedia.org/wiki/${encodeURIComponent(m[2].replace(/ /g, '_'))}` : null; }
 function safeUrl(v) { return /^https?:\/\//i.test(v || '') ? v : v && /^www\./i.test(v) ? 'https://' + v : null; }
@@ -2188,6 +2196,7 @@ async function openWreck(id) {
     `<b>Posizione:</b> ${fmtDMS(w)}`, S.pos ? `<b>Da te:</b> ${fmtDist(dist(S.pos, w))}, ${fmtAng(brg(S.pos, w))}` : null].filter(Boolean);
   const a = `data-lat="${w.lat}" data-lng="${w.lng}"`;
   let h = `<h4 class="wkT">${esc(st ? st.titolo : wkName(w))}</h4><p class="wkFacts">${facts.join('<br>')}</p>`;
+  if (!w.name && window.RNCom) h += wreckNameBox(w);
   if (st) {
     h += `<p class="wkIntro">${esc(st.intro)}</p>` + st.sezioni.map(s => `<h5 class="wkH">${esc(s.t)}</h5>` + s.p.map(p => `<p class="wkP">${esc(p)}</p>`).join('')).join('') +
       `<p class="note"><b>Fonti:</b> ${st.fonti.map(f => `<a href="${esc(safeUrl(f.url) || '#')}" target="_blank" rel="noopener">${esc(f.t)}</a>`).join(' · ')}. Scheda scritta solo con le informazioni di queste fonti: dove non sono certe, è detto.</p>`;
@@ -2197,7 +2206,8 @@ async function openWreck(id) {
     h += `<p class="note">Cerca notizie: <a href="https://it.wikipedia.org/w/index.php?search=${q}" target="_blank" rel="noopener">Wikipedia</a> · <a href="https://duckduckgo.com/?q=${q}" target="_blank" rel="noopener">web</a></p>`;
   }
   h += `<div class="btns"><button data-act="wreckShow" data-id="${esc(w.id)}">Mostra sulla carta</button><button data-act="ptUse" data-k="dest" ${a}>Destinazione</button></div>` +
-    `<div class="btns"><button data-act="ptSave" ${a} data-c="immersione" data-n="${esc(wkName(w).slice(0, 60))}">Salva nei miei punti</button><button data-act="wreckBack">Torna ai punti</button></div>` +
+    `<div class="btns"><button data-act="revOpen" data-k="${esc(w.id)}" data-n="${esc(wkName(w).slice(0, 60))}" data-back="${esc(w.id)}">★ Recensioni</button><button data-act="ptSave" ${a} data-c="immersione" data-n="${esc(wkName(w).slice(0, 60))}">Salva nei miei punti</button></div>` +
+    `<div class="btns"><button data-act="wreckBack">Torna ai punti</button></div>` +
     '<p class="note">Immergiti solo con il brevetto adatto alla profondità, segnala l\'immersione con boa o bandiera e rispetta i divieti: molti relitti sono tutelati.</p>';
   el.innerHTML = h;
   /* niente scheda ma c'è la voce di Wikipedia nei dati: si mostra il riassunto (serve la rete) */
@@ -2209,6 +2219,120 @@ async function openWreck(id) {
       if (j && j.extract && box) box.innerHTML = `<p class="wkP">${esc(j.extract)}</p><p class="note">Da <a href="${esc(wikiUrl(w.wiki))}" target="_blank" rel="noopener">Wikipedia (${esc(m[1])})</a>.</p>`;
     } catch (e) { /* senza rete resta il messaggio */ }
   }
+}
+
+/* nome di un relitto senza nome: privato o proposto alla community (comunita.js) */
+function wreckNameBox(w) {
+  const info = RNCom.nameInfo(w), me = RNCom.me();
+  return `<div class="cmBox"><h5 class="wkH">Nome del relitto</h5>` +
+    (info.approved ? `<p class="note">Nome dato dalla community: <b>${esc(info.approved.n)}</b>${info.approved.da ? ` (proposto da ${esc(info.approved.da)})` : ''}.</p>` : '<p class="note">Il nome di questo relitto non è noto. Se lo conosci, scrivilo: lo vedrai tu e, se lo condividi, tutti dopo l\'approvazione di un moderatore.</p>') +
+    (me ? `<form class="search" onsubmit="return false"><input id="wkNameIn" maxlength="60" value="${esc(info.mine || '')}" placeholder="Nome del relitto" autocomplete="off"><button type="button" data-act="wkNameSave" data-id="${esc(w.id)}">Salva</button></form>` +
+      `<label class="chk"><input type="checkbox" id="wkNameShare"${info.shared ? ' checked' : ''}> Condividi con la community</label>` +
+      (info.mine ? `<p class="note">Il nome che hai dato tu: <b>${esc(info.mine)}</b>${info.shared ? ' (proposto alla community)' : ' (solo per te)'}. Per toglierlo svuota la casella e tocca Salva.</p>` : '')
+      : '<p class="note">Per dare un nome al relitto accedi con Google in <a href="#" data-act="goAccount">Barca e account</a>.</p>') + '</div>';
+}
+
+/* ---------- Recensioni (comunita.js): marine, distributori, punti di fonda, zone di pesca, relitti ---------- */
+let REV = null;
+async function openReviews(k, title, back) {
+  REV = { k, title, back, s: 0 };
+  map.closePopup(); openSheet('recensioni'); $('sheet').classList.add('tall');
+  const el = $('revBox'); el.innerHTML = `<h4 class="wkT">${esc(title || 'Recensioni')}</h4><p class="note">Carico le recensioni…</p>`;
+  let list = {};
+  try { list = await RNCom.reviews(k); } catch (e) { list = null; }
+  if (!REV || REV.k !== k) return;
+  const me = RNCom.me(), mod = RNCom.isMod(), arr = Object.entries(list || {}).map(([uid, r]) => Object.assign({ uid }, r)).sort((a, b) => (b.t || 0) - (a.t || 0));
+  const mine = me && arr.find(r => r.uid === me.uid);
+  REV.s = mine ? mine.s : 0;
+  const stars = n => '★'.repeat(n) + '☆'.repeat(5 - n), avg = arr.length ? arr.reduce((a, r) => a + r.s, 0) / arr.length : 0;
+  let h = `<h4 class="wkT">${esc(title || 'Recensioni')}</h4>` +
+    (list === null ? '<p class="note warn">Recensioni non disponibili: serve la connessione a internet.</p>'
+      : arr.length ? `<p class="revAvg"><span class="stars">${stars(Math.round(avg))}</span> <b>${avg.toFixed(1).replace('.', ',')}</b> su 5 · ${arr.length} ${arr.length === 1 ? 'recensione' : 'recensioni'}</p>` : '<p class="note">Ancora nessuna recensione: scrivi la prima.</p>');
+  h += me ? `<div class="cmBox"><h5 class="wkH">${mine ? 'La tua recensione' : 'Scrivi una recensione'}</h5><div class="starIn">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-act="revStar" data-s="${n}" aria-label="${n} stelle" class="${n <= REV.s ? 'on' : ''}">★</button>`).join('')}</div>` +
+      `<textarea id="revTxt" rows="3" maxlength="500" placeholder="Com'è andata? Servizi, prezzi, cortesia, fondale…">${esc(mine ? mine.txt || '' : '')}</textarea>` +
+      `<div class="btns"><button class="primary" data-act="revSave">Pubblica</button>${mine ? '<button class="danger" data-act="revDel">Cancella la mia</button>' : ''}</div>` +
+      '<p class="note">La recensione è pubblica, con il nome del tuo account Google.</p></div>'
+    : '<p class="note">Per scrivere una recensione accedi con Google in <a href="#" data-act="goAccount">Barca e account</a>.</p>';
+  h += arr.filter(r => !me || r.uid !== me.uid || true).map(r => `<div class="revItem"><div><span class="stars">${stars(r.s)}</span> <b>${esc(r.n || 'Utente')}</b>${r.t ? ' · ' + new Date(r.t).toLocaleDateString('it-IT') : ''}</div>` +
+    (r.txt ? `<p>${esc(r.txt)}</p>` : '') + (mod && (!me || r.uid !== me.uid) ? `<button class="danger sm" data-act="revModDel" data-u="${esc(r.uid)}">Cancella (moderatore)</button>` : '') + '</div>').join('');
+  h += `<div class="btns"><button data-act="revBack">Indietro</button></div>`;
+  el.innerHTML = h;
+}
+
+/* ---------- Moderazione (Barca e account): proposte di nomi dei relitti ---------- */
+function renderModBox() {
+  const el = $('modBox'); if (!el) return;
+  const me = window.RNCom && RNCom.me();
+  if (!me) { el.innerHTML = ''; return; }
+  let h = '';
+  if (RNCom.isMod()) {
+    const P = RNCom.proposals(), rows = [];
+    Object.entries(P || {}).forEach(([k, byU]) => Object.entries(byU || {}).forEach(([uid, p]) => rows.push({ k, uid, p })));
+    rows.sort((a, b) => (a.p.t || 0) - (b.p.t || 0));
+    h += `<h4>Moderazione</h4>` + (P === null ? '<p class="note">Carico le proposte…</p>' : rows.length ? `<p class="note">${rows.length === 1 ? '1 proposta' : rows.length + ' proposte'} di nomi per i relitti:</p>` +
+      rows.map(r => `<div class="revItem"><div><b>${esc(r.p.n)}</b> · proposto da ${esc(r.p.u || 'utente')}${r.p.t ? ' il ' + new Date(r.p.t).toLocaleDateString('it-IT') : ''}</div>` +
+        `<div class="btns"><button class="primary" data-act="modOk" data-k="${esc(r.k)}" data-u="${esc(r.uid)}">Approva</button><button class="danger" data-act="modNo" data-k="${esc(r.k)}" data-u="${esc(r.uid)}">Rifiuta</button><button data-act="wreckInfo" data-id="${esc(r.p.id)}">Vedi il relitto</button></div></div>`).join('')
+      : '<p class="note">Nessuna proposta da approvare.</p>');
+  }
+  h += `<details class="info"><summary>Il tuo codice utente</summary><p class="note">Serve per diventare moderatore: in Firebase → Realtime Database aggiungi <b>moderatori/${esc(me.uid)}</b> con valore <b>true</b>.</p><p class="note"><code>${esc(me.uid)}</code> <button class="linkBtn" data-act="copyUid" data-u="${esc(me.uid)}">Copia</button></p></details>`;
+  el.innerHTML = h;
+}
+if (window.RNCom) RNCom.on(() => { if (S.tab === 'imp') renderModBox(); if (S.tab === 'punti') renderPunti(); });
+
+/* ---------- Marine, distributori di carburante e scivoli (servizi.json, da OpenStreetMap) ---------- */
+const SERV = { carburante: ['⛽', 'Carburante'], acqua: ['🚰', 'Acqua'], elettricita: ['🔌', 'Corrente'], bagni: ['🚻', 'Bagni'], docce: ['🚿', 'Docce'],
+  scivolo: ['🛶', 'Scivolo'], gru: ['🏗️', 'Gru / alaggio'], nautica: ['🛒', 'Negozio nautico'], cambusa: ['🛍️', 'Cambusa'], lavanderia: ['🧺', 'Lavanderia'],
+  rifiuti: ['♻️', 'Rifiuti'], svuotamento: ['🚽', 'Svuotamento acque nere'], ospiti: ['⚓', 'Posti per ospiti'], velaio: ['⛵', 'Velaio'], parcheggio: ['🅿️', 'Parcheggio'],
+  circolo: ['🏁', 'Circolo nautico'], medico: ['⚕️', 'Medico'], farmacia: ['💊', 'Farmacia'], wifi: ['📶', 'Wi-Fi'], pesca: ['🎣', 'Negozio di pesca'], riparazioni: ['🔧', 'Riparazioni'] };
+const servLayer = L.layerGroup();
+let SRV = null, srvP = null;
+const srvMk = new Map();
+function loadServizi() {
+  if (SRV || srvP) return srvP || Promise.resolve(SRV);
+  srvP = getData('servizi.json').then(d => { SRV = { marine: (d && d.marine) || [], carburante: (d && d.carburante) || [], scivoli: (d && d.scivoli) || [], created: d && d.created }; drawServizi(); renderPunti(); return SRV; })
+    .catch(() => { srvP = null; SRV = { marine: [], carburante: [], scivoli: [], missing: true }; renderPunti(); });
+  return srvP;
+}
+function drawServizi() {
+  servLayer.clearLayers(); srvMk.clear();
+  if (!SRV || !S.set.servizi || map.getZoom() < 10) return;
+  const B = map.getBounds().pad(0.2), inB = o => B.contains([o.lat, o.lng]);
+  const add = (o, k, html, size, pop) => { const m = L.marker([o.lat, o.lng], { title: o.name || '', icon: L.divIcon({ className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2], html }) }).bindPopup(pop).addTo(servLayer); srvMk.set(k + o.id, m); };
+  SRV.marine.filter(inB).slice(0, 250).forEach(o => add(o, 'm', '<div class="svI ma">⛵</div>', 24, () => marinaPopup(o)));
+  SRV.carburante.filter(inB).slice(0, 150).forEach(o => add(o, 'f', '<div class="svI fu">⛽</div>', 24, () => fuelPopup(o)));
+  if (map.getZoom() >= 12) SRV.scivoli.filter(inB).slice(0, 150).forEach(o => add(o, 's', '<div class="svI sl">S</div>', 18, () => slipPopup(o)));
+}
+map.on('moveend', () => { if (S.set.servizi && SRV) drawServizi(); });
+const svcChips = s => (s || []).filter(k => SERV[k]).map(k => `<span class="svc">${SERV[k][0]} ${SERV[k][1]}</span>`).join('');
+function srvFoot(o, kind, name) {
+  const a = `data-lat="${o.lat}" data-lng="${o.lng}"`;
+  return `<br>${fmtDMS(o)}${S.pos ? `<br>Da te: ${fmtDist(dist(S.pos, o))}, ${fmtAng(brg(S.pos, o))}` : ''}` +
+    `<div class="pbtn"><button data-act="ptUse" data-k="dest" ${a}>Destinazione</button><button data-act="ptMeteo" ${a}>Meteo qui</button></div>` +
+    `<div class="pbtn"><button data-act="revOpen" data-k="${kind}_${esc(o.id)}" data-n="${esc(name.slice(0, 60))}">★ Recensioni</button><button data-act="ptSave" ${a} data-c="altro" data-n="${esc(name.slice(0, 60))}">Salva nei miei punti</button></div>` +
+    '<span class="mut">Dati da OpenStreetMap: orari e servizi possono mancare o essere cambiati, conviene chiamare prima.</span></div>';
+}
+function marinaPopup(o) {
+  const name = o.name || 'Marina', web = safeUrl(o.web);
+  const rows = [o.posti ? `Posti barca: ${esc(o.posti)}` : null, o.prof ? `Profondità: ${esc(o.prof)} m` : null, o.vhf ? `VHF: canale ${esc(o.vhf)}` : null,
+    o.tel ? `Tel.: <a href="tel:${esc(o.tel.replace(/[^+\d]/g, ''))}">${esc(o.tel)}</a>` : null, web ? `<a href="${esc(web)}" target="_blank" rel="noopener">Sito della marina</a>` : null].filter(Boolean);
+  return `<div class="wkPop"><b>⛵ ${esc(name)}</b><br>` + (o.s && o.s.length ? `<div class="svcs">${svcChips(o.s)}</div>` : '<span class="mut">Servizi non indicati nei dati.</span><br>') + rows.join('<br>') + srvFoot(o, 'm', name);
+}
+function fuelPopup(o) {
+  const name = o.name || 'Distributore per barche', fu = [o.diesel && 'gasolio', o.benzina && 'benzina', o.miscela && 'miscela'].filter(Boolean);
+  const rows = [o.brand && o.brand !== o.name ? esc(o.brand) : null, fu.length ? 'Carburanti: ' + fu.join(', ') : null, o.orari ? `Orari: ${esc(o.orari)}` : null,
+    o.tel ? `Tel.: <a href="tel:${esc(o.tel.replace(/[^+\d]/g, ''))}">${esc(o.tel)}</a>` : null, o.marina ? `Nella ${esc(o.marina)}` : null].filter(Boolean);
+  return `<div class="wkPop"><b>⛽ ${esc(name)}</b><br>${rows.join('<br>')}` + srvFoot(o, 'f', name);
+}
+function slipPopup(o) { return `<div class="wkPop"><b>🛶 ${esc(o.name || 'Scivolo')}</b><br>Scivolo per alare e varare${o.fee ? ` · ${/^no$/i.test(o.fee) ? 'gratuito' : 'a pagamento'}` : ''}` + srvFoot(o, 's', o.name || 'Scivolo'); }
+function renderServizi(ref, from) {
+  const el = $('servList'); if (!el) return;
+  if (!S.set.servizi) { el.innerHTML = ''; return; }
+  if (!SRV) { el.innerHTML = '<p class="note">Carico marine e distributori…</p>'; loadServizi(); return; }
+  if (SRV.missing || !(SRV.marine.length + SRV.carburante.length)) { el.innerHTML = '<p class="note">Marine e distributori non ancora disponibili: l\'elenco si scarica da OpenStreetMap e arriva con il prossimo aggiornamento dei dati.</p>'; return; }
+  const L1 = SRV.marine.map((o, i) => ({ o, i, k: 'm', d: dist(ref, o) })).concat(SRV.carburante.map((o, i) => ({ o, i, k: 'f', d: dist(ref, o) })))
+    .filter(x => x.d < 25 * NM).sort((a, b) => a.d - b.d).slice(0, 10);
+  el.innerHTML = L1.length ? `<p class="note">Più vicini ${from}:</p>` + L1.map(x => `<button data-act="srvGo" data-k="${x.k}" data-i="${x.i}"><span><i class="svI sm ${x.k === 'm' ? 'ma' : 'fu'}">${x.k === 'm' ? '⛵' : '⛽'}</i><b>${esc(x.o.name || (x.k === 'm' ? 'Marina' : 'Distributore'))}</b>${x.k === 'm' && x.o.s && x.o.s.length ? ' · ' + x.o.s.slice(0, 4).map(s => SERV[s] ? SERV[s][0] : '').join('') : ''}</span><span>${(x.d / NM).toFixed(1)} mn</span></button>`).join('')
+    : '<p class="note">Nessuna marina o distributore entro 25 miglia.</p>';
 }
 
 /* elenco dei relitti più vicini (alla barca se c'è il GPS, altrimenti al centro della carta) */
@@ -2411,6 +2535,7 @@ function renderPunti() {
   if (sy) sy.textContent = FL && FL.user ? `I tuoi punti sono privati e salvati anche sull'account ${FL.user.email || FL.user.name}: li ritrovi su ogni telefono dove fai l'accesso.`
     : 'I tuoi punti sono salvati solo su questo telefono. Con l\'accesso Google (Barche e impostazioni) restano privati e li ritrovi su tutti i tuoi telefoni.';
   renderFonde(ref, from);
+  renderServizi(ref, from);
   renderPesca(ref, from);
   renderWrecks();
 }
@@ -2456,7 +2581,7 @@ function fondaPopup(i) {
     f.note ? esc(f.note) : null, fmtDMS(f), S.pos ? `Da te: ${fmtDist(dist(S.pos, f))}, ${fmtAng(brg(S.pos, f))}` : null].filter(Boolean);
   return `<div class="wkPop"><b>⚓ ${esc(f.name || 'Punto di fonda')}</b><br>${rows.join('<br>')}` +
     `<div class="pbtn"><button data-act="ptUse" data-k="dest" ${a}>Destinazione</button><button data-act="ptMeteo" ${a}>Meteo qui</button></div>` +
-    `<div class="pbtn"><button data-act="ptSave" ${a} data-c="fonda" data-n="${esc((f.name || 'Fonda').slice(0, 60))}">Salva nei miei punti</button></div></div>`;
+    `<div class="pbtn"><button data-act="ptSave" ${a} data-c="fonda" data-n="${esc((f.name || 'Fonda').slice(0, 60))}">Salva nei miei punti</button><button data-act="revOpen" data-k="fd_${esc(f.id)}" data-n="${esc((f.name || 'Punto di fonda').slice(0, 60))}">★ Recensioni</button></div></div>`;
 }
 function renderFonde(ref, from) {
   const el = $('fondaList'); if (!el) return;
@@ -2539,7 +2664,7 @@ function pescaPopup(z) {
     `<br>${fmtDMS(z.c)}${S.pos ? `<br>Da te: ${fmtDist(dist(S.pos, z.c))}, ${fmtAng(brg(S.pos, z.c))}` : ''}` +
     `<br><span class="mut">Fonte: ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(z.fonte)}</a>` : esc(z.fonte)}. Fanno fede le ordinanze della Capitaneria e le norme in vigore.</span>` +
     `<div class="pbtn"><button data-act="ptUse" data-k="dest" ${a}>Destinazione</button><button data-act="ptMeteo" ${a}>Meteo qui</button></div>` +
-    (z.stato !== 'vietata' ? `<div class="pbtn"><button data-act="ptSave" ${a} data-c="pesca" data-n="${esc(z.nome.slice(0, 60))}">Salva nei miei punti</button></div>` : '') + `</div>`;
+    `<div class="pbtn">${z.stato !== 'vietata' ? `<button data-act="ptSave" ${a} data-c="pesca" data-n="${esc(z.nome.slice(0, 60))}">Salva nei miei punti</button>` : ''}<button data-act="revOpen" data-k="pz_${esc(z.id)}" data-n="${esc(z.nome.slice(0, 60))}">★ Recensioni</button></div></div>`;
 }
 function renderPesca(ref, from) {
   const el = $('pescaList'); if (!el) return;
@@ -2727,6 +2852,33 @@ document.addEventListener('click', e => {
     }
     case 'ckBoatSync': if (window.RNCheck) window.RNCheck.syncBoat(); break;
     case 'wreckInfo': openWreck(d.id); break;
+    case 'goAccount': e && e.preventDefault && e.preventDefault(); openSheet('imp'); break;
+    case 'wkNameSave': {
+      const w = (WRECKS || []).find(x => x.id === d.id); if (!w) break;
+      RNCom.setName(w, $('wkNameIn').value, $('wkNameShare').checked)
+        .then(r => { toast(r === 'proposto' ? 'Nome salvato e proposto alla community: lo vedranno tutti dopo l\'approvazione' : r === 'tolto' ? 'Nome tolto' : 'Nome salvato, solo per te'); setTimeout(() => openWreck(w.id), 400); })
+        .catch(err => toast('Nome non salvato: ' + (err.message || err)));
+      break;
+    }
+    case 'revOpen': openReviews(d.k, d.n, d.back); break;
+    case 'revStar': if (REV) { REV.s = +d.s; document.querySelectorAll('.starIn button').forEach(x => x.classList.toggle('on', +x.dataset.s <= REV.s)); } break;
+    case 'revSave': if (!REV) break;
+      if (!REV.s) { toast('Scegli da 1 a 5 stelle'); break; }
+      RNCom.review(REV.k, REV.s, $('revTxt').value).then(() => { toast('Recensione pubblicata'); openReviews(REV.k, REV.title, REV.back); }).catch(err => toast('Recensione non pubblicata: ' + (err.message || err)));
+      break;
+    case 'revDel': if (REV && RNCom.me()) RNCom.delReview(REV.k, RNCom.me().uid).then(() => { toast('Recensione cancellata'); openReviews(REV.k, REV.title, REV.back); }).catch(() => toast('Non cancellata')); break;
+    case 'revModDel': if (REV) RNCom.delReview(REV.k, d.u).then(() => { toast('Recensione cancellata'); openReviews(REV.k, REV.title, REV.back); }).catch(() => toast('Non cancellata')); break;
+    case 'revBack': if (REV && REV.back) openWreck(REV.back); else openSheet('punti'); break;
+    case 'modOk': RNCom.approve(d.k, d.u).then(() => { toast('Nome approvato: ora lo vedono tutti'); renderModBox(); }).catch(err => toast('Non approvato: ' + (err.message || err))); break;
+    case 'modNo': RNCom.reject(d.k, d.u).then(() => { toast('Proposta rifiutata'); renderModBox(); }).catch(err => toast('Errore: ' + (err.message || err))); break;
+    case 'copyUid': (navigator.clipboard ? navigator.clipboard.writeText(d.u) : Promise.reject()).then(() => toast('Codice copiato')).catch(() => toast(d.u)); break;
+    case 'srvGo': {
+      const o = SRV && (d.k === 'm' ? SRV.marine : SRV.carburante)[i]; if (!o) break;
+      if (!S.set.servizi) { S.set.servizi = true; saveSet(); applyLayers(); }
+      minSheet(true); map.setView([o.lat, o.lng], Math.max(map.getZoom(), 14), { animate: false }); drawServizi();
+      const m = srvMk.get(d.k + o.id); if (m) m.openPopup();
+      break;
+    }
     case 'wreckBack': openSheet('punti'); break;
     case 'wreckShow': { const w = (WRECKS || []).find(x => x.id === d.id); if (!w) break; if (!S.set.wrecks) { S.set.wrecks = true; saveSet(); applyLayers(); if ($('lWrecks')) $('lWrecks').checked = true; } minSheet(true); map.setView([w.lat, w.lng], Math.max(map.getZoom(), 14)); w.marker.openPopup(); break; }
     case 'pescaGo': { const z = PESCA && PESCA[i]; if (!z || !z.marker) break; minSheet(true); map.setView([z.c.lat, z.c.lng], Math.max(map.getZoom(), z.poly ? 13 : 12)); z.marker.openPopup(); break; }
@@ -2840,7 +2992,7 @@ document.querySelectorAll('input[name=base]').forEach(r => {
   r.checked = r.value === S.set.base;
   r.addEventListener('change', () => { S.set.base = r.value; saveSet(); applyLayers(); });
 });
-[['lSea', 'sea'], ['lBathy', 'bathy'], ['lIso', 'iso'], ['lTrack', 'track'], ['lEnc', 'enc'], ['lWrecks', 'wrecks'], ['lAis', 'ais'], ['lPois', 'pois'], ['lFonde', 'fonde'], ['lAmp', 'amp'], ['lPesca', 'pesca']].filter(([id]) => $(id)).forEach(([id, k]) => {
+[['lSea', 'sea'], ['lBathy', 'bathy'], ['lIso', 'iso'], ['lTrack', 'track'], ['lEnc', 'enc'], ['lWrecks', 'wrecks'], ['lAis', 'ais'], ['lPois', 'pois'], ['lFonde', 'fonde'], ['lAmp', 'amp'], ['lPesca', 'pesca'], ['lServizi', 'servizi']].filter(([id]) => $(id)).forEach(([id, k]) => {
   $(id).checked = !!S.set[k];
   $(id).addEventListener('change', () => { S.set[k] = $(id).checked; saveSet(); applyLayers(); renderPunti(); });
 });

@@ -74,6 +74,106 @@
           }
         }
       }
+    },
+    "moderatori": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid"
+      }
+    },
+    "relitti_nomi": {
+      ".read": true,
+      "$k": {
+        ".write": "auth != null && root.child('moderatori').child(auth.uid).val() === true",
+        ".validate": "newData.hasChildren(['n'])",
+        "n": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+        },
+        "da": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "t": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "nomi_privati": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$k": {
+          ".validate": "newData.hasChildren(['n'])",
+          "n": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+          },
+          "s": {
+            ".validate": "newData.isBoolean()"
+          },
+          "t": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "proposte": {
+      ".read": "auth != null && root.child('moderatori').child(auth.uid).val() === true",
+      "$k": {
+        ".write": "auth != null && root.child('moderatori').child(auth.uid).val() === true",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['n', 'id', 't'])",
+          "n": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+          },
+          "id": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "u": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "lat": {
+            ".validate": "newData.isNumber()"
+          },
+          "lng": {
+            ".validate": "newData.isNumber()"
+          },
+          "t": {
+            ".validate": "newData.val() === now"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "recensioni": {
+      ".read": true,
+      "$k": {
+        "$uid": {
+          ".write": "auth != null && (auth.uid === $uid || root.child('moderatori').child(auth.uid).val() === true)",
+          ".validate": "newData.hasChildren(['s', 't'])",
+          "s": {
+            ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 5"
+          },
+          "txt": {
+            ".validate": "newData.isString() && newData.val().length <= 500"
+          },
+          "n": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "t": {
+            ".validate": "newData.val() === now"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
     }
   }
 }

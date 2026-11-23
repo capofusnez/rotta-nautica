@@ -15,7 +15,7 @@
 
   const F = {
     available: !!(CFG.apiKey && CFG.databaseURL && CFG.projectId && CFG.appId),
-    user: null, sharing: false, error: null, loading: false
+    user: null, sharing: false, error: null, loading: false, isMod: false
   };
   let fb = null, loadP = null, auth = null, db = null, offset = 0, unsub = [], lastSent = null, meRef = null, cur = null;
   let poiCb = null, poiUnsub = null;
@@ -44,8 +44,9 @@
         d.onValue(d.ref(db, '.info/serverTimeOffset'), s => { offset = s.val() || 0; });
         a.onAuthStateChanged(auth, u => {
           F.user = u ? { uid: u.uid, name: u.displayName || '', email: u.email || '' } : null;
-          F.loading = false;
-          if (u) { listen(); listenPois(); } else { quiet(); others.clear(); if (poiUnsub) { poiUnsub(); poiUnsub = null; } }
+          F.loading = false; F.isMod = false;
+          if (u) { listen(); listenPois(); d.get(d.ref(db, 'moderatori/' + u.uid)).then(s => { F.isMod = s.val() === true; emit(); }).catch(() => {}); }
+          else { quiet(); others.clear(); if (poiUnsub) { poiUnsub(); poiUnsub = null; } }
           emit();
         });
         return fb;
@@ -108,6 +109,13 @@
     return fb.d.set(fb.d.ref(db, `punti/${F.user.uid}/${p.id}`), v).then(() => true);
   };
   F.on = f => { listeners.add(f); return () => listeners.delete(f); };
+  /* dati della community (comunita.js): nomi dei relitti, proposte da moderare, recensioni.
+     pub: lettura pubblica senza accesso (API REST del database), per chi non ha fatto l'accesso o è offline. */
+  F.pub = path => fetch(`${CFG.databaseURL}/${path}.json`).then(r => r.ok ? r.json() : null);
+  F.dbSet = (path, v) => { if (!fb || !F.user) return Promise.reject(new Error('Serve l\'accesso con Google')); return fb.d.set(fb.d.ref(db, path), v); };
+  F.dbRemove = path => { if (!fb || !F.user) return Promise.reject(new Error('Serve l\'accesso con Google')); return fb.d.remove(fb.d.ref(db, path)); };
+  F.dbWatch = (path, cb) => { if (!fb || !F.user) return () => {}; return fb.d.onValue(fb.d.ref(db, path), s => cb(s.val()), () => cb(null)); };
+  F.stamp = () => fb ? fb.d.serverTimestamp() : Date.now();
   /* all'avvio: se l'accesso era già stato fatto, si ricollega da solo */
   F.init = wasIn => { if (F.available && wasIn) load().catch(() => {}); };
   F.login = async () => {

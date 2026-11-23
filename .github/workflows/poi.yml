@@ -1,4 +1,4 @@
-# Punti di fonda (ancoraggi) e aree marine protette da OpenStreetMap / OpenSeaMap → poi.json.
+# Punti di fonda (ancoraggi) e aree marine protette → poi.json; marine, distributori e scivoli → servizi.json (OpenStreetMap / OpenSeaMap).
 # Si avvia a mano (Actions → Punti di fonda e aree protette → Run workflow) e da solo il 2 di ogni mese.
 # Di solito dura pochi minuti; se Overpass non risponde resta il file precedente (anche solo per la parte che non arriva).
 name: Punti di fonda e aree protette
@@ -33,11 +33,14 @@ jobs:
           npm install --no-save --no-audit --no-fund osmtogeojson
           node tools/build_poi.mjs
 
+      - name: Marine, distributori e scivoli
+        run: node tools/build_servizi.mjs
+
       - name: Salva nel repository
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add poi.json
+          git add poi.json servizi.json
           if git diff --cached --quiet; then echo "Dati invariati"; exit 0; fi
           git commit -m "Aggiorna punti di fonda e aree marine protette (OpenStreetMap)"
           git pull --rebase
