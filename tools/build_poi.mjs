@@ -14,14 +14,18 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /* l'area dell'Italia in OSM comprende anche il mare territoriale (12 miglia) */
 const AREA = 'area["ISO3166-1"="IT"][admin_level=2]->.it;';
-const Q_FONDE = `[out:json][timeout:600];${AREA}
+const Q_FONDE = `[out:json][timeout:300];${AREA}
 nwr["seamark:type"~"^(anchorage|anchor_berth)$"](area.it);
 out center tags;`;
-const Q_AMP = `[out:json][timeout:900];${AREA}
+/* ricerca leggera: chiavi fisse (name, protection_title) e non espressioni sulle chiavi, che mandavano in timeout i server */
+const RX = '(area marina|riserva naturale marina|riserva marina|parco sommerso|parco marino|marine protected|zona [abcd]([^a-z]|$))';
+const Q_AMP = `[out:json][timeout:300];${AREA}
 (
-  nwr["boundary"="protected_area"][~"^(name|official_name|protection_title|designation|description)$"~"(marin|zona [abcd]([^a-z]|$))",i](area.it);
-  nwr["leisure"="nature_reserve"][~"^(name|official_name|protection_title|designation|description)$"~"(marin|zona [abcd]([^a-z]|$))",i](area.it);
-  nwr["seamark:type"="restricted_area"][~"^(name|seamark:name|seamark:restricted_area:category)$"~"(marin|zona [abcd]([^a-z]|$)|reserve|sanctuary)",i](area.it);
+  nwr["boundary"="protected_area"]["protection_title"~"marin",i](area.it);
+  nwr["boundary"="protected_area"]["name"~"${RX}",i](area.it);
+  nwr["leisure"="nature_reserve"]["name"~"${RX}",i](area.it);
+  nwr["seamark:type"="restricted_area"]["name"~"${RX}",i](area.it);
+  nwr["seamark:type"="restricted_area"]["seamark:name"~"${RX}",i](area.it);
 );
 out body;
 >;
@@ -29,10 +33,10 @@ out skel qt;`;
 
 async function overpass(q) {
   const errs = [];
-  for (let round = 1; round <= 3; round++) {
+  for (let round = 1; round <= 2; round++) {
     for (const url of SERVERS) {
       try {
-        const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 900000);
+        const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 330000);
         const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal,
           headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA } });
         const txt = await r.text();
@@ -44,7 +48,7 @@ async function overpass(q) {
       } catch (e) { errs.push(`${url}: ${e.name === 'AbortError' ? 'timeout' : e.message}`); }
       await sleep(5000);
     }
-    await sleep(round * 30000);
+    await sleep(30000);
   }
   throw new Error(errs.slice(-3).join(' | '));
 }
@@ -111,9 +115,12 @@ try {
     const t = f.properties || {};
     /* si tengono le aree marine (non i parchi a terra che hanno "Marina" nel nome di un paese) */
     const txt = ['name', 'official_name', 'protection_title', 'designation', 'seamark:name'].map(k => t[k] || '').join(' | ');
+    /* il Santuario Pelagos copre quasi tutto il Mar Ligure e non ha zone: coprirebbe la carta */
+    if (/pelagos|santuario (internazionale )?(per i|dei) mammiferi/i.test(txt)) continue;
     if (!zoneOf(t) && !/area marina|riserva (naturale )?marina(?! di\b)|parco (marino|sommerso)|marine protected|santuario|sanctuary|marine reserve/i.test(txt)) continue;
     const g = simpGeom(f.geometry);
     if (!g || !g.coordinates.length) continue;
+    if (amp.some(a => a.properties.id === (t.id || f.id))) continue;
     amp.push({ type: 'Feature', geometry: g, properties: clean({
       id: t.id || f.id, name: first(t, ['name:it', 'name', 'official_name', 'seamark:name']),
       zone: zoneOf(t), title: first(t, ['protection_title', 'designation']),
