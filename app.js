@@ -134,7 +134,7 @@ function fmtClock(ms) {
 const DEF = { xte: 0.1, arr: 80, spd: 0, wind: 25, hz: 300, plan: 5, anc: 40, coast: 300, draft: 1, ukc: 0.5, enc: true,
   mute: false, night: false, base: 'osm', sea: true, bathy: false, track: true, follow: true,
   boat: 'motore', hp: 40, len: 6, lic: 'none', vlim: 'auto', ce: 'ce', pref: 1, pkg: 'all', pkgWifi: true,
-  wrecks: false, ais: false, fleetShare: true, fleetName: '', fleetIn: false, pois: true, fonde: false, amp: false };
+  wrecks: false, ais: false, fleetShare: true, fleetName: '', fleetIn: false, pois: true, fonde: false, amp: false, pesca: true };
 const S = {
   set: Object.assign({}, DEF, store.get('set', {})),
   route: store.get('route', { start: null, via: [], dest: null }),
@@ -179,6 +179,8 @@ const fleetMk = new Map();
 const poiLayer = L.layerGroup();
 const fondaLayer = L.layerGroup();
 const ampLayer = L.layerGroup();
+const pescaLayer = L.layerGroup();
+let PESCA = null, pescaP = null;
 const ptLayer = L.layerGroup().addTo(map);
 let POIDATA = null, poiDataP = null;
 const toTgtLine = L.polyline([], { color: '#35c8ff', weight: 2, dashArray: '2 6' }).addTo(map);
@@ -272,6 +274,7 @@ function applyLayers() {
   if (S.set.pois) { if (!map.hasLayer(poiLayer)) poiLayer.addTo(map); } else map.removeLayer(poiLayer);
   if (S.set.amp) { if (!map.hasLayer(ampLayer)) { ampLayer.addTo(map); loadPoiData(); } } else map.removeLayer(ampLayer);
   if (S.set.fonde) { if (!map.hasLayer(fondaLayer)) { fondaLayer.addTo(map); loadPoiData(); } } else map.removeLayer(fondaLayer);
+  if (S.set.pesca) { if (!map.hasLayer(pescaLayer)) { pescaLayer.addTo(map); loadPesca(); } } else map.removeLayer(pescaLayer);
   if ($('bAis')) { $('bAis').hidden = !S.set.ais; if (!S.set.ais) closeAis(); }
   seamarkInspector.refresh();
   encView.render();
@@ -2006,7 +2009,9 @@ function wreckPopup(w) {
   const web = safeUrl(w.web), wiki = wikiUrl(w.wiki);
   const links = [web && `<a href="${esc(web)}" target="_blank" rel="noopener">Sito</a>`, wiki && `<a href="${esc(wiki)}" target="_blank" rel="noopener">Wikipedia</a>`].filter(Boolean).join(' · ');
   return `<div class="wkPop"><b>${esc(wkName(w))}</b><br>${rows.join('<br>')}${links ? '<br>' + links : ''}` +
-    `<button data-act="wreckDest" data-lat="${w.lat}" data-lng="${w.lng}">Imposta come destinazione</button></div>`;
+    `<br><span class="mut">I relitti sono spesso molto pescosi: controlla che non ci siano divieti di pesca o di ancoraggio.</span>` +
+    `<button data-act="wreckDest" data-lat="${w.lat}" data-lng="${w.lng}">Imposta come destinazione</button>` +
+    `<div class="pbtn"><button data-act="ptSave" data-lat="${w.lat}" data-lng="${w.lng}" data-c="pesca" data-n="${esc(wkName(w).slice(0, 60))}">Salva come punto pesca</button></div></div>`;
 }
 function loadWrecks() {
   if (WRECKS || wreckLoading) return wreckLoading;
@@ -2016,7 +2021,7 @@ function loadWrecks() {
       w.marker = L.marker([w.lat, w.lng], { title: wkName(w), icon: L.divIcon({ className: '', iconSize: w.dive ? [20, 20] : [16, 16], iconAnchor: w.dive ? [10, 10] : [8, 8], html: `<div class="wk${w.dive ? ' dive' : ''}"></div>` }) })
         .bindPopup(() => wreckPopup(w)).addTo(wreckLayer);
     });
-    renderWrecks();
+    renderPunti();
     return WRECKS;
   }).catch(() => { wreckLoading = null; toast('Elenco dei relitti non disponibile'); });
   return wreckLoading;
@@ -2221,6 +2226,7 @@ function renderPunti() {
   if (sy) sy.textContent = FL && FL.user ? `I tuoi punti sono privati e salvati anche sull'account ${FL.user.email || FL.user.name}: li ritrovi su ogni telefono dove fai l'accesso.`
     : 'I tuoi punti sono salvati solo su questo telefono. Con l\'accesso Google (Barche e impostazioni) restano privati e li ritrovi su tutti i tuoi telefoni.';
   renderFonde(ref, from);
+  renderPesca(ref, from);
   renderWrecks();
 }
 
@@ -2312,6 +2318,56 @@ function ampOnRoute() {
     }
   }
   return [...hit];
+}
+
+/* ---------- Zone di pesca conosciute (pesca.json, raccolte a mano con la fonte) e relitti vicini ---------- */
+const PZ = {
+  vietata: { c: '#e53935', i: '⛔', t: 'Pesca vietata' },
+  limiti: { c: '#fb8c00', i: '⚠️', t: 'Pesca con limiti' },
+  consentita: { c: '#0f9db0', i: '🎣', t: 'Pesca consentita' }
+};
+const pzCenter = z => z.punto ? { lat: z.punto[0], lng: z.punto[1] } : { lat: z.poly.reduce((a, p) => a + p[0], 0) / z.poly.length, lng: z.poly.reduce((a, p) => a + p[1], 0) / z.poly.length };
+function loadPesca() {
+  if (PESCA || pescaP) return pescaP || Promise.resolve(PESCA);
+  pescaP = getData('pesca.json').then(d => {
+    PESCA = (d && d.zone) || [];
+    PESCA.forEach(z => { z.c = pzCenter(z); });
+    drawPesca(); renderPunti();
+    return PESCA;
+  }).catch(() => { pescaP = null; });
+  return pescaP;
+}
+function drawPesca() {
+  pescaLayer.clearLayers();
+  const order = { limiti: 0, consentita: 1, vietata: 2 };
+  (PESCA || []).slice().sort((a, b) => order[a.stato] - order[b.stato]).forEach(z => {
+    const k = PZ[z.stato] || PZ.limiti;
+    if (z.poly) L.polygon(z.poly, { color: k.c, weight: 2, dashArray: z.stato === 'consentita' ? null : '5 4', fillColor: k.c, fillOpacity: z.stato === 'limiti' ? 0.05 : 0.16 })
+      .bindPopup(() => pescaPopup(z)).addTo(pescaLayer);
+    z.marker = L.marker([z.c.lat, z.c.lng], { title: z.nome, icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+      html: `<div class="pzI" style="border-color:${k.c}">${k.i}</div>` }) }).bindPopup(() => pescaPopup(z)).addTo(pescaLayer);
+  });
+}
+function pescaPopup(z) {
+  const k = PZ[z.stato] || PZ.limiti, a = `data-lat="${z.c.lat.toFixed(5)}" data-lng="${z.c.lng.toFixed(5)}"`, url = safeUrl(z.url);
+  return `<div class="wkPop"><b>${k.i} ${esc(z.nome)}</b><br><span class="zt" style="border-color:${k.c}">${k.t}</span><br><span class="mut">${esc(z.tipo || '')}</span><br>${esc(z.regole)}` +
+    `<br>${fmtDMS(z.c)}${S.pos ? `<br>Da te: ${fmtDist(dist(S.pos, z.c))}, ${fmtAng(brg(S.pos, z.c))}` : ''}` +
+    `<br><span class="mut">Fonte: ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(z.fonte)}</a>` : esc(z.fonte)}. Fanno fede le ordinanze della Capitaneria e le norme in vigore.</span>` +
+    `<div class="pbtn"><button data-act="ptUse" data-k="dest" ${a}>Destinazione</button><button data-act="ptMeteo" ${a}>Meteo qui</button></div>` +
+    (z.stato !== 'vietata' ? `<div class="pbtn"><button data-act="ptSave" ${a} data-c="pesca" data-n="${esc(z.nome.slice(0, 60))}">Salva nei miei punti</button></div>` : '') + `</div>`;
+}
+function renderPesca(ref, from) {
+  const el = $('pescaList'); if (!el) return;
+  if (!S.set.pesca) { el.innerHTML = ''; return; }
+  if (!PESCA) { el.innerHTML = '<p class="note">Carico le zone di pesca…</p>'; loadPesca(); return; }
+  if (!WRECKS) loadWrecks();
+  const zs = PESCA.map((z, i) => ({ z, i, d: dist(ref, z.c) })).filter(x => x.d < 40 * NM).sort((a, b) => a.d - b.d).slice(0, 8);
+  const wk = (WRECKS || []).map((w, i) => ({ w, i, d: dist(ref, w) })).filter(x => x.d < 20 * NM).sort((a, b) => a.d - b.d).slice(0, 6);
+  el.innerHTML = (zs.length ? `<p class="note">Zone conosciute ${from}:</p>` + zs.map(x => { const k = PZ[x.z.stato] || PZ.limiti;
+    return `<button data-act="pescaGo" data-i="${x.i}"><span><i class="pzI sm" style="border-color:${k.c}">${k.i}</i><b>${esc(x.z.nome)}</b> · ${k.t.toLowerCase()}</span><span>${(x.d / NM).toFixed(1)} mn</span></button>`; }).join('')
+    : '<p class="note">Nessuna zona di pesca conosciuta entro 40 miglia: per ora l\'elenco copre l\'Alto Adriatico.</p>') +
+    (wk.length ? `<p class="note">Relitti vicini, spesso molto pescosi:</p>` + wk.map(x =>
+      `<button data-act="pescaWreck" data-i="${x.i}"><span><i class="wk${x.w.dive ? ' dive' : ''}" style="display:inline-block;vertical-align:middle;margin-right:6px"></i><b>${esc(wkName(x.w))}</b>${wkDepth(x.w) ? ' · ' + esc(wkDepth(x.w)) : ''}</span><span>${(x.d / NM).toFixed(1)} mn</span></button>`).join('') : '');
 }
 
 /* esportazione e importazione dei miei punti (GPX, waypoint) */
@@ -2484,6 +2540,8 @@ document.addEventListener('click', e => {
       S.set.fleetName = v; saveSet(); toast(v ? 'Nome salvato: ' + v : 'Nome predefinito'); if (S.pos && !S.sim) { FL.update(fleetPos()); FL.rename(); }
       break;
     }
+    case 'pescaGo': { const z = PESCA && PESCA[i]; if (!z || !z.marker) break; minSheet(true); map.setView([z.c.lat, z.c.lng], Math.max(map.getZoom(), z.poly ? 13 : 12)); z.marker.openPopup(); break; }
+    case 'pescaWreck': { const w = WRECKS && WRECKS[i]; if (!w) break; if (!S.set.wrecks) { S.set.wrecks = true; saveSet(); applyLayers(); if ($('lWrecks')) $('lWrecks').checked = true; } minSheet(true); map.setView([w.lat, w.lng], Math.max(map.getZoom(), 14)); w.marker.openPopup(); break; }
     case 'wreckGo': { const w = WRECKS && WRECKS[i]; if (!w) break; minSheet(true); map.setView([w.lat, w.lng], Math.max(map.getZoom(), 14)); w.marker.openPopup(); break; }
     case 'pickDest': pick('dest'); break;
     case 'pickVia': pick('via'); break;
@@ -2593,7 +2651,7 @@ document.querySelectorAll('input[name=base]').forEach(r => {
   r.checked = r.value === S.set.base;
   r.addEventListener('change', () => { S.set.base = r.value; saveSet(); applyLayers(); });
 });
-[['lSea', 'sea'], ['lBathy', 'bathy'], ['lTrack', 'track'], ['lEnc', 'enc'], ['lWrecks', 'wrecks'], ['lAis', 'ais'], ['lPois', 'pois'], ['lFonde', 'fonde'], ['lAmp', 'amp']].filter(([id]) => $(id)).forEach(([id, k]) => {
+[['lSea', 'sea'], ['lBathy', 'bathy'], ['lTrack', 'track'], ['lEnc', 'enc'], ['lWrecks', 'wrecks'], ['lAis', 'ais'], ['lPois', 'pois'], ['lFonde', 'fonde'], ['lAmp', 'amp'], ['lPesca', 'pesca']].filter(([id]) => $(id)).forEach(([id, k]) => {
   $(id).checked = !!S.set[k];
   $(id).addEventListener('change', () => { S.set[k] = $(id).checked; saveSet(); applyLayers(); renderPunti(); });
 });

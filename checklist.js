@@ -148,7 +148,7 @@
       ['Aspiratore del vano motore funzionante', null, 12, 'benzInb'],
       ['Manutenzione del motore secondo il libretto del costruttore', 50, 12, 'moto'],
       ['Cavi, connettori e batteria del motore elettrico', null, 12, 'el'],
-      ['Anodi sacrificali di motore, piede e carena', null, 12, 'barca'],
+      ['Anodi sacrificali di motore, trasmissione e carena', null, 12, 'barca'],
       ['Batterie di avviamento e servizi', null, 12, 'barca', 'none'],
       ['Pompe di sentina e interruttore automatico', null, 6, 'cabina'],
       ['Estintori: controllo e revisione alla scadenza', null, 12, 'barca'],
@@ -163,14 +163,58 @@
     ]
   };
 
+  /* voci di manutenzione che riguardano il motore (sostituite dal programma del costruttore, se c'è) */
+  const ENG_TAG = /^(fb4|fb2|fb|piede|dsl|benzInb|inb|efb|moto|el)$/;
   function build(b) {
-    const T = tags(b), seen = new Set(), L = {};
+    const T = tags(b), seen = new Set(), L = {}, P = profileOf(b), mod = mkey(b.emodel);
     ['pre', 'nav', 'rit'].forEach(k => {
       L[k] = TPL[k].filter(r => ok(T, r[1], r[2])).filter(r => !seen.has(k + r[0]) && seen.add(k + r[0])).map(r => ({ id: uid(), t: r[0] }));
     });
-    L.man = TPL.man.filter(r => ok(T, r[3], r[4])).filter(r => !seen.has('m' + r[0]) && seen.add('m' + r[0]))
+    if (P && P.pre) L.pre.push(...P.pre.map(t => ({ id: uid(), t })));
+    const rows = P
+      ? P.man.filter(r => ok(T, r[3], r[4]) && (!r[5] || new RegExp(r[5]).test(mod))).concat(TPL.man.filter(r => !(r[3] && ENG_TAG.test(r[3])) && ok(T, r[3], r[4])))
+      : TPL.man.filter(r => ok(T, r[3], r[4]));
+    L.man = rows.filter(r => !seen.has('m' + r[0]) && seen.add('m' + r[0]))
       .map(r => ({ id: uid(), t: r[0], h: T.has('mot') ? r[1] : null, m: r[2], last: null }));
+    b.prof = P ? P.id : null;
     return L;
+  }
+  /* programma di manutenzione del costruttore per questo motore (catalogo.js), se lo conosciamo */
+  const mkey = x => String(x || '').toLowerCase().replace(/[\s.\-_/]+/g, '');
+  function profileOf(b) {
+    if (!b || !b.emodel) return null;
+    const m = mkey(b.emodel), br = norm(b.ebrand);
+    return (CAT().profili || []).find(p => new RegExp(p.re).test(m) && (!p.marchio || !br || br.includes(p.marchio))) || null;
+  }
+
+  /* tipo di motore riconosciuto da marchio e modello, anche se il modello non è nell'elenco */
+  const INB_DSL = /nanni|vetus|perkins|cummins|caterpillar|^cat\b|\bman\b|fpt|iveco|lombardini|mtu|isotta|aifo|john deere|beta marine|solé|sole diesel|steyr|deutz|kubota|hyundai|yanmar|scania|baudouin|doosan/;
+  function engGuess(brand, model) {
+    const B = norm(brand), M = mkey(model), all = (B + ' ' + norm(model));
+    if (!M && !B) return null;
+    const k = findKey(CAT().motori, brand);
+    if (k && M) { const C = CAT().motori[k], t = Object.keys(C).find(t => C[t].some(x => mkey(x) === M)); if (t) return t; }
+    if (/elettric|electric|torqeedo|epropulsion|avator/.test(all)) return 'el';
+    if (/entrofuoribordo|sterndrive|piede/.test(all)) return /diesel|gasolio/.test(all) ? 'efbD' : 'efbB';
+    if (/fuoribordo|outboard/.test(all)) return /2 ?t/.test(all) ? 'fb2' : 'fb4';
+    if (!M) return INB_DSL.test(B) ? 'ebD' : null;
+    if (/volvo/.test(B)) {
+      if (/dp$|dps$|^aqad|^ad\d|^kad/.test(M)) return 'efbD';
+      if (/^(tamd|tmd|kamd|md|tad|twd|tmd|ips|d\d+-?\d*$|d\d+-\d+)/.test(M) || /^d\d/.test(M)) return 'ebD';
+      if (/osi$/.test(M)) return 'ebB';
+      if (/^aq\d|gl$|gi$|gxi|^v[68]|^[3-8]\d?(gl|gxi|gi|sx)/.test(M)) return 'efbB';
+    }
+    if (/mercruiser/.test(B)) return /qsd|tdi|diesel|^d\d/.test(M) ? 'efbD' : 'efbB';
+    if (/yanmar/.test(B)) return /zt|stp|sd\d|-z$/.test(M) ? 'efbD' : 'ebD';
+    if (/yamaha/.test(B) && !/moto/.test(B)) return /^(\d+[a-z]*mh|enduro|e\d)/.test(M) ? 'fb2' : /^(f|fl|lf|xto|vf|vmax)\d|^xto/.test(M) ? 'fb4' : null;
+    if (/suzuki/.test(B)) return /^dt/.test(M) ? 'fb2' : /^df/.test(M) ? 'fb4' : null;
+    if (/honda/.test(B)) return /^bf/.test(M) ? 'fb4' : null;
+    if (/tohatsu|nissan/.test(B)) return /^(mfs|bft|nsf)/.test(M) ? 'fb4' : /^(m|md|ns)\d/.test(M) ? 'fb2' : null;
+    if (/evinrude|johnson/.test(B)) return 'fb2';
+    if (/^mercury/.test(B)) return /diesel|tdi/.test(M) ? 'ebD' : /optimax|seapro|2t/.test(M) ? 'fb2' : 'fb4';
+    if (INB_DSL.test(B)) return /dp$|zt|sterndrive/.test(M) ? 'efbD' : 'ebD';
+    if (/diesel|gasolio/.test(all)) return 'ebD';
+    return null;
   }
 
   /* ---------- dati ---------- */
@@ -261,14 +305,15 @@
         <label>Modello del motore <span><input id="ckEm" list="ckEmL" maxlength="40" value="${esc(b.emodel)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
         <label>Numero di motori <span><select id="ckN">${[1, 2, 3, 4].map(n => `<option${n === +b.n ? ' selected' : ''}>${n}</option>`).join('')}</select></span></label>
         ${first ? '<label>Ore motore attuali <span><input id="ckH0" type="number" inputmode="decimal" step="0.1" min="0" placeholder="es. 245"> h</span></label>' : ''}
-        <p class="note">Tocca una casella per vedere l'elenco o inizia a scrivere: se marchio o modello non ci sono, scrivili tu.</p>
+        <p class="note ckOk" id="ckProf"${profileOf(b) ? '' : ' hidden'}>${profileOf(b) ? `Programma di manutenzione dal libretto del costruttore: ${esc(profileOf(b).nome)}.` : ''}</p>
+        <p class="note">Tocca una casella per vedere l'elenco o inizia a scrivere: se marchio o modello non ci sono, scrivili tu. Dal modello del motore l'app riconosce se è fuoribordo, entrobordo o entrofuoribordo: controlla comunque la casella "Motore".</p>
         <div class="btns"><button class="primary">${first ? 'Prepara le check-list' : 'Salva'}</button></div>
       </form>
       <datalist id="ckBbL">${dl(Object.keys(CAT().barche))}</datalist><datalist id="ckBmL">${dl(boatModels(b.brand))}</datalist>
       <datalist id="ckEbL">${dl(engBrands(b.eng))}</datalist><datalist id="ckEmL">${dl(engModels(b.ebrand, b.eng))}</datalist>` +
       (first ? '' : `<p class="note">Se hai cambiato tipo di motore puoi rifare le voci proposte: i report salvati restano.</p>
         <div class="btns"><button data-ck="rebuild"${confirmKey === 'rebuild' ? ' class="danger"' : ''}>${confirmKey === 'rebuild' ? 'Tocca di nuovo: sostituisce tutte le voci' : 'Rifai le voci per questa barca'}</button></div>`) +
-      `<details class="info"><summary>Come funziona</summary><p class="note">Le voci e gli intervalli di manutenzione sono proposti in base al tipo di barca e di motore, non al modello preciso: marchio e modello servono a riconoscere la barca nei report. Controlla gli intervalli sul libretto di uso e manutenzione del tuo motore e correggili dove serve. Con più motori segna le ore del motore che ne ha di più.</p></details>`;
+      `<details class="info"><summary>Come funziona</summary><p class="note">Per i motori di cui l'app conosce il programma del costruttore, le manutenzioni e gli intervalli sono quelli del libretto (la fonte è scritta in Manutenzione). Per gli altri le voci sono proposte in base al tipo di motore e gli intervalli sono indicativi. Controlla gli intervalli sul libretto di uso e manutenzione del tuo motore e correggili dove serve. Con più motori segna le ore del motore che ne ha di più.</p></details>`;
   }
   /* elenchi a tendina di marchi e modelli (catalogo.js); si può sempre scrivere a mano */
   const CAT = () => window.RN_CAT || { barche: {}, motori: {} };
@@ -295,10 +340,15 @@
   }
   function onInput(e) {
     const t = e.target; if (!t.id || !/^ck(Bb|Bm|Eb|Em|E)$/.test(t.id) || !$('ckBmL')) return;
+    if (t.id === 'ckE' && e.type === 'change' && e.isTrusted) t.dataset.man = '1';
     if (t.id === 'ckBb') {
       $('ckBmL').innerHTML = dl(boatModels(t.value));
       const k = findKey(CAT().barche, t.value);
-      if (k && e.type === 'change') setKind(CAT().barche[k].k);
+      if (k && e.type === 'change') {
+        setKind(CAT().barche[k].k);
+        const pe = CAT().barche[k].e;
+        if (pe && /^fb/.test($('ckE').value) && !$('ckE').dataset.man) { $('ckE').value = pe; $('ckEbL').innerHTML = dl(engBrands(pe)); toast('Motore proposto: ' + ENG[pe] + ' (cambialo se non è così)'); }
+      }
     }
     if (t.id === 'ckBm') setKind(/sun odyssey|sun fast|oceanis|^first /i.test(t.value) && boatModels($('ckBb').value).some(m => norm(m) === norm(t.value)) ? 'vela' : null);
     if (t.id === 'ckEb' || t.id === 'ckE') {
@@ -306,10 +356,19 @@
       if (t.id === 'ckE') $('ckEbL').innerHTML = dl(engBrands(t.value));
       if (t.id === 'ckEb' && e.type === 'change') { const ty = engTypeOf(t.value, ''); if (ty && ty !== $('ckE').value && !CAT().motori[findKey(CAT().motori, t.value)][$('ckE').value]) $('ckE').value = ty; }
     }
-    if (t.id === 'ckEm') {
-      const ty = engTypeOf($('ckEb').value, t.value);
-      if (ty && engModels($('ckEb').value, ty).some(m => norm(m) === norm(t.value)) && ty !== $('ckE').value) { $('ckE').value = ty; toast('Motore: ' + ENG[ty]); }
+    if (t.id === 'ckEm' || (t.id === 'ckEb' && e.type === 'change' && $('ckEm').value)) {
+      const listed = engModels($('ckEb').value, $('ckE').value).some(m => mkey(m) === mkey($('ckEm').value));
+      if (e.type === 'change' || listed) {
+        const ty = engGuess($('ckEb').value, $('ckEm').value);
+        if (ty && ty !== $('ckE').value) { $('ckE').value = ty; delete $('ckE').dataset.man; toast('Motore riconosciuto: ' + ENG[ty]); }
+      }
+      showProf();
     }
+  }
+  function showProf() {
+    const el = $('ckProf'); if (!el) return;
+    const P = profileOf({ ebrand: $('ckEb').value, emodel: $('ckEm').value });
+    el.hidden = !P; if (P) el.textContent = `Programma di manutenzione dal libretto del costruttore: ${P.nome}.`;
   }
   function guessKind() { try { const s = JSON.parse(localStorage.getItem('rn.set') || '{}'); return KIND[s.boat] ? s.boat : 'motore'; } catch (e) { return 'motore'; } }
   function guessEng() { const k = guessKind(); return k === 'vela' ? 'ebD' : k === 'moto' ? 'moto' : k === 'remi' ? 'none' : 'fb4'; }
@@ -319,7 +378,7 @@
     const cnt = k => { const r = D.run[k], tot = D.lists[k].length, done = r ? D.lists[k].filter(it => r.c && r.c[it.id]).length : 0;
       return done ? `${done} di ${tot} fatte` : `${tot} voci`; };
     const last = D.reports[0];
-    return `<div class="ckBoat"><div><b>${esc(boatName())}</b><span>${esc(motor() || D.boat.eng === 'el' ? engName() : KIND[D.boat.kind])}</span></div><button data-ck="view" data-v="boat">Modifica</button></div>` +
+    return fixBox() + `<div class="ckBoat"><div><b>${esc(boatName())}</b><span>${esc(motor() || D.boat.eng === 'el' ? engName() : KIND[D.boat.kind])}</span></div><button data-ck="view" data-v="boat">Modifica</button></div>` +
       hoursBox() +
       (n ? `<button class="ckAlert${bad ? ' bad' : ''}" data-ck="view" data-v="man">${bad ? `${bad} manutenzion${bad === 1 ? 'e scaduta' : 'i scadute'}` : ''}${bad && n - bad ? ', ' : ''}${n - bad ? `${n - bad} in arrivo` : ''}<span>Apri</span></button>` : '') +
       `<div class="ckMenu">` + Object.keys(LISTS).map(k =>
@@ -329,6 +388,29 @@
       <input id="ckFile" type="file" accept=".json,application/json" hidden>
       <details class="info"><summary>Come funziona</summary><p class="note">Apri una check-list, spunta le voci e alla fine tocca "Salva il report": resta lo storico con data, ore motore, voci fatte e saltate e le tue note. In ogni check-list "Modifica le voci" permette di cambiare il testo, cancellare o aggiungere controlli. Check-list e report sono salvati solo su questo telefono: con "Salva una copia" ottieni un file da conservare o da caricare su un altro telefono.</p></details>`;
   }
+  /* barca salvata con un tipo di motore che non torna col modello, o motore di cui ora c'è il programma del costruttore */
+  function fixInfo() {
+    if (!D.boat) return null;
+    const g = engGuess(D.boat.ebrand, D.boat.emodel), P = profileOf(D.boat);
+    const key = (g || '') + '|' + (P ? P.id : '');
+    if (D.boat.fixSeen === key) return null;
+    if (g && g !== D.boat.eng && D.boat.kind !== 'remi') return { key, g, P, t: `${esc(engName())} risulta un motore "${ENG[g]}", ma la barca è salvata come "${ENG[D.boat.eng]}": alcune voci non sono adatte.` };
+    if (P && D.boat.prof !== P.id) return { key, g: D.boat.eng, P, t: `Per ${esc(engName())} ora c'è il programma di manutenzione del libretto ${esc(P.nome)}.` };
+    return null;
+  }
+  function fixBox() {
+    const f = fixInfo(); if (!f) return '';
+    return `<div class="ckFix"><p>${f.t}</p><p class="note">Rifacendo le voci restano i report salvati e le date delle manutenzioni già segnate con lo stesso nome.</p>` +
+      `<div class="btns"><button class="primary" data-ck="fixEng">Correggi e rifai le voci</button><button data-ck="keepEng">Lascia così</button></div></div>`;
+  }
+  /* rifà le voci tenendo le date delle manutenzioni già fatte (stesso nome o stessa voce di partenza) */
+  function rebuildKeep() {
+    const old = D.lists ? D.lists.man : [], L = build(D.boat);
+    const word = t => mkey(t).replace(/[^a-z]/g, '').slice(0, 14);
+    L.man.forEach(it => { const o = old.find(x => x.last && (mkey(x.t) === mkey(it.t) || word(x.t) === word(it.t))); if (o) it.last = o.last; });
+    D.lists = L; D.run = {};
+  }
+
   const ICON = {
     pre: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6v3H9z"/><path d="M15 5.5h2.5v15h-11v-15H9"/><path d="M9 13l2 2 4-4"/></svg>',
     nav: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>',
@@ -371,6 +453,11 @@
         `<form class="search" data-ckf="add"><input id="ckNew" maxlength="200" placeholder="Nuova manutenzione" enterkeyhint="done"><button>Aggiungi</button></form>` +
         `<div class="btns"><button class="primary" data-ck="edit">Fatto</button><button data-ck="reset"${confirmKey === 'reset' ? ' class="danger"' : ''}>${confirmKey === 'reset' ? 'Tocca di nuovo per confermare' : 'Ripristina le voci proposte'}</button></div>`;
       return h;
+    }
+    if (motor()) {
+      const P = (CAT().profili || []).find(p => p.id === D.boat.prof);
+      h += P ? `<p class="note ckOk">Intervalli dal libretto del costruttore: ${esc(P.fonte)}. <a href="${esc(P.url)}" target="_blank" rel="noopener">Apri il programma</a></p>`
+        : `<p class="note ckWarn">Per ${esc(engName())} l'app non ha il programma del costruttore: le voci sono quelle tipiche di un motore "${ENG[D.boat.eng]}" e gli intervalli sono indicativi. Correggili con il libretto del tuo motore.</p>`;
     }
     if (motor() && curH() == null) h += '<p class="note ckWarn">Segna le ore motore attuali per calcolare le scadenze a ore.</p>';
     if (L.some(it => !it.last)) h += '<p class="note">Per le voci "Mai segnata" tocca "Fatta" quando le fai, oppure in "Modifica le voci" scrivi quando le hai fatte l\'ultima volta.</p>';
@@ -417,11 +504,13 @@
         [L[i], L[j]] = [L[j], L[i]]; save(); render(); return;
       }
       case 'del': { const i = find(k, id); if (i < 0) return; const [it] = D.lists[k].splice(i, 1); if (D.run[k]) delete D.run[k].c[it.id]; save(); render(); toast('Voce cancellata'); return; }
+      case 'fixEng': { const f = fixInfo(); if (!f) return; D.boat.eng = f.g; rebuildKeep(); D.boat.fixSeen = null; save(); render(); badge(); toast('Voci rifatte per ' + ENG[f.g]); return; }
+      case 'keepEng': { const f = fixInfo(); if (f) D.boat.fixSeen = f.key; save(); render(); return; }
       case 'reset': case 'rebuild':
         if (confirmKey !== a) { confirmKey = a; render(); return; }
         confirmKey = null;
         if (a === 'reset') { D.lists[k] = build(D.boat)[k]; D.run[k] = null; }
-        else { D.lists = build(D.boat); D.run = {}; view = 'home'; }
+        else { rebuildKeep(); view = 'home'; }
         save(); edit = false; render(); toast('Voci proposte ripristinate'); return;
       case 'all': { const r = D.run[k] || (D.run[k] = { c: {}, s: Date.now() }); D.lists[k].forEach(it => { r.c[it.id] = 1; }); save(); render(); return; }
       case 'clear': D.run[k] = null; save(); render(); return;
@@ -485,7 +574,10 @@
       const nb = { brand: $('ckBb').value.trim(), model: $('ckBm').value.trim(), kind: $('ckBk').value, eng: $('ckE').value,
         ebrand: $('ckEb').value.trim(), emodel: $('ckEm').value.trim(), n: +$('ckN').value || 1 };
       if (nb.kind === 'remi' && nb.eng !== 'el') nb.eng = 'none';
-      const first = !D.boat, changed = !first && (D.boat.kind !== nb.kind || D.boat.eng !== nb.eng);
+      const g = engGuess(nb.ebrand, nb.emodel);
+      if (g && g !== nb.eng && !$('ckE').dataset.man && nb.kind !== 'remi') { nb.eng = g; toast('Motore riconosciuto: ' + ENG[g]); }
+      const first = !D.boat, changed = !first && (D.boat.kind !== nb.kind || D.boat.eng !== nb.eng || (profileOf(nb) ? profileOf(nb).id : null) !== (D.boat.prof || null));
+      if (!first) nb.prof = D.boat.prof;
       D.boat = nb;
       if (first) {
         D.lists = build(nb);
@@ -556,7 +648,7 @@
   window.RNCheck = {
     render: () => { edit = false; confirmKey = null; render(); },
     badge, dueCount,
-    _data: () => D
+    _data: () => D, _guess: engGuess
   };
   if (document.readyState !== 'loading') badge(); else document.addEventListener('DOMContentLoaded', badge);
 })();

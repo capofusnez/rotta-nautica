@@ -1,0 +1,236 @@
+{
+ "format": "rotta-nautica-pesca-1",
+ "aggiornato": "2026-11-23",
+ "nota": "Zone di pesca conosciute, con le regole delle fonti indicate. Fanno fede le ordinanze della Capitaneria e la normativa in vigore.",
+ "zone": [
+  {
+   "id": "caorle-ztb",
+   "nome": "Tegnùe di Porto Falconera (Caorle)",
+   "tipo": "Zona di tutela biologica, tegnùe e barriere artificiali",
+   "stato": "vietata",
+   "regole": "Vietata ogni pesca, professionale e sportiva. Vietati anche ancoraggio e balneazione; immersioni solo con il personale dell'ente gestore (D.M. 21 dicembre 2007). Dentro c'è l'Oasi marina Città di Caorle, segnata da boe gialle con riflettore radar.",
+   "fonte": "Caorlotti, pagina sull'Oasi marina di Caorle",
+   "url": "https://www.caorlotti.it/oasi-marina.html",
+   "poly": [
+    [
+     45.59667,
+     12.91667
+    ],
+    [
+     45.60167,
+     12.93833
+    ],
+    [
+     45.57167,
+     12.95167
+    ],
+    [
+     45.56667,
+     12.93
+    ]
+   ]
+  },
+  {
+   "id": "caorle-area2",
+   "nome": "Area 2 di Caorle (barriere artificiali)",
+   "tipo": "Barriere artificiali fuori dalla zona di tutela",
+   "stato": "consentita",
+   "regole": "Accesso libero: consentite la pesca sportiva, la piccola pesca con reti da posa e le immersioni. Vietato l'ormeggio. Al centro c'è una boa gialla con riflettore radar.",
+   "fonte": "Caorlotti, pagina sull'Oasi marina di Caorle",
+   "url": "https://www.caorlotti.it/oasi-marina.html",
+   "poly": [
+    [
+     45.57744,
+     12.90936
+    ],
+    [
+     45.57756,
+     12.9145
+    ],
+    [
+     45.57394,
+     12.91464
+    ],
+    [
+     45.57386,
+     12.9095
+    ]
+   ]
+  },
+  {
+   "id": "chioggia-zsc-1",
+   "nome": "Tegnùe di Chioggia, area 1",
+   "tipo": "Zona speciale di conservazione (Natura 2000)",
+   "stato": "vietata",
+   "regole": "Vietata qualsiasi pesca, professionale e sportiva (multa da 516 a 3.098 euro) e vietato l'ancoraggio. Immersioni solo partendo dalle boe di ormeggio, al massimo 2 barche per boa, motore spento con i sub in acqua; in transito stare ad almeno 100 m dalle boe.",
+   "fonte": "Associazione Tegnùe di Chioggia, disposizioni della ZSC",
+   "url": "https://www.tegnue.it/files/Diaposizioni-ZSC.pdf",
+   "poly": [
+    [
+     45.23408,
+     12.38902
+    ],
+    [
+     45.19075,
+     12.45568
+    ],
+    [
+     45.17075,
+     12.43068
+    ],
+    [
+     45.21242,
+     12.36235
+    ]
+   ]
+  },
+  {
+   "id": "chioggia-zsc-2",
+   "nome": "Tegnùe di Chioggia, area 2",
+   "tipo": "Zona speciale di conservazione (Natura 2000)",
+   "stato": "vietata",
+   "regole": "Vietata qualsiasi pesca, professionale e sportiva (multa da 516 a 3.098 euro) e vietato l'ancoraggio. Immersioni solo partendo dalle boe di ormeggio, al massimo 2 barche per boa, motore spento con i sub in acqua; in transito stare ad almeno 100 m dalle boe. In quest'area non ci sono boe: vietati immersioni e ormeggio.",
+   "fonte": "Associazione Tegnùe di Chioggia, disposizioni della ZSC",
+   "url": "https://www.tegnue.it/files/Diaposizioni-ZSC.pdf",
+   "poly": [
+    [
+     45.25408,
+     12.47902
+    ],
+    [
+     45.24242,
+     12.47902
+    ],
+    [
+     45.24242,
+     12.46568
+    ],
+    [
+     45.25408,
+     12.46568
+    ]
+   ]
+  },
+  {
+   "id": "chioggia-zsc-3",
+   "nome": "Tegnùe di Chioggia, area 3",
+   "tipo": "Zona speciale di conservazione (Natura 2000)",
+   "stato": "vietata",
+   "regole": "Vietata qualsiasi pesca, professionale e sportiva (multa da 516 a 3.098 euro) e vietato l'ancoraggio. Immersioni solo partendo dalle boe di ormeggio, al massimo 2 barche per boa, motore spento con i sub in acqua; in transito stare ad almeno 100 m dalle boe.",
+   "fonte": "Associazione Tegnùe di Chioggia, disposizioni della ZSC",
+   "url": "https://www.tegnue.it/files/Diaposizioni-ZSC.pdf",
+   "poly": [
+    [
+     45.23408,
+     12.49735
+    ],
+    [
+     45.22242,
+     12.49735
+    ],
+    [
+     45.22242,
+     12.48402
+    ],
+    [
+     45.23408,
+     12.48402
+    ]
+   ]
+  },
+  {
+   "id": "chioggia-zsc-4",
+   "nome": "Tegnùe di Chioggia, area 4",
+   "tipo": "Zona speciale di conservazione (Natura 2000)",
+   "stato": "vietata",
+   "regole": "Vietata qualsiasi pesca, professionale e sportiva (multa da 516 a 3.098 euro) e vietato l'ancoraggio. Immersioni solo partendo dalle boe di ormeggio, al massimo 2 barche per boa, motore spento con i sub in acqua; in transito stare ad almeno 100 m dalle boe. In quest'area non ci sono boe: vietati immersioni e ormeggio.",
+   "fonte": "Associazione Tegnùe di Chioggia, disposizioni della ZSC",
+   "url": "https://www.tegnue.it/files/Diaposizioni-ZSC.pdf",
+   "poly": [
+    [
+     45.17742,
+     12.52735
+    ],
+    [
+     45.16575,
+     12.52402
+    ],
+    [
+     45.16575,
+     12.51068
+    ],
+    [
+     45.17742,
+     12.51068
+    ]
+   ]
+  },
+  {
+   "id": "ztb-tenue",
+   "nome": "Zona di tutela biologica \"Area Tenue\" (al largo di Chioggia)",
+   "tipo": "Zona di tutela biologica",
+   "stato": "limiti",
+   "regole": "Vietate la pesca a strascico e la cattura del novellame di qualsiasi specie (D.M. 16 marzo 2004). Il decreto non vieta la pesca sportiva, ma dentro ci sono le aree delle Tegnùe di Chioggia dove ogni pesca è vietata.",
+   "fonte": "D.M. 16 marzo 2004, G.U. n. 77 del 1° aprile 2004",
+   "url": "https://faolex.fao.org/docs/pdf/ita42207.pdf",
+   "poly": [
+    [
+     45.166666666666664,
+     12.533333333333333
+    ],
+    [
+     45.266666666666666,
+     12.533333333333333
+    ],
+    [
+     45.266666666666666,
+     12.35
+    ],
+    [
+     45.166666666666664,
+     12.35
+    ]
+   ]
+  },
+  {
+   "id": "ztb-miramare",
+   "nome": "Zona di tutela biologica \"Area Miramare\" (Trieste)",
+   "tipo": "Zona di tutela biologica",
+   "stato": "limiti",
+   "regole": "Vietate la pesca a strascico e la cattura del novellame di qualsiasi specie (D.M. 16 marzo 2004). Vicino c'è l'area marina protetta di Miramare, con regole proprie.",
+   "fonte": "D.M. 16 marzo 2004, G.U. n. 77 del 1° aprile 2004",
+   "url": "https://faolex.fao.org/docs/pdf/ita42208.pdf",
+   "poly": [
+    [
+     45.75,
+     13.65
+    ],
+    [
+     45.733333333333334,
+     13.65
+    ],
+    [
+     45.68333333333333,
+     13.75
+    ],
+    [
+     45.68333333333333,
+     13.716666666666667
+    ]
+   ]
+  },
+  {
+   "id": "trezze",
+   "nome": "Trezze di San Pietro e Bardelli (davanti a Grado e Marano)",
+   "tipo": "Affioramenti rocciosi (trezze), sito Natura 2000 IT3330009",
+   "stato": "limiti",
+   "regole": "Circa 250 affioramenti rocciosi tra 8 e 21 m di profondità, noti per la pesca. È un sito Natura 2000: valgono le misure di conservazione della Regione Friuli Venezia Giulia, che possono limitare pesca e ancoraggio. Il punto indica il centro del sito, non le singole trezze.",
+   "fonte": "DEIMS-SDR, scheda del sito Trezze San Pietro e Bardelli",
+   "url": "https://deims.org/61837250-789c-4c0e-8e9e-85a06b07bbaa",
+   "punto": [
+    45.63,
+    13.41
+   ]
+  }
+ ]
+}

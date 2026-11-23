@@ -1,6 +1,6 @@
 /* Elenco di marchi e modelli proposti nella scheda della barca (check-list).
    Non è completo: se marchio o modello non ci sono si scrivono a mano.
-   barche: marchio -> { k: tipo di mezzo proposto (null se il cantiere fa sia vela sia motore), m: modelli o serie }
+   barche: marchio -> { k: tipo di mezzo proposto (null se il cantiere fa sia vela sia motore), e: motore proposto, m: modelli o serie }
    motori: marchio -> { tipo di motore: modelli }  (tipi come in checklist.js: fb4, fb2, efbB, efbD, ebD, ebB, moto, el) */
 window.RN_CAT = {
   barche: {
@@ -18,11 +18,11 @@ window.RN_CAT = {
     'Salpa': { k: 'motore', m: [] },
     'Aquamar': { k: 'motore', m: [] },
     'Apreamare': { k: 'motore', m: [] },
-    'Azimut': { k: 'motore', m: [] },
-    'Ferretti Yachts': { k: 'motore', m: [] },
-    'Pershing': { k: 'motore', m: [] },
-    'Riva': { k: 'motore', m: [] },
-    'Absolute': { k: 'motore', m: [] },
+    'Azimut': { k: 'motore', e: 'ebD', m: [] },
+    'Ferretti Yachts': { k: 'motore', e: 'ebD', m: [] },
+    'Pershing': { k: 'motore', e: 'ebD', m: [] },
+    'Riva': { k: 'motore', e: 'ebD', m: [] },
+    'Absolute': { k: 'motore', e: 'ebD', m: [] },
     'Sea Ray': { k: 'motore', m: [] },
     'Bayliner': { k: 'motore', m: ['Element E16', 'Element E18', 'Element E21', 'VR5', 'VR6', 'Trophy T20', 'Trophy T22'] },
     'Boston Whaler': { k: 'motore', m: ['Montauk 150', 'Montauk 170', 'Dauntless 190', 'Outrage 230', 'Vantage 230'] },
@@ -72,9 +72,12 @@ window.RN_CAT = {
     'Parsun': { fb4: [], fb2: [] },
     'Hidea': { fb4: [], fb2: [] },
     'Volvo Penta': {
-      ebD: ['D1-13', 'D1-20', 'D1-30', 'D2-40', 'D2-50', 'D2-60', 'D2-75', 'D3-150', 'D3-220', 'D4-270', 'D4-320', 'D6-380', 'D6-440', 'IPS 400', 'IPS 600', 'IPS 800'],
-      efbD: ['D3-220 DP', 'D4-320 DP', 'D6-440 DP'],
-      efbB: ['V6-200', 'V6-240', 'V6-280', 'V8-300', 'V8-350', 'V8-380', 'V8-430']
+      ebD: ['D1-13', 'D1-20', 'D1-30', 'D2-40', 'D2-50', 'D2-55', 'D2-60', 'D2-75', 'D3-150', 'D3-220', 'D4-270', 'D4-320', 'D6-380', 'D6-440', 'IPS 400', 'IPS 600', 'IPS 800',
+        'MD2010', 'MD2020', 'MD2030', 'MD2040', 'MD22', 'TMD22', 'TAMD22', 'TMD31', 'TAMD31', 'TMD41', 'TAMD41', 'TAMD42', 'KAMD43', 'KAMD44', 'KAMD300',
+        'TAMD61', 'TAMD63', 'TAMD71', 'TAMD72', 'TAMD73', 'TAMD74', 'TAMD75'],
+      efbD: ['D3-220 DP', 'D4-320 DP', 'D6-440 DP', 'AD31', 'AD41', 'KAD32', 'KAD42', 'KAD43', 'KAD44', 'KAD300', 'AQAD41'],
+      efbB: ['V6-200', 'V6-240', 'V6-280', 'V8-300', 'V8-350', 'V8-380', 'V8-430', 'AQ125', 'AQ131', 'AQ145', 'AQ151', 'AQ171', '4.3 GL', '4.3 GXi', '5.0 GL', '5.0 GXi', '5.7 GL', '5.7 GXi'],
+      ebB: ['5.0 OSi', '5.7 OSi']
     },
     'Yanmar': { ebD: ['1GM10', '2YM15', '3YM20', '3YM30', '3JH5E', '4JH45', '4JH57', '4JH80', '4JH110', '6BY', '6LY'], efbD: ['8LV'] },
     'Nanni': { ebD: [] },
@@ -90,5 +93,36 @@ window.RN_CAT = {
     'Sea-Doo (Rotax)': { moto: ['Rotax 900 ACE', 'Rotax 1630 ACE'] },
     'Yamaha (moto d\'acqua)': { moto: ['TR-1', 'SVHO 1.9'] },
     'Kawasaki (moto d\'acqua)': { moto: ['1498 cc'] }
-  }
+  },
+  /* Programmi di manutenzione presi dal libretto del costruttore, per i motori di cui è stato controllato.
+     re: espressione sul modello (minuscolo, senza spazi); marchio: parte del nome del marchio.
+     man: [voce, ore, mesi, con, senza, solo i modelli che corrispondono a] (con/senza come in checklist.js: efb = con piede) */
+  profili: [
+    {
+      id: 'vp-41', marchio: 'volvo', re: '^(tmd|tamd|kamd|ad|kad)(31|32|41|42|43)',
+      nome: 'Volvo Penta serie 31, 32, 41, 42, 43',
+      fonte: 'Libretto di istruzioni Volvo Penta KAD32, valido anche per TMD31, TAMD31, AD31, AD41, TMD41, TAMD41, TAMD42, KAD43 e KAMD43 (programma di manutenzione, pag. 31)',
+      url: 'https://www.manualslib.com/manual/3383574/Volvo-Penta-Kad32.html?page=31',
+      pre: ['Ogni 14 giorni: scarico dell\'acqua dai filtri del gasolio, cinghie, filtro dell\'acqua di mare, livello dell\'olio dell\'invertitore e dello sterzo'],
+      man: [
+        ['Olio motore e filtro dell\'olio', 100, 12],
+        ['Compressore: livello dell\'olio', 100, 12, null, null, '^ka'],
+        ['Cuscinetto dello sterzo del piede DP: ingrassaggio', 50, 12, 'efb'],
+        ['Filtro dell\'aria: sostituzione', 200, 12],
+        ['Cinghie: controllo', 200, 12],
+        ['Filtro di ventilazione del basamento (se presente)', 200, 12],
+        ['Filtri del gasolio e prefiltro: sostituzione', 200, 12],
+        ['Girante della pompa dell\'acqua di mare: controllo', 200, 12],
+        ['Impianto di scarico: controllo', 200, 12],
+        ['Olio dell\'invertitore: sostituzione', 200, 12, null, 'efb'],
+        ['Olio del piede: sostituzione', 200, 12, 'efb'],
+        ['Giunto omocinetico e soffietto di scarico del piede: controllo', 200, 12, 'efb'],
+        ['Gioco delle valvole: regolazione (di solito in officina)', 200, null],
+        ['Turbocompressore: controllo (di solito in officina)', 200, null],
+        ['Liquido di raffreddamento: ogni 2 anni con antigelo, ogni anno se c\'è solo anticorrosivo', null, 24],
+        ['Giunto cardanico e soffietto di scarico del piede: sostituzione', null, 24, 'efb'],
+        ['Tenuta dell\'asse dell\'elica dell\'invertitore: sostituzione', 500, 60, null, 'efb']
+      ]
+    }
+  ]
 };

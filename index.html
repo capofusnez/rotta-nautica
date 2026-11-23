@@ -463,6 +463,10 @@ details.info .note+.note{margin-top:8px}
 .ckM.bad{border-left-color:var(--bad)}.ckM.bad .ckSt{color:var(--bad)}
 .ckM button{flex:none}
 .ckWarn{color:var(--warn);font-weight:600}
+.pzI{width:24px;height:24px;border-radius:50%;border:2px solid;background:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.pzI.sm{display:inline-flex;width:20px;height:20px;font-size:11px;vertical-align:middle;margin-right:6px;box-shadow:none}
+.ckOk{color:var(--fg);border-left:4px solid var(--ok);padding-left:8px}.ckOk a{color:inherit;font-weight:600}
+.ckFix{border:1px solid var(--warn);border-left:6px solid var(--warn);border-radius:12px;padding:10px 12px;margin:0 0 12px;background:var(--panel)}.ckFix p{margin:0 0 6px}.ckFix>p:first-child{font-weight:600}
 .ckReps{display:flex;flex-direction:column;gap:8px;margin:8px 0 12px}
 .ckR{border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden}
 .ckR>button{display:flex;width:100%;justify-content:space-between;align-items:center;text-align:left;border:0;border-radius:0;background:none;min-height:60px}
@@ -597,6 +601,11 @@ details.info .note+.note{margin-top:8px}
     <div class="btns"><button data-act="poiGpxOut">Esporta GPX</button><button data-act="poiGpxIn">Importa GPX</button></div>
     <input id="poiFileIn" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" hidden>
     <details class="info"><summary>Come funziona</summary><p class="note">Tocca un punto sulla carta per aggiungere note, cambiarne il tipo o eliminarlo. Puoi anche tenere premuto sulla carta e scegliere "Salva come mio punto".</p></details>
+    <h4>Zone di pesca conosciute</h4>
+    <label class="chk"><input type="checkbox" id="lPesca"> Mostra le zone di pesca sulla carta</label>
+    <div class="zLeg"><span><i style="border-color:#0f9db0;background:#0f9db033"></i> 🎣 Pesca consentita</span><span><i style="border-color:#fb8c00;border-style:dashed"></i> ⚠️ Pesca con limiti</span><span><i style="border-color:#e53935;border-style:dashed;background:#e5393533"></i> ⛔ Pesca vietata</span></div>
+    <div id="pescaList"></div>
+    <details class="info"><summary>Come funziona</summary><p class="note">Zone di pesca conosciute (tegnùe, trezze, barriere artificiali), ognuna con le regole e la fonte da cui vengono: per ora coprono l'Alto Adriatico e l'elenco crescerà. Sotto ci sono i relitti vicini, che spesso sono ottimi posti di pesca. Divieti e limiti cambiano: fanno fede le ordinanze della Capitaneria di porto e le norme in vigore.</p></details>
     <h4>Punti di fonda</h4>
     <label class="chk"><input type="checkbox" id="lFonde"> Mostra i punti di fonda sulla carta</label>
     <div id="fondaList"></div>
@@ -673,7 +682,7 @@ details.info .note+.note{margin-top:8px}
   <div class="hmTop"><img src="icon-192.png" alt=""><div><b>Rotta Nautica</b><span>Navigazione da diporto in Italia</span></div></div>
   <div class="hmGrid">
     <button data-home="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M15.8 8.2l-2.3 5.3-5.3 2.3 2.3-5.3z" fill="currentColor"/></svg><b>Navigazione</b><span>Rotta, dati di bordo, allarmi e carta</span></button>
-    <button data-home="punti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.5s7-6.4 7-12a7 7 0 10-14 0c0 5.6 7 12 7 12z"/><circle cx="12" cy="9.5" r="2.6" fill="currentColor"/></svg><b>Punti di interesse</b><span>Punti pesca, fonde, aree marine protette, relitti</span></button>
+    <button data-home="punti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.5s7-6.4 7-12a7 7 0 10-14 0c0 5.6 7 12 7 12z"/><circle cx="12" cy="9.5" r="2.6" fill="currentColor"/></svg><b>Punti di interesse</b><span>Zone di pesca, fonde, aree marine protette, relitti</span></button>
     <button data-home="meteo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18.5h9.5a4 4 0 00.4-8 5.5 5.5 0 00-10.6 1.4A3.3 3.3 0 007 18.5z"/><path d="M4 22c1.3-.9 2.7-.9 4 0s2.7.9 4 0 2.7-.9 4 0 2.7.9 4 0"/></svg><b>Meteo</b><span>Vento, onde e previsioni</span></button>
     <button data-home="imp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 15.5h18l-2.6 4.5H5.6z"/><path d="M12 3v12.5M12 4l6.5 9.5H12M12 6.5L7 13.5h5"/></svg><b>Barca e account</b><span>Barca, patente, account e barche collegate</span></button>
     <button data-home="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3.5h6v3H9z"/><path d="M15 5h3v16H6V5h3"/><path d="M9 11.5l1.5 1.5 3-3M9 17l1.5 1.5 3-3"/></svg><b>Check-list</b><span>Partenza, navigazione, rientro, manutenzione e ore motore</span><i class="hmBadge" data-ckbadge hidden></i></button>
