@@ -179,6 +179,105 @@
       "$uid": {
         ".read": "auth != null && auth.uid === $uid"
       }
+    },
+    "relitti_proposti": {
+      ".read": "auth != null && root.child('moderatori').child(auth.uid).val() === true",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || root.child('moderatori').child(auth.uid).val() === true)",
+        "$k": {
+          ".validate": "newData.hasChildren(['tipo', 'lat', 'lng', 't'])",
+          "tipo": {
+            ".validate": "newData.val() === 'nuovo' || newData.val() === 'posizione'"
+          },
+          "lat": {
+            ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+          },
+          "lng": {
+            ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+          },
+          "id": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "n": {
+            ".validate": "newData.isString() && newData.val().length <= 60"
+          },
+          "prof": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000"
+          },
+          "note": {
+            ".validate": "newData.isString() && newData.val().length <= 500"
+          },
+          "anon": {
+            ".validate": "newData.isBoolean()"
+          },
+          "u": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "t": {
+            ".validate": "newData.val() === now"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "relitti_utenti": {
+      ".read": true,
+      "$k": {
+        ".write": "auth != null && root.child('moderatori').child(auth.uid).val() === true",
+        ".validate": "newData.hasChildren(['lat', 'lng'])",
+        "lat": {
+          ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+        },
+        "lng": {
+          ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+        },
+        "n": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "prof": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000"
+        },
+        "note": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "da": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "t": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "relitti_posizioni": {
+      ".read": true,
+      "$k": {
+        ".write": "auth != null && root.child('moderatori').child(auth.uid).val() === true",
+        ".validate": "newData.hasChildren(['lat', 'lng', 'id'])",
+        "id": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "lat": {
+          ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+        },
+        "lng": {
+          ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+        },
+        "da": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "t": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }

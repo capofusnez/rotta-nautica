@@ -489,6 +489,13 @@ details.info .note+.note{margin-top:8px}
 .ckM.bad{border-left-color:var(--bad)}.ckM.bad .ckSt{color:var(--bad)}
 .ckM button{flex:none}
 .ckWarn{color:var(--warn);font-weight:600}
+.wk.comm{outline:2px dashed #e65100;outline-offset:1px}
+.wkForm>label:not(.chk){display:block}.wkForm>label:not(.chk)>span{display:flex;align-items:center;gap:6px;margin-top:4px}.wkForm>label:not(.chk) input{flex:1;min-width:0;width:100%}.wkForm #wkfD{max-width:120px}.wkForm textarea{width:100%;margin-top:4px}.wkForm .btns{margin:6px 0 10px}.wkForm>label.chk{display:flex;justify-content:flex-start;align-items:center;gap:10px;flex-wrap:nowrap;text-align:left}.wkForm>label.chk input{flex:none}
+#pickBar{position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:1200;background:var(--panel);color:var(--fg);border-radius:14px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+#pickBar[hidden]{display:none}#pickBar p{margin:0 0 8px;font-weight:600}
+#pickAim{display:none;position:fixed;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;z-index:1100;pointer-events:none;border:3px solid #e65100;border-radius:50%;box-shadow:0 0 0 2px #fff}
+#pickAim::before,#pickAim::after{content:"";position:absolute;background:#e65100;left:50%;top:-12px;width:3px;height:66px;margin-left:-1.5px}#pickAim::after{transform:rotate(90deg)}
+body.picking #pickAim{display:block}
 .svI{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:13px;color:#fff;border:2px solid #fff;box-shadow:0 0 0 1px #0006}
 .svI.ma{background:#1565c0}.svI.fu{background:#e65100}.svI.sl{background:#5d4037;width:18px;height:18px;font:700 10px/1 system-ui;border-radius:5px}
 .svI.sm{display:inline-grid;width:20px;height:20px;font-size:11px;vertical-align:middle;margin-right:6px;font-style:normal}
@@ -673,6 +680,7 @@ button.sm{min-height:0;padding:4px 10px;font-size:13px;margin-top:6px}
     <label class="chk"><input type="checkbox" id="lWrecks"> Mostra i relitti sulla carta</label>
     <div class="wkLeg"><span><i class="wk dive"></i> Sito d'immersione</span><span><i class="wk"></i> Relitto (segnalato per la navigazione)</span></div>
     <div id="wreckList"></div>
+    <div class="btns"><button data-act="wkNew">＋ Segnala un relitto</button></div>
     <details class="info"><summary>Come funziona</summary><p class="note">Relitti da OpenStreetMap/OpenSeaMap: posizione e profondità sono indicative, verificale con un diving o con le carte ufficiali. Immergiti solo con il brevetto adatto alla profondità, segnala l'immersione con boa o bandiera sub e rispetta divieti, aree marine protette e relitti tutelati.</p></details>
   </div>
 
@@ -778,6 +786,8 @@ window.addEventListener('error', function (e) {
 <script src="aiuto.js"></script>
 <script src="pro-config.js"></script>
 <script src="pubblicita.js"></script>
+<div id="pickBar" hidden><p>Sposta la carta finché il mirino è sul relitto</p><div class="btns"><button class="primary" data-act="wkPickOk">Conferma questo punto</button><button data-act="wkPickNo">Annulla</button></div></div>
+<div id="pickAim" aria-hidden="true"></div>
 <div id="infoPop" hidden role="dialog" aria-modal="true" aria-labelledby="infoPopT">
   <div class="ipBox"><h3 id="infoPopT"></h3><p></p><button type="button" class="primary" data-info-close>Ho capito</button></div>
 </div>

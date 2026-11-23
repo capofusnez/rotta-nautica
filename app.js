@@ -1384,7 +1384,7 @@ async function isoLines(b, z) {
   });
   return out;
 }
-window.rnDebug = { coastHere, isoLines };
+window.rnDebug = { coastHere, isoLines, mergeCw: () => mergeCw() };
 const isoRenderer = L.canvas({ padding: 0.2 });
 
 /* Tessere intere in memoria: al massimo 16 (3,7 MB l'una), le meno usate di recente escono. */
@@ -2146,8 +2146,33 @@ const wkName = w => w.name || (window.RNCom && RNCom.wreckName(w)) || 'Relitto s
 const wkDepth = w => w.depth && w.maxDepth ? `${w.depth}–${w.maxDepth} m` : w.depth ? `${w.depth} m` : w.maxDepth ? `fino a ${w.maxDepth} m` : null;
 function wikiUrl(v) { const m = /^([a-z]{2,3}):(.+)$/.exec(v || ''); return m ? `https://${m[1]}.wikipedia.org/wiki/${encodeURIComponent(m[2].replace(/ /g, '_'))}` : null; }
 function safeUrl(v) { return /^https?:\/\//i.test(v || '') ? v : v && /^www\./i.test(v) ? 'https://' + v : null; }
+function wkMarker(w) {
+  w.marker = L.marker([w.lat, w.lng], { title: wkName(w), icon: L.divIcon({ className: '', iconSize: w.dive ? [20, 20] : [16, 16], iconAnchor: w.dive ? [10, 10] : [8, 8], html: `<div class="wk${w.dive ? ' dive' : ''}${w.comm ? ' comm' : ''}"></div>` }) })
+    .bindPopup(() => wreckPopup(w)).addTo(wreckLayer);
+}
+/* relitti della community (comunita.js): nuovi relitti approvati e posizioni corrette approvate */
+function mergeCw() {
+  if (!WRECKS || !window.RNCom) return;
+  const cw = RNCom.wrecks() || {}, P = cw.posizioni || {}, N = cw.nuovi || {};
+  WRECKS.forEach(w => {
+    const p = P[RNCom.key(w.id)];
+    if (p) { if (!w.pos0) w.pos0 = { lat: w.lat, lng: w.lng }; w.lat = p.lat; w.lng = p.lng; w.posBy = p.da || ''; w.posFix = true; }
+    else if (w.pos0) { w.lat = w.pos0.lat; w.lng = w.pos0.lng; delete w.pos0; w.posFix = false; }
+    if (w.marker) w.marker.setLatLng([w.lat, w.lng]);
+  });
+  Object.entries(N).forEach(([k, v]) => {
+    const id = 'u_' + k;
+    let w = WRECKS.find(x => x.id === id);
+    if (!w) { w = { id, comm: true }; WRECKS.push(w); }
+    Object.assign(w, { lat: v.lat, lng: v.lng, name: v.n || '', depth: v.prof != null ? v.prof : null, note: v.note || '', by: v.da || '' });
+    if (w.marker) w.marker.setLatLng([w.lat, w.lng]); else wkMarker(w);
+  });
+  for (let i = WRECKS.length - 1; i >= 0; i--) { const w = WRECKS[i]; if (w.comm && !N[w.id.slice(2)]) { if (w.marker) wreckLayer.removeLayer(w.marker); WRECKS.splice(i, 1); } }
+}
+const wkComm = w => w.comm ? `Segnalato dalla community${w.by ? ' da ' + esc(w.by) : ''}` : w.posFix ? `Posizione corretta dalla community${w.posBy ? ' da ' + esc(w.posBy) : ''}` : null;
 function wreckPopup(w) {
   const rows = [];
+  if (wkComm(w)) rows.push(`<span class="mut">${wkComm(w)}</span>`);
   if (w.dive) rows.push('Sito d\'immersione');
   if (wkDepth(w)) rows.push(`Profondità: ${esc(wkDepth(w))}`);
   if (w.type) rows.push(`Tipo: ${esc(WK_TYPE[w.type] || w.type)}`);
@@ -2168,9 +2193,9 @@ function loadWrecks() {
   wreckLoading = getData('relitti.json').then(d => {
     WRECKS = (d && d.items) || [];
     WRECKS.forEach(w => {
-      w.marker = L.marker([w.lat, w.lng], { title: wkName(w), icon: L.divIcon({ className: '', iconSize: w.dive ? [20, 20] : [16, 16], iconAnchor: w.dive ? [10, 10] : [8, 8], html: `<div class="wk${w.dive ? ' dive' : ''}"></div>` }) })
-        .bindPopup(() => wreckPopup(w)).addTo(wreckLayer);
+      wkMarker(w);
     });
+    mergeCw();
     loadStorie().then(() => renderPunti());
     renderPunti();
     return WRECKS;
@@ -2196,6 +2221,8 @@ async function openWreck(id) {
     `<b>Posizione:</b> ${fmtDMS(w)}`, S.pos ? `<b>Da te:</b> ${fmtDist(dist(S.pos, w))}, ${fmtAng(brg(S.pos, w))}` : null].filter(Boolean);
   const a = `data-lat="${w.lat}" data-lng="${w.lng}"`;
   let h = `<h4 class="wkT">${esc(st ? st.titolo : wkName(w))}</h4><p class="wkFacts">${facts.join('<br>')}</p>`;
+  if (wkComm(w)) h += `<p class="note">${wkComm(w)}, dopo il controllo di un moderatore.</p>`;
+  if (w.comm && w.note) h += `<p class="wkP">${esc(w.note)}</p>`;
   if (!w.name && window.RNCom) h += wreckNameBox(w);
   if (st) {
     h += `<p class="wkIntro">${esc(st.intro)}</p>` + st.sezioni.map(s => `<h5 class="wkH">${esc(s.t)}</h5>` + s.p.map(p => `<p class="wkP">${esc(p)}</p>`).join('')).join('') +
@@ -2207,7 +2234,7 @@ async function openWreck(id) {
   }
   h += `<div class="btns"><button data-act="wreckShow" data-id="${esc(w.id)}">Mostra sulla carta</button><button data-act="ptUse" data-k="dest" ${a}>Destinazione</button></div>` +
     `<div class="btns"><button data-act="revOpen" data-k="${esc(w.id)}" data-n="${esc(wkName(w).slice(0, 60))}" data-back="${esc(w.id)}">★ Recensioni</button><button data-act="ptSave" ${a} data-c="immersione" data-n="${esc(wkName(w).slice(0, 60))}">Salva nei miei punti</button></div>` +
-    `<div class="btns"><button data-act="wreckBack">Torna ai punti</button></div>` +
+    `<div class="btns"><button data-act="wkFix" data-id="${esc(w.id)}">📍 Correggi la posizione</button><button data-act="wreckBack">Torna ai punti</button></div>` +
     '<p class="note">Immergiti solo con il brevetto adatto alla profondità, segnala l\'immersione con boa o bandiera e rispetta i divieti: molti relitti sono tutelati.</p>';
   el.innerHTML = h;
   /* niente scheda ma c'è la voce di Wikipedia nei dati: si mostra il riassunto (serve la rete) */
@@ -2219,6 +2246,63 @@ async function openWreck(id) {
       if (j && j.extract && box) box.innerHTML = `<p class="wkP">${esc(j.extract)}</p><p class="note">Da <a href="${esc(wikiUrl(w.wiki))}" target="_blank" rel="noopener">Wikipedia (${esc(m[1])})</a>.</p>`;
     } catch (e) { /* senza rete resta il messaggio */ }
   }
+}
+
+/* ---------- Segnala un relitto o correggi la posizione (va ai moderatori) ---------- */
+let WKF = null;   // { tipo: 'nuovo'|'posizione', id, lat, lng, n, prof, note, anon }
+function openWreckForm(o) {
+  WKF = Object.assign({ tipo: 'nuovo', anon: false }, WKF && o.keep ? WKF : {}, o); delete WKF.keep;
+  map.closePopup(); openSheet('relitto'); $('sheet').classList.add('tall');
+  const me = window.RNCom && RNCom.me(), w = WKF.id && (WRECKS || []).find(x => x.id === WKF.id);
+  const pos = isFinite(WKF.lat) ? `${(+WKF.lat).toFixed(6)}, ${(+WKF.lng).toFixed(6)}` : '';
+  let h = `<h4 class="wkT">${WKF.tipo === 'posizione' ? 'Correggi la posizione' : 'Segnala un relitto'}</h4>`;
+  if (!me) { $('wkBox').innerHTML = h + '<p class="note">Per segnalare un relitto o correggerne la posizione accedi con Google in <a href="#" data-act="goAccount">Barca e account</a>.</p><div class="btns"><button data-act="wreckBack">Indietro</button></div>'; return; }
+  h += WKF.tipo === 'posizione' ? `<p class="note">Relitto: <b>${esc(w ? wkName(w) : 'relitto')}</b>. Posizione attuale: ${w ? fmtDMS(w.pos0 || w) : ''}. Indica quella giusta: un moderatore la controlla prima di renderla visibile a tutti.</p>`
+    : '<p class="note">Indica dove si trova il relitto. Un moderatore controlla la segnalazione prima di renderla visibile a tutti.</p>';
+  h += `<div class="form wkForm">` +
+    (WKF.tipo === 'nuovo' ? `<label>Nome (se lo conosci) <span><input id="wkfN" maxlength="60" value="${esc(WKF.n || '')}" placeholder="es. Peschereccio Maria" autocomplete="off"></span></label>` : '') +
+    `<label>Posizione <span><input id="wkfP" value="${esc(pos)}" placeholder="45.6321, 13.0712 oppure 45°37'55&quot;N 13°04'16&quot;E" autocomplete="off"></span></label>` +
+    `<div class="btns"><button type="button" data-act="wkGps">Usa la mia posizione</button><button type="button" data-act="wkPick">Scegli sulla carta</button></div>` +
+    (WKF.tipo === 'nuovo' ? `<label>Profondità del fondo <span><input id="wkfD" type="number" inputmode="decimal" min="0" max="1000" step="0.5" value="${esc(WKF.prof != null ? WKF.prof : '')}"> m</span></label>` +
+      `<label class="wide">Note <textarea id="wkfT" rows="3" maxlength="500" placeholder="Che cos'è, com'è messo, se è adatto alle immersioni, pericoli…">${esc(WKF.note || '')}</textarea></label>` : '') +
+    `<label class="chk"><input type="checkbox" id="wkfA"${WKF.anon ? '' : ' checked'}> <span>Mostra il mio nome (${esc(me.name || 'utente')}) con la segnalazione</span></label>` +
+    `</div><div class="btns"><button class="primary" data-act="wkSend">Invia ai moderatori</button><button data-act="${w ? 'wreckInfo' : 'wreckBack'}"${w ? ` data-id="${esc(w.id)}"` : ''}>Annulla</button></div>`;
+  const mineN = Object.keys((RNCom.myWreckProps && RNCom.myWreckProps()) || {}).length;
+  if (mineN) h += `<p class="note">${mineN === 1 ? 'Hai 1 segnalazione' : `Hai ${mineN} segnalazioni`} in attesa di controllo.</p>`;
+  $('wkBox').innerHTML = h;
+}
+function wkFormRead() {
+  if (!WKF || !$('wkfP')) return;
+  const p = parseCoords($('wkfP').value); if (p) { WKF.lat = p.lat; WKF.lng = p.lng; }
+  if ($('wkfN')) WKF.n = $('wkfN').value;
+  if ($('wkfD')) WKF.prof = $('wkfD').value === '' ? null : parseFloat($('wkfD').value.replace(',', '.'));
+  if ($('wkfT')) WKF.note = $('wkfT').value;
+  WKF.anon = !$('wkfA').checked;
+}
+/* scelta del punto sulla carta: mirino al centro, sposti la carta e confermi */
+function wkPickStart() {
+  wkFormRead(); minSheet(true);
+  if (isFinite(WKF.lat)) map.setView([WKF.lat, WKF.lng], Math.max(map.getZoom(), 15));
+  document.body.classList.add('picking'); $('pickBar').hidden = false;
+}
+function wkPickEnd(ok) {
+  document.body.classList.remove('picking'); $('pickBar').hidden = true;
+  if (ok) { const c = map.getCenter(); WKF.lat = c.lat; WKF.lng = c.lng; }
+  minSheet(false); openWreckForm({ keep: true });
+}
+function renderWkMod() {
+  const P = RNCom.wreckProposals(); if (P === null) return '<p class="note">Carico le segnalazioni…</p>';
+  const rows = [];
+  Object.entries(P || {}).forEach(([uid, byK]) => Object.entries(byK || {}).forEach(([k, p]) => rows.push({ uid, k, p })));
+  rows.sort((a, b) => (a.p.t || 0) - (b.p.t || 0));
+  if (!rows.length) return '<p class="note">Nessuna segnalazione di relitti da controllare.</p>';
+  return `<p class="note">${rows.length === 1 ? '1 segnalazione' : rows.length + ' segnalazioni'} di relitti:</p>` + rows.map(r => {
+    const w = r.p.id && (WRECKS || []).find(x => x.id === r.p.id);
+    const what = r.p.tipo === 'posizione' ? `Posizione corretta per <b>${esc(w ? wkName(w) : r.p.id)}</b>${w ? ` (spostamento di ${fmtDist(dist(w.pos0 || w, r.p))})` : ''}` : `Nuovo relitto: <b>${esc(r.p.n || 'senza nome')}</b>`;
+    return `<div class="revItem"><div>${what}</div><div class="mut">${fmtDMS(r.p)}${r.p.prof != null ? ` · fondo ${esc(r.p.prof)} m` : ''} · da ${esc(r.p.u || 'utente')}${r.p.anon ? ' (nome nascosto al pubblico)' : ''}${r.p.t ? ' il ' + new Date(r.p.t).toLocaleDateString('it-IT') : ''}</div>` +
+      (r.p.note ? `<p>${esc(r.p.note)}</p>` : '') +
+      `<div class="btns"><button class="primary" data-act="modWkOk" data-u="${esc(r.uid)}" data-k="${esc(r.k)}">Approva</button><button class="danger" data-act="modWkNo" data-u="${esc(r.uid)}" data-k="${esc(r.k)}">Rifiuta</button><button data-act="modWkShow" data-lat="${r.p.lat}" data-lng="${r.p.lng}">Vedi sulla carta</button></div></div>`;
+  }).join('');
 }
 
 /* nome di un relitto senza nome: privato o proposto alla community (comunita.js) */
@@ -2272,11 +2356,11 @@ function renderModBox() {
     h += `<h4>Moderazione</h4>` + (P === null ? '<p class="note">Carico le proposte…</p>' : rows.length ? `<p class="note">${rows.length === 1 ? '1 proposta' : rows.length + ' proposte'} di nomi per i relitti:</p>` +
       rows.map(r => `<div class="revItem"><div><b>${esc(r.p.n)}</b> · proposto da ${esc(r.p.u || 'utente')}${r.p.t ? ' il ' + new Date(r.p.t).toLocaleDateString('it-IT') : ''}</div>` +
         `<div class="btns"><button class="primary" data-act="modOk" data-k="${esc(r.k)}" data-u="${esc(r.uid)}">Approva</button><button class="danger" data-act="modNo" data-k="${esc(r.k)}" data-u="${esc(r.uid)}">Rifiuta</button><button data-act="wreckInfo" data-id="${esc(r.p.id)}">Vedi il relitto</button></div></div>`).join('')
-      : '<p class="note">Nessuna proposta da approvare.</p>');
+      : '<p class="note">Nessuna proposta di nomi da approvare.</p>') + renderWkMod();
   }
   el.innerHTML = h;
 }
-if (window.RNCom) RNCom.on(() => { if (S.tab === 'imp') renderModBox(); if (S.tab === 'punti') renderPunti(); });
+if (window.RNCom) RNCom.on(() => { mergeCw(); if (S.tab === 'imp') renderModBox(); if (S.tab === 'punti') renderPunti(); });
 
 /* ---------- Marine, distributori di carburante e scivoli (servizi.json, da OpenStreetMap) ---------- */
 const SERV = { carburante: ['⛽', 'Carburante'], acqua: ['🚰', 'Acqua'], elettricita: ['🔌', 'Corrente'], bagni: ['🚻', 'Bagni'], docce: ['🚿', 'Docce'],
@@ -2851,6 +2935,28 @@ document.addEventListener('click', e => {
     }
     case 'ckBoatSync': if (window.RNCheck) window.RNCheck.syncBoat(); break;
     case 'wreckInfo': openWreck(d.id); break;
+    case 'wkNew': { const c = S.pos || map.getCenter(); openWreckForm({ tipo: 'nuovo', id: null, lat: c.lat, lng: c.lng, n: '', prof: null, note: '' }); break; }
+    case 'wkFix': { const w = (WRECKS || []).find(x => x.id === d.id); if (w) openWreckForm({ tipo: 'posizione', id: w.id, lat: w.lat, lng: w.lng }); break; }
+    case 'wkGps': if (!S.pos) { toast('GPS non attivo: accendilo o scegli il punto sulla carta'); break; } wkFormRead(); WKF.lat = S.pos.lat; WKF.lng = S.pos.lng; openWreckForm({ keep: true }); break;
+    case 'wkPick': wkPickStart(); break;
+    case 'wkPickOk': wkPickEnd(true); break;
+    case 'wkPickNo': wkPickEnd(false); break;
+    case 'wkSend': {
+      wkFormRead();
+      if (!parseCoords($('wkfP').value)) { toast('Scrivi una posizione valida o sceglila sulla carta'); break; }
+      if (WKF.prof != null && !(WKF.prof >= 0 && WKF.prof <= 1000)) { toast('Profondità non valida'); break; }
+      RNCom.submitWreck(WKF).then(() => { toast('Segnalazione inviata: la vedranno tutti dopo il controllo di un moderatore'); const id = WKF.id; WKF = null; if (id) openWreck(id); else openSheet('punti'); })
+        .catch(err => toast('Segnalazione non inviata: ' + (err.message || err)));
+      break;
+    }
+    case 'modWkOk': RNCom.approveWreck(d.u, d.k).then(() => { toast('Segnalazione approvata: ora la vedono tutti'); renderModBox(); }).catch(err => toast('Non approvata: ' + (err.message || err))); break;
+    case 'modWkNo': RNCom.rejectWreck(d.u, d.k).then(() => { toast('Segnalazione rifiutata'); renderModBox(); }).catch(err => toast('Errore: ' + (err.message || err))); break;
+    case 'modWkShow': {
+      const ll = [+d.lat, +d.lng]; minSheet(true); map.setView(ll, 15);
+      const m = L.circleMarker(ll, { radius: 14, color: '#e65100', weight: 3, fillOpacity: 0.15 }).addTo(map).bindTooltip('Posizione segnalata', { permanent: true, direction: 'top' });
+      setTimeout(() => map.removeLayer(m), 20000);
+      break;
+    }
     case 'goAccount': e && e.preventDefault && e.preventDefault(); openSheet('imp'); break;
     case 'wkNameSave': {
       const w = (WRECKS || []).find(x => x.id === d.id); if (!w) break;
