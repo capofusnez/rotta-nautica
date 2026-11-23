@@ -131,7 +131,7 @@ const boxErr = [];
     /* si tengono le aree marine (non i parchi a terra che hanno "Marina" nel nome di un paese) */
     const txt = ['name', 'official_name', 'protection_title', 'designation', 'seamark:name'].map(k => t[k] || '').join(' | ');
     /* il Santuario Pelagos copre quasi tutto il Mar Ligure e non ha zone: coprirebbe la carta */
-    if (/malta|gozo|comino|corse|corsica|hrvatsk|croat|sloven|tunisi|\\bfrance\\b/i.test(txt + ' ' + (t['name:en'] || ''))) continue;
+    if (/malta|gozo|comino|corse|corsica|hrvatsk|croat|sloven|tunisi|\bfrance\b/i.test(txt + ' ' + (t['name:en'] || ''))) continue;
     if (/pelagos|santuario (internazionale )?(per i|dei) mammiferi/i.test(txt)) continue;
     if (!zoneOf(t) && !/area marina|riserva (naturale )?marina(?! di\b)|parco (marino|sommerso)|marine protected|santuario|sanctuary|marine reserve/i.test(txt)) continue;
     const g = simpGeom(f.geometry);
