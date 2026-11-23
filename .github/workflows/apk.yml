@@ -8,6 +8,11 @@ on:
     # un tag come V1.7.0 costruisce l'APK e pubblica la release con la descrizione in release/V1.7.0.md
     tags: ['V*']
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Release in bozza da completare con l\'APK e pubblicare (es. V1.7.0), vuoto = solo APK'
+        required: false
+        default: ''
   # ricostruisce l'APK quando i dati nautici vengono aggiornati
   workflow_run:
     workflows: ["Aggiorna dati nautici"]
@@ -81,6 +86,7 @@ jobs:
           sed -i 's#</manifest>#    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n</manifest>#' app/src/main/AndroidManifest.xml
           VN="1.${{ github.run_number }}"
           if [ "${{ github.ref_type }}" = "tag" ]; then VN="${GITHUB_REF_NAME#V}"; fi
+          if [ -n "${{ inputs.release }}" ]; then VN="${{ inputs.release }}"; VN="${VN#V}"; fi
           sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"$VN\"/" app/build.gradle
           sudo apt-get install -y -qq imagemagick > /dev/null
           rm -rf app/src/main/res/mipmap-anydpi-v26
@@ -129,6 +135,15 @@ jobs:
         with:
           name: rotta-nautica-apk
           path: rotta-nautica.apk
+
+      - name: Completa e pubblica la release in bozza
+        if: inputs.release != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release }}
+        run: |
+          gh release upload "$TAG" rotta-nautica.apk --clobber
+          gh release edit "$TAG" --draft=false --latest
 
       - name: Pubblica la release (solo per i tag V…)
         if: github.ref_type == 'tag'
