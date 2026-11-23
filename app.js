@@ -134,7 +134,7 @@ function fmtClock(ms) {
 const DEF = { xte: 0.1, arr: 80, spd: 0, wind: 25, hz: 300, plan: 5, anc: 40, coast: 300, draft: 1, ukc: 0.5, enc: true,
   mute: false, night: false, base: 'osm', sea: true, bathy: false, track: true, follow: true,
   boat: 'motore', hp: 40, len: 6, lic: 'none', vlim: 'auto', ce: 'ce', pref: 1, pkg: 'all', pkgWifi: true,
-  wrecks: false, ais: false, fleetShare: true, fleetName: '', fleetIn: false, pois: true, fonde: false, amp: false, pesca: true, iso: false, servizi: true };
+  wrecks: false, ais: false, fleetShare: true, fleetName: '', fleetIn: false, pois: true, fonde: false, amp: false, pesca: true, iso: false, servizi: true, comm: true };
 const S = {
   set: Object.assign({}, DEF, store.get('set', {})),
   route: store.get('route', { start: null, via: [], dest: null }),
@@ -279,6 +279,7 @@ function applyLayers() {
   if (S.set.fonde) { if (!map.hasLayer(fondaLayer)) { fondaLayer.addTo(map); loadPoiData(); } } else map.removeLayer(fondaLayer);
   if (S.set.pesca) { if (!map.hasLayer(pescaLayer)) { pescaLayer.addTo(map); loadPesca(); } } else map.removeLayer(pescaLayer);
   if (S.set.servizi) { if (!map.hasLayer(servLayer)) { servLayer.addTo(map); if (SRV) drawServizi(); else loadServizi(); } } else map.removeLayer(servLayer);
+  if (S.set.comm) { if (!map.hasLayer(cpLayer)) { cpLayer.addTo(map); drawComm(); } } else map.removeLayer(cpLayer);
   if ($('bAis')) { $('bAis').hidden = !S.set.ais; if (!S.set.ais) closeAis(); }
   seamarkInspector.refresh();
   encView.render();
@@ -1982,7 +1983,7 @@ function renderHaz() {
   $('bAnchor').textContent = S.anchor ? 'Ritira ancora (allarme attivo)' : 'Getta ancora qui';
 }
 
-const TITLES = { rotta: 'Rotta', dati: 'Bordo', mappa: 'Carta e livelli', imp: 'Barca e account', punti: 'Punti di interesse', meteo: 'Meteo', check: 'Check-list', relitto: 'Relitto', recensioni: 'Recensioni', mod: 'Moderazione' };
+const TITLES = { rotta: 'Rotta', dati: 'Bordo', mappa: 'Carta e livelli', imp: 'Barca e account', punti: 'Punti di interesse', meteo: 'Meteo', check: 'Check-list', relitto: 'Relitto', recensioni: 'Recensioni', mod: 'Moderazione', condividi: 'Condividi' };
 function minSheet(on) { $('sheet').classList.toggle('min', on); if (!on) $('sheet').scrollTop = 0; }
 function openSheet(t) {
   if (t === 'avvisi') t = 'dati';
@@ -2335,7 +2336,8 @@ const modDel = (act, k, label) => `<button class="danger" data-act="${act}" data
 function renderModDone() {
   const N = RNCom.approvedNames() || {}, cw = RNCom.wrecks() || {}, U = cw.nuovi || {}, P = cw.posizioni || {};
   const byKey = k => (WRECKS || []).find(w => RNCom.key(w.id) === k);
-  const tot = Object.keys(N).length + Object.keys(U).length + Object.keys(P).length;
+  const CP = RNCom.points() || {};
+  const tot = Object.keys(N).length + Object.keys(U).length + Object.keys(P).length + Object.keys(CP).length;
   let h = `<h4>Già approvati</h4>`;
   if (!tot) return h + '<p class="note">Niente di approvato finora.</p>';
   h += '<p class="note">Se ti accorgi che qualcosa è sbagliato puoi toglierlo: tocca due volte il pulsante rosso per confermare.</p>';
@@ -2350,6 +2352,8 @@ function renderModDone() {
     const w = byKey(k);
     return row(`<b>${esc(w ? (w.name || wkName(w)) : v.id)}</b>`, `nuova posizione ${fmtDMS(v)}${v.da ? ` · da ${esc(v.da)}` : ''}`, w ? `<button data-act="wreckInfo" data-id="${esc(w.id)}">Vedi</button>` : '', modDel('modDelPos', k, 'Torna alla posizione originale'));
   }).join('') + '</details>';
+  if (Object.keys(CP).length) h += `<details class="info"><summary>Punti della community (${Object.keys(CP).length})</summary>` + Object.entries(CP).map(([k, v]) =>
+    row(`${poiCat(v.cat).i} <b>${esc(v.n)}</b>`, `${esc(poiCat(v.cat).l)} · ${fmtDMS(v)}${v.da ? ` · da ${esc(v.da)}` : ''}`, `<button data-act="cpGo" data-k="${esc(k)}">Vedi</button>`, modDel('modDelCp', k, 'Elimina il punto'))).join('') + '</details>';
   return h;
 }
 /* pulsanti del moderatore nella scheda del relitto */
@@ -2360,6 +2364,63 @@ function wreckModBtns(w) {
   if (w.posFix) b.push(modDel('modDelPos', k, 'Torna alla posizione originale'));
   if ((RNCom.approvedNames() || {})[k]) b.push(modDel('modDelName', k, 'Togli il nome della community'));
   return b.length ? `<div class="cmBox"><h5 class="wkH">Moderatore</h5><div class="btns">${b.join('')}</div></div>` : '';
+}
+
+/* ---------- Punti condivisi con la community (pesca, fonda, immersione, bagno) ---------- */
+const SHARE_CAT = ['pesca', 'fonda', 'immersione', 'bagno'];
+function openPointShare(id) {
+  const o = S.pois.find(x => x.id === id && !x.del); if (!o) return;
+  map.closePopup(); openSheet('condividi'); $('sheet').classList.add('tall');
+  const me = window.RNCom && RNCom.me(), c = poiCat(o.cat), auto = new RegExp('^' + c.l + ' \\d+$').test(o.name);
+  let h = `<h4 class="wkT">${c.i} Condividi con la community</h4>`;
+  if (!me) { $('shBox').innerHTML = h + '<p class="note">Per condividere un punto accedi con Google in <a href="#" data-act="goAccount">Barca e account</a>.</p><div class="btns"><button data-act="wreckBack">Indietro</button></div>'; return; }
+  h += `<p class="note">${esc(c.l)} in ${fmtDMS(o)}. Un moderatore lo controlla prima di mostrarlo a tutti; il punto resta comunque tra i tuoi.</p>` +
+    `<div class="form wkForm"><label>Nome <span><input id="shN" maxlength="60" value="${esc(auto ? '' : o.name)}" placeholder="es. Secca della Mula, Tegnùa piccola…" autocomplete="off"></span></label>` +
+    `<label class="wide">Note per gli altri <textarea id="shT" rows="3" maxlength="500" placeholder="${o.cat === 'pesca' ? 'Cosa si pesca, con che tecnica, profondità, periodo migliore…' : 'Fondale, profondità, ridosso, cosa vedere…'}">${esc(o.note || '')}</textarea></label>` +
+    `<label class="chk"><input type="checkbox" id="shA" checked> <span>Mostra il mio nome (${esc(me.name || 'utente')}) con il punto</span></label></div>` +
+    `<div class="btns"><button class="primary" data-act="shSend" data-id="${o.id}">Invia ai moderatori</button><button data-act="wreckBack">Annulla</button></div>`;
+  $('shBox').innerHTML = h;
+}
+const cpLayer = L.layerGroup(), cpMk = new Map();
+function drawComm() {
+  cpLayer.clearLayers(); cpMk.clear();
+  if (!S.set.comm || !window.RNCom) return;
+  Object.entries(RNCom.points() || {}).forEach(([k, v]) => {
+    const c = poiCat(v.cat);
+    const m = L.marker([v.lat, v.lng], { title: v.n, icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13], html: `<div class="cpI">${c.i}</div>` }) })
+      .bindPopup(() => cpPopup(k)).addTo(cpLayer);
+    cpMk.set(k, m);
+  });
+}
+function cpPopup(k) {
+  const v = (RNCom.points() || {})[k]; if (!v) return 'Punto non più disponibile';
+  const c = poiCat(v.cat), a = `data-lat="${v.lat}" data-lng="${v.lng}"`;
+  return `<div class="wkPop"><b>${c.i} ${esc(v.n)}</b><br>${esc(c.l)} · <span class="mut">condiviso${v.da ? ' da ' + esc(v.da) : ' dalla community'}</span>` +
+    (v.note ? `<p class="pnote">${esc(v.note)}</p>` : '<br>') + `${fmtDMS(v)}${S.pos ? `<br>Da te: ${fmtDist(dist(S.pos, v))}, ${fmtAng(brg(S.pos, v))}` : ''}` +
+    `<div class="pbtn"><button data-act="ptUse" data-k="dest" ${a}>Destinazione</button><button data-act="ptMeteo" ${a}>Meteo qui</button></div>` +
+    `<div class="pbtn"><button data-act="revOpen" data-k="cp_${esc(k)}" data-n="${esc(v.n.slice(0, 60))}">★ Recensioni</button><button data-act="ptSave" ${a} data-c="${esc(v.cat)}" data-n="${esc(v.n.slice(0, 60))}">Salva nei miei punti</button></div>` +
+    (RNCom.isMod() ? `<div class="pbtn">${modDel('modDelCp', k, 'Elimina (moderatore)')}</div>` : '') +
+    '<span class="mut">Indicazione di un altro utente: controlla divieti e ordinanze.</span></div>';
+}
+function renderComm(ref, from) {
+  const el = $('commList'); if (!el) return;
+  if (!S.set.comm || !window.RNCom) { el.innerHTML = ''; return; }
+  const L1 = Object.entries(RNCom.points() || {}).map(([k, v]) => ({ k, v, d: dist(ref, v) })).filter(x => x.d < 30 * NM).sort((a, b) => a.d - b.d).slice(0, 10);
+  const mineN = Object.keys(RNCom.myPointProps() || {}).length;
+  el.innerHTML = (L1.length ? `<p class="note">Più vicini ${from}:</p>` + L1.map(x => `<button data-act="cpGo" data-k="${esc(x.k)}"><span><i class="cpI sm">${poiCat(x.v.cat).i}</i><b>${esc(x.v.n)}</b>${x.v.da ? ' · ' + esc(x.v.da) : ''}</span><span>${(x.d / NM).toFixed(1)} mn</span></button>`).join('')
+    : '<p class="note">Ancora nessun punto condiviso qui vicino: condividi i tuoi aprendoli sulla carta.</p>') +
+    (mineN ? `<p class="note">${mineN === 1 ? 'Hai 1 punto' : `Hai ${mineN} punti`} in attesa di controllo.</p>` : '');
+}
+function renderPpMod() {
+  const P = RNCom.pointProposals(); if (P === null) return '<p class="note">Carico i punti…</p>';
+  const rows = [];
+  Object.entries(P || {}).forEach(([uid, byK]) => Object.entries(byK || {}).forEach(([k, p]) => rows.push({ uid, k, p })));
+  rows.sort((a, b) => (a.p.t || 0) - (b.p.t || 0));
+  if (!rows.length) return '<p class="note">Nessun punto da controllare.</p>';
+  return rows.map(r => `<div class="revItem"><div>${poiCat(r.p.cat).i} <b>${esc(r.p.n)}</b> · ${esc(poiCat(r.p.cat).l)}</div>` +
+    `<div class="mut">${fmtDMS(r.p)} · da ${esc(r.p.u || 'utente')}${r.p.anon ? ' (nome nascosto al pubblico)' : ''}${r.p.t ? ' il ' + new Date(r.p.t).toLocaleDateString('it-IT') : ''}</div>` +
+    (r.p.note ? `<p>${esc(r.p.note)}</p>` : '') +
+    `<div class="btns"><button class="primary" data-act="modPpOk" data-u="${esc(r.uid)}" data-k="${esc(r.k)}">Approva</button><button class="danger" data-act="modPpNo" data-u="${esc(r.uid)}" data-k="${esc(r.k)}">Rifiuta</button><button data-act="modWkShow" data-lat="${r.p.lat}" data-lng="${r.p.lng}">Vedi sulla carta</button></div></div>`).join('');
 }
 
 /* nome di un relitto senza nome: privato o proposto alla community (comunita.js) */
@@ -2407,6 +2468,7 @@ function modCount() {
   let n = 0;
   Object.values(RNCom.proposals() || {}).forEach(x => { n += Object.keys(x || {}).length; });
   Object.values(RNCom.wreckProposals() || {}).forEach(x => { n += Object.keys(x || {}).length; });
+  Object.values(RNCom.pointProposals() || {}).forEach(x => { n += Object.keys(x || {}).length; });
   return n;
 }
 function modHome() {
@@ -2432,11 +2494,11 @@ function renderModBox() {
     h += `<h4>Nomi dei relitti</h4>` + (P === null ? '<p class="note">Carico le proposte…</p>' : rows.length ? `<p class="note">${rows.length === 1 ? '1 proposta' : rows.length + ' proposte'} di nomi per i relitti:</p>` +
       rows.map(r => `<div class="revItem"><div><b>${esc(r.p.n)}</b> · proposto da ${esc(r.p.u || 'utente')}${r.p.t ? ' il ' + new Date(r.p.t).toLocaleDateString('it-IT') : ''}</div>` +
         `<div class="btns"><button class="primary" data-act="modOk" data-k="${esc(r.k)}" data-u="${esc(r.uid)}">Approva</button><button class="danger" data-act="modNo" data-k="${esc(r.k)}" data-u="${esc(r.uid)}">Rifiuta</button><button data-act="wreckInfo" data-id="${esc(r.p.id)}">Vedi il relitto</button></div></div>`).join('')
-      : '<p class="note">Nessuna proposta di nomi da approvare.</p>') + '<h4>Relitti segnalati</h4>' + renderWkMod() + renderModDone();
+      : '<p class="note">Nessuna proposta di nomi da approvare.</p>') + '<h4>Relitti segnalati</h4>' + renderWkMod() + '<h4>Punti condivisi</h4>' + renderPpMod() + renderModDone();
   }
   el.innerHTML = h;
 }
-if (window.RNCom) RNCom.on(() => { mergeCw(); modHome(); if (S.tab === 'mod') renderModBox(); if (S.tab === 'punti') renderPunti(); });
+if (window.RNCom) RNCom.on(() => { mergeCw(); drawComm(); modHome(); if (S.tab === 'mod') renderModBox(); if (S.tab === 'punti') renderPunti(); });
 if (window.Flotta) window.Flotta.on(() => modHome());
 modHome();
 
@@ -2678,6 +2740,8 @@ function poiPopup(id) {
     (o.note ? `<p class="pnote">${esc(o.note)}</p>` : '') +
     (o.cat === 'relitto' ? (wkSent()[o.id] ? '<p class="pnote">Segnalato alla community: compare a tutti dopo il controllo di un moderatore.</p>'
       : `<div class="pbtn"><button data-act="poiWk" data-id="${o.id}">Condividi il relitto con tutti</button></div>`) : '') +
+    (SHARE_CAT.includes(o.cat) ? (wkSent()['p_' + o.id] ? '<p class="pnote">Condiviso con la community: compare a tutti dopo il controllo di un moderatore.</p>'
+      : `<div class="pbtn"><button data-act="poiShare" data-id="${o.id}">Condividi con la community</button></div>`) : '') +
     `<div class="pbtn"><button data-act="ptUse" data-k="dest" ${a}>Destinazione</button><button data-act="ptMeteo" ${a}>Meteo qui</button></div>` +
     `<details class="pedit"><summary>Modifica</summary>` +
     `<input id="pe-n" maxlength="60" value="${esc(o.name)}" aria-label="Nome">` +
@@ -2701,6 +2765,7 @@ function renderPunti() {
     : 'I tuoi punti sono salvati solo su questo telefono. Con l\'accesso Google (Barche e impostazioni) restano privati e li ritrovi su tutti i tuoi telefoni.';
   renderFonde(ref, from);
   renderServizi(ref, from);
+  renderComm(ref, from);
   renderPesca(ref, from);
   renderWrecks();
 }
@@ -2997,6 +3062,25 @@ document.addEventListener('click', e => {
       if (c === 'relitto' && !wasWk && !wkSent()[d.id]) setTimeout(() => wreckFromPoi(d.id, true), 200);
       break; }
     case 'poiWk': wreckFromPoi(d.id, false); break;
+    case 'poiShare': openPointShare(d.id); break;
+    case 'shSend': {
+      const o = S.pois.find(x => x.id === d.id); if (!o) break;
+      const n = ($('shN').value || '').trim(), note = ($('shT').value || '').trim();
+      if (!n) { toast('Scrivi un nome per il punto'); $('shN').focus(); break; }
+      RNCom.submitPoint({ cat: o.cat, n, note, lat: o.lat, lng: o.lng, anon: !$('shA').checked })
+        .then(k => { wkSentSet('p_' + o.id, k); toast('Inviato ai moderatori: lo vedranno tutti dopo il controllo'); openSheet('punti'); })
+        .catch(err => toast('Non inviato: ' + (err.message || err)));
+      break;
+    }
+    case 'cpGo': {
+      const v = (RNCom.points() || {})[d.k]; if (!v) break;
+      if (!S.set.comm) { S.set.comm = true; saveSet(); applyLayers(); if ($('lComm')) $('lComm').checked = true; }
+      minSheet(true); map.setView([v.lat, v.lng], Math.max(map.getZoom(), 14), { animate: false }); drawComm();
+      const m = cpMk.get(d.k); if (m) m.openPopup();
+      break;
+    }
+    case 'modPpOk': RNCom.approvePoint(d.u, d.k).then(() => { toast('Punto approvato: ora lo vedono tutti'); renderModBox(); }).catch(err => toast('Non approvato: ' + (err.message || err))); break;
+    case 'modPpNo': RNCom.rejectPoint(d.u, d.k).then(() => { toast('Punto rifiutato'); renderModBox(); }).catch(err => toast('Errore: ' + (err.message || err))); break;
     case 'poiDel':
       if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Tocca di nuovo per eliminare'; break; }
       updPoi(d.id, { del: true }); map.closePopup(); toast('Punto eliminato'); break;
@@ -3048,10 +3132,10 @@ document.addEventListener('click', e => {
     }
     case 'modWkOk': RNCom.approveWreck(d.u, d.k).then(() => { toast('Segnalazione approvata: ora la vedono tutti'); renderModBox(); }).catch(err => toast('Non approvata: ' + (err.message || err))); break;
     case 'modWkNo': RNCom.rejectWreck(d.u, d.k).then(() => { toast('Segnalazione rifiutata'); renderModBox(); }).catch(err => toast('Errore: ' + (err.message || err))); break;
-    case 'modDelName': case 'modDelWk': case 'modDelPos': {
+    case 'modDelName': case 'modDelWk': case 'modDelPos': case 'modDelCp': {
       if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.dataset.txt = b.textContent; b.textContent = 'Tocca di nuovo per confermare'; setTimeout(() => { if (b.isConnected) { b.dataset.armed = ''; b.textContent = b.dataset.txt; } }, 4000); break; }
-      const a = d.act, fn = a === 'modDelName' ? RNCom.removeApproved : a === 'modDelWk' ? RNCom.removeCommunityWreck : RNCom.removeCommunityPos;
-      fn(d.k).then(() => { toast(a === 'modDelName' ? 'Nome tolto' : a === 'modDelWk' ? 'Relitto eliminato' : 'Posizione originale ripristinata'); mergeCw(); if (S.tab === 'mod') renderModBox(); else if (S.tab === 'relitto') openSheet('punti'); })
+      const a = d.act, fn = a === 'modDelName' ? RNCom.removeApproved : a === 'modDelWk' ? RNCom.removeCommunityWreck : a === 'modDelCp' ? RNCom.removeCommunityPoint : RNCom.removeCommunityPos;
+      fn(d.k).then(() => { map.closePopup(); toast(a === 'modDelName' ? 'Nome tolto' : a === 'modDelWk' ? 'Relitto eliminato' : a === 'modDelCp' ? 'Punto eliminato' : 'Posizione originale ripristinata'); mergeCw(); if (S.tab === 'mod') renderModBox(); else if (S.tab === 'relitto') openSheet('punti'); })
         .catch(err => toast('Non riuscito: ' + (err.message || err)));
       break;
     }
@@ -3201,7 +3285,7 @@ document.querySelectorAll('input[name=base]').forEach(r => {
   r.checked = r.value === S.set.base;
   r.addEventListener('change', () => { S.set.base = r.value; saveSet(); applyLayers(); });
 });
-[['lSea', 'sea'], ['lBathy', 'bathy'], ['lIso', 'iso'], ['lTrack', 'track'], ['lEnc', 'enc'], ['lWrecks', 'wrecks'], ['lAis', 'ais'], ['lPois', 'pois'], ['lFonde', 'fonde'], ['lAmp', 'amp'], ['lPesca', 'pesca'], ['lServizi', 'servizi']].filter(([id]) => $(id)).forEach(([id, k]) => {
+[['lSea', 'sea'], ['lBathy', 'bathy'], ['lIso', 'iso'], ['lTrack', 'track'], ['lEnc', 'enc'], ['lWrecks', 'wrecks'], ['lAis', 'ais'], ['lPois', 'pois'], ['lFonde', 'fonde'], ['lAmp', 'amp'], ['lPesca', 'pesca'], ['lServizi', 'servizi'], ['lComm', 'comm']].filter(([id]) => $(id)).forEach(([id, k]) => {
   $(id).checked = !!S.set[k];
   $(id).addEventListener('change', () => { S.set[k] = $(id).checked; saveSet(); applyLayers(); renderPunti(); });
 });

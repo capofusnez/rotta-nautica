@@ -490,6 +490,8 @@ details.info .note+.note{margin-top:8px}
 .ckM button{flex:none}
 .ckWarn{color:var(--warn);font-weight:600}
 .wk.comm{outline:2px dashed #e65100;outline-offset:1px}
+.cpI{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;background:#fff;border:2px dashed #e65100;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.cpI.sm{display:inline-grid;width:20px;height:20px;font-size:11px;vertical-align:middle;margin-right:6px;font-style:normal;box-shadow:none}
 .wkForm>label:not(.chk){display:block}.wkForm>label:not(.chk)>span{display:flex;align-items:center;gap:6px;margin-top:4px}.wkForm>label:not(.chk) input{flex:1;min-width:0;width:100%}.wkForm #wkfD{max-width:120px}.wkForm textarea{width:100%;margin-top:4px}.wkForm .btns{margin:6px 0 10px}.wkForm>label.chk{display:flex;justify-content:flex-start;align-items:center;gap:10px;flex-wrap:nowrap;text-align:left}.wkForm>label.chk input{flex:none}
 #pickBar{position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:1200;background:var(--panel);color:var(--fg);border-radius:14px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.4)}
 #pickBar[hidden]{display:none}#pickBar p{margin:0 0 8px;font-weight:600}
@@ -658,6 +660,10 @@ button.sm{min-height:0;padding:4px 10px;font-size:13px;margin-top:6px}
     <div class="btns"><button data-act="poiGpxOut">Esporta GPX</button><button data-act="poiGpxIn">Importa GPX</button></div>
     <input id="poiFileIn" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" hidden>
     <details class="info"><summary>Come funziona</summary><p class="note">Tocca un punto sulla carta per aggiungere note, cambiarne il tipo o eliminarlo. Puoi anche tenere premuto sulla carta e scegliere "Salva come mio punto".</p></details>
+    <h4>Punti della community</h4>
+    <label class="chk"><input type="checkbox" id="lComm"> Mostra i punti condivisi dagli altri utenti</label>
+    <div id="commList"></div>
+    <details class="info"><summary>Come funziona</summary><p class="note">Punti pesca, immersioni, punti di fonda e soste condivisi dagli utenti e controllati da un moderatore. Per condividere uno dei tuoi punti aprilo sulla carta e tocca "Condividi con la community". Sono indicazioni di altri diportisti: controlla sempre divieti e ordinanze.</p></details>
     <h4>Marine e distributori</h4>
     <label class="chk"><input type="checkbox" id="lServizi"> Mostra marine, distributori di carburante e scivoli</label>
     <div id="servList"></div>
@@ -683,6 +689,7 @@ button.sm{min-height:0;padding:4px 10px;font-size:13px;margin-top:6px}
     <details class="info"><summary>Come funziona</summary><p class="note">Relitti da OpenStreetMap/OpenSeaMap: posizione e profondità sono indicative, verificale con un diving o con le carte ufficiali. Immergiti solo con il brevetto adatto alla profondità, segnala l'immersione con boa o bandiera sub e rispetta divieti, aree marine protette e relitti tutelati.</p></details>
   </div>
 
+  <div class="pane" id="p-condividi" hidden><div id="shBox"></div></div>
   <div class="pane" id="p-mod" hidden><div id="modBox"></div></div>
   <div class="pane" id="p-relitto" hidden><div id="wkBox"></div></div>
   <div class="pane" id="p-recensioni" hidden><div id="revBox"></div></div>

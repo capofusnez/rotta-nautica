@@ -278,6 +278,74 @@
           ".validate": false
         }
       }
+    },
+    "punti_proposti": {
+      ".read": "auth != null && root.child('moderatori').child(auth.uid).val() === true",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || root.child('moderatori').child(auth.uid).val() === true)",
+        "$k": {
+          ".validate": "newData.hasChildren(['cat', 'n', 'lat', 'lng', 't'])",
+          "cat": {
+            ".validate": "newData.val() === 'pesca' || newData.val() === 'fonda' || newData.val() === 'immersione' || newData.val() === 'bagno'"
+          },
+          "n": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+          },
+          "lat": {
+            ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+          },
+          "lng": {
+            ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+          },
+          "note": {
+            ".validate": "newData.isString() && newData.val().length <= 500"
+          },
+          "anon": {
+            ".validate": "newData.isBoolean()"
+          },
+          "u": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "t": {
+            ".validate": "newData.val() === now"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "punti_community": {
+      ".read": true,
+      "$k": {
+        ".write": "auth != null && root.child('moderatori').child(auth.uid).val() === true",
+        ".validate": "newData.hasChildren(['cat', 'n', 'lat', 'lng'])",
+        "cat": {
+          ".validate": "newData.val() === 'pesca' || newData.val() === 'fonda' || newData.val() === 'immersione' || newData.val() === 'bagno'"
+        },
+        "n": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60"
+        },
+        "lat": {
+          ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90"
+        },
+        "lng": {
+          ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180"
+        },
+        "note": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "da": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "t": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }

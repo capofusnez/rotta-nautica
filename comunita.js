@@ -15,6 +15,14 @@
      proposte in attesa (relitti_proposti/<utente>/<id>), le leggono i moderatori */
   let cw = { nuovi: {}, posizioni: {} }, wkProps = null, unWk = null, myWk = {}, unMyWk = null;
   const LSW = 'rn.relittiCommunity';
+  /* punti condivisi (pesca, fonda, immersione, bagno): proposte in punti_proposti/<utente>/<id>, approvati in punti_community */
+  let cp = {}, ppProps = null, unPp = null, myPp = {}, unMyPp = null;
+  const LSP = 'rn.puntiCommunity';
+  try { cp = JSON.parse(localStorage.getItem(LSP) || 'null') || {}; } catch (e) { cp = {}; }
+  function loadCp() {
+    if (!F() || !F().available) return;
+    F().pub('punti_community').then(v => { cp = v || {}; try { localStorage.setItem(LSP, JSON.stringify(cp)); } catch (e) { /* ignora */ } emit(); }).catch(() => {});
+  }
   try { cw = JSON.parse(localStorage.getItem(LSW) || 'null') || cw; } catch (e) { /* ignora */ }
   const subs = new Set(), emit = () => subs.forEach(f => { try { f(); } catch (e) { /* ignora */ } });
   try { approved = JSON.parse(localStorage.getItem(LS) || '{}') || {}; } catch (e) { approved = {}; }
@@ -40,13 +48,16 @@
     const f = F(); if (!f) return;
     if (unMine) { unMine(); unMine = null; } if (unProp) { unProp(); unProp = null; }
     if (unWk) { unWk(); unWk = null; } if (unMyWk) { unMyWk(); unMyWk = null; }
-    mine = {}; proposals = null; wkProps = null; myWk = {};
+    if (unPp) { unPp(); unPp = null; } if (unMyPp) { unMyPp(); unMyPp = null; }
+    mine = {}; proposals = null; wkProps = null; myWk = {}; ppProps = null; myPp = {};
     if (f.user) {
       unMine = f.dbWatch('nomi_privati/' + f.user.uid, v => { mine = v || {}; emit(); });
       unMyWk = f.dbWatch('relitti_proposti/' + f.user.uid, v => { myWk = v || {}; emit(); });
+      unMyPp = f.dbWatch('punti_proposti/' + f.user.uid, v => { myPp = v || {}; emit(); });
       if (f.isMod) {
         unProp = f.dbWatch('proposte', v => { proposals = v || {}; emit(); });
         unWk = f.dbWatch('relitti_proposti', v => { wkProps = v || {}; emit(); });
+        unPp = f.dbWatch('punti_proposti', v => { ppProps = v || {}; emit(); });
       }
     }
     emit();
@@ -55,7 +66,7 @@
   function hook() {
     const f = F(); if (!f) return;
     f.on(() => { const st = (f.user ? f.user.uid : '') + '|' + f.isMod; if (st !== lastState) { lastState = st; onAuth(); } });
-    loadApproved(); loadCw();
+    loadApproved(); loadCw(); loadCp();
   }
 
   const C = {
@@ -128,6 +139,29 @@
       loadCw();
     },
     rejectWreck: (uid, k) => F().dbRemove(`relitti_proposti/${uid}/${k}`),
+    /* punti condivisi */
+    points: () => cp,
+    myPointProps: () => myPp,
+    pointProposals: () => ppProps,
+    async submitPoint(o) {
+      const f = F(); if (!f || !f.user) throw new Error('Per condividere un punto accedi con Google (Barca e account)');
+      const k = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const v = { cat: o.cat, n: String(o.n || '').trim().slice(0, 60) || 'Punto', lat: +(+o.lat).toFixed(6), lng: +(+o.lng).toFixed(6), anon: !!o.anon,
+        u: (f.user.name || 'Utente').slice(0, 40), t: f.stamp() };
+      if (o.note) v.note = String(o.note).trim().slice(0, 500);
+      await f.dbSet(`punti_proposti/${f.user.uid}/${k}`, v);
+      return k;
+    },
+    async approvePoint(uid, k) {
+      const f = F(), p = ppProps && ppProps[uid] && ppProps[uid][k]; if (!p) return;
+      const v = { cat: p.cat, n: p.n, lat: p.lat, lng: p.lng, t: f.stamp() };
+      if (p.note) v.note = p.note; if (!p.anon && p.u) v.da = p.u;
+      await f.dbSet(`punti_community/${uid}_${k}`, v);
+      await f.dbRemove(`punti_proposti/${uid}/${k}`);
+      loadCp();
+    },
+    rejectPoint: (uid, k) => F().dbRemove(`punti_proposti/${uid}/${k}`),
+    removeCommunityPoint: k => F().dbRemove(`punti_community/${k}`).then(() => { delete cp[k]; emit(); loadCp(); }),
     removeCommunityWreck: k => F().dbRemove(`relitti_utenti/${k}`).then(() => { delete cw.nuovi[k]; emit(); loadCw(); }),
     removeCommunityPos: k => F().dbRemove(`relitti_posizioni/${k}`).then(() => { delete cw.posizioni[k]; emit(); loadCw(); })
   };
