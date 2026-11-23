@@ -1982,7 +1982,7 @@ function renderHaz() {
   $('bAnchor').textContent = S.anchor ? 'Ritira ancora (allarme attivo)' : 'Getta ancora qui';
 }
 
-const TITLES = { rotta: 'Rotta', dati: 'Bordo', mappa: 'Carta e livelli', imp: 'Barca e account', punti: 'Punti di interesse', meteo: 'Meteo', check: 'Check-list', relitto: 'Relitto', recensioni: 'Recensioni' };
+const TITLES = { rotta: 'Rotta', dati: 'Bordo', mappa: 'Carta e livelli', imp: 'Barca e account', punti: 'Punti di interesse', meteo: 'Meteo', check: 'Check-list', relitto: 'Relitto', recensioni: 'Recensioni', mod: 'Moderazione' };
 function minSheet(on) { $('sheet').classList.toggle('min', on); if (!on) $('sheet').scrollTop = 0; }
 function openSheet(t) {
   if (t === 'avvisi') t = 'dati';
@@ -1998,7 +1998,8 @@ function openSheet(t) {
   if (t === 'punti') renderPunti();
   if (t === 'imp') boatFromCk();
   if (t === 'meteo') openMeteo();
-  if (t === 'imp') { renderFleetBox(); renderModBox(); }
+  if (t === 'imp') renderFleetBox();
+  if (t === 'mod') renderModBox();
   if (t === 'check' && window.RNCheck) window.RNCheck.render();
   $('home').hidden = true;
   ui(); fabs();
@@ -2344,23 +2345,44 @@ async function openReviews(k, title, back) {
 }
 
 /* ---------- Moderazione (Barca e account): proposte di nomi dei relitti ---------- */
+/* sezione Moderazione: pulsante nel menu principale visibile solo ai moderatori, con il numero di cose da controllare */
+function modCount() {
+  if (!window.RNCom || !RNCom.isMod()) return 0;
+  let n = 0;
+  Object.values(RNCom.proposals() || {}).forEach(x => { n += Object.keys(x || {}).length; });
+  Object.values(RNCom.wreckProposals() || {}).forEach(x => { n += Object.keys(x || {}).length; });
+  return n;
+}
+function modHome() {
+  const b = $('hmMod'); if (!b) return;
+  const on = !!(window.RNCom && RNCom.me() && RNCom.isMod());
+  b.hidden = !on;
+  const n = on ? modCount() : 0, bd = $('modBadge');
+  if (bd) { bd.hidden = !n; bd.textContent = n > 99 ? '99+' : String(n); }
+  /* su telefono l'ultimo pulsante, se sono dispari, occupa tutta la riga */
+  const vis = [...document.querySelectorAll('.hmGrid button')].filter(x => !x.hidden);
+  vis.forEach((x, i) => x.classList.toggle('full', i === vis.length - 1 && vis.length % 2 === 1));
+  if (!on && S.tab === 'mod' && !$('sheet').hidden) closeSheet();
+}
 function renderModBox() {
   const el = $('modBox'); if (!el) return;
   const me = window.RNCom && RNCom.me();
-  if (!me) { el.innerHTML = ''; return; }
+  if (!me || !RNCom.isMod()) { el.innerHTML = '<p class="note">Questa sezione è riservata ai moderatori.</p>'; return; }
   let h = '';
   if (RNCom.isMod()) {
     const P = RNCom.proposals(), rows = [];
     Object.entries(P || {}).forEach(([k, byU]) => Object.entries(byU || {}).forEach(([uid, p]) => rows.push({ k, uid, p })));
     rows.sort((a, b) => (a.p.t || 0) - (b.p.t || 0));
-    h += `<h4>Moderazione</h4>` + (P === null ? '<p class="note">Carico le proposte…</p>' : rows.length ? `<p class="note">${rows.length === 1 ? '1 proposta' : rows.length + ' proposte'} di nomi per i relitti:</p>` +
+    h += `<h4>Nomi dei relitti</h4>` + (P === null ? '<p class="note">Carico le proposte…</p>' : rows.length ? `<p class="note">${rows.length === 1 ? '1 proposta' : rows.length + ' proposte'} di nomi per i relitti:</p>` +
       rows.map(r => `<div class="revItem"><div><b>${esc(r.p.n)}</b> · proposto da ${esc(r.p.u || 'utente')}${r.p.t ? ' il ' + new Date(r.p.t).toLocaleDateString('it-IT') : ''}</div>` +
         `<div class="btns"><button class="primary" data-act="modOk" data-k="${esc(r.k)}" data-u="${esc(r.uid)}">Approva</button><button class="danger" data-act="modNo" data-k="${esc(r.k)}" data-u="${esc(r.uid)}">Rifiuta</button><button data-act="wreckInfo" data-id="${esc(r.p.id)}">Vedi il relitto</button></div></div>`).join('')
-      : '<p class="note">Nessuna proposta di nomi da approvare.</p>') + renderWkMod();
+      : '<p class="note">Nessuna proposta di nomi da approvare.</p>') + '<h4>Relitti segnalati</h4>' + renderWkMod();
   }
   el.innerHTML = h;
 }
-if (window.RNCom) RNCom.on(() => { mergeCw(); if (S.tab === 'imp') renderModBox(); if (S.tab === 'punti') renderPunti(); });
+if (window.RNCom) RNCom.on(() => { mergeCw(); modHome(); if (S.tab === 'mod') renderModBox(); if (S.tab === 'punti') renderPunti(); });
+if (window.Flotta) window.Flotta.on(() => modHome());
+modHome();
 
 /* ---------- Marine, distributori di carburante e scivoli (servizi.json, da OpenStreetMap) ---------- */
 const SERV = { carburante: ['⛽', 'Carburante'], acqua: ['🚰', 'Acqua'], elettricita: ['🔌', 'Corrente'], bagni: ['🚻', 'Bagni'], docce: ['🚿', 'Docce'],
@@ -2878,7 +2900,7 @@ function renderMeteo() {
 }
 
 /* ---------- Menu principale ---------- */
-function openHome() { closeSheet(); map.closePopup(); $('home').hidden = false; if (window.RNCheck) window.RNCheck.badge(); }
+function openHome() { closeSheet(); map.closePopup(); $('home').hidden = false; if (window.RNCheck) window.RNCheck.badge(); modHome(); }
 document.querySelectorAll('[data-home]').forEach(b => {
   b.onclick = () => {
     const k = b.dataset.home; $('home').hidden = true;
