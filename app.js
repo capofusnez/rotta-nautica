@@ -357,6 +357,7 @@ function raise(id, text, level) {
 function clearAl(id) { if (A.delete(id)) renderAlarms(); }
 
 let toastT = 0;
+window.rnToast = m => toast(m);
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.hidden = false;
   clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3200);
@@ -1829,11 +1830,12 @@ function renderHaz() {
   $('bAnchor').textContent = S.anchor ? 'Ritira ancora (allarme attivo)' : 'Getta ancora qui';
 }
 
-const TITLES = { rotta: 'Rotta', dati: 'Bordo', mappa: 'Carta e livelli', imp: 'Barca e account', punti: 'Punti di interesse', meteo: 'Meteo' };
+const TITLES = { rotta: 'Rotta', dati: 'Bordo', mappa: 'Carta e livelli', imp: 'Barca e account', punti: 'Punti di interesse', meteo: 'Meteo', check: 'Check-list' };
 function minSheet(on) { $('sheet').classList.toggle('min', on); if (!on) $('sheet').scrollTop = 0; }
 function openSheet(t) {
   if (t === 'avvisi') t = 'dati';
   if (S.tab !== t) $('sheet').classList.remove('tall');
+  if (t === 'check') $('sheet').classList.add('tall');
   S.tab = t; $('sheet').hidden = false; minSheet(false); document.body.classList.add('sheetOpen');
   $('sheetTitle').textContent = TITLES[t] || '';
   document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + t; });
@@ -1844,6 +1846,7 @@ function openSheet(t) {
   if (t === 'punti') renderPunti();
   if (t === 'meteo') openMeteo();
   if (t === 'imp') renderFleetBox();
+  if (t === 'check' && window.RNCheck) window.RNCheck.render();
   $('home').hidden = true;
   ui(); fabs();
 }
@@ -2426,7 +2429,7 @@ function renderMeteo() {
 }
 
 /* ---------- Menu principale ---------- */
-function openHome() { closeSheet(); map.closePopup(); $('home').hidden = false; }
+function openHome() { closeSheet(); map.closePopup(); $('home').hidden = false; if (window.RNCheck) window.RNCheck.badge(); }
 document.querySelectorAll('[data-home]').forEach(b => {
   b.onclick = () => {
     const k = b.dataset.home; $('home').hidden = true;

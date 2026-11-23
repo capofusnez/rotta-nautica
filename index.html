@@ -411,6 +411,66 @@ details.info .note+.note{margin-top:8px}
   body.sheetOpen #alarms{left:calc(min(420px,55vw) + 72px)}
   .hudRow .big b{font-size:28px}
 }
+/* check-list */
+.hmGrid button{position:relative}
+.hmBadge{position:absolute;top:12px;right:12px;min-width:26px;height:26px;padding:0 7px;border-radius:13px;background:var(--bad);color:#fff;font:700 14px/26px system-ui,sans-serif;text-align:center}
+@media (min-width:700px){.hmGrid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media (max-width:699px){.hmGrid button:last-child:nth-child(odd){grid-column:1/-1;min-height:96px}}
+.ckBack{display:inline-flex;align-items:center;gap:4px;background:none;border:0;padding:8px 8px 8px 0;color:var(--acc);min-height:44px}
+.ckBack svg{width:20px;height:20px}
+.ckBoat,.ckHours{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel2);margin:8px 0}
+.ckBoat>div,.ckHours>div{flex:1;min-width:0}
+.ckBoat b{display:block;font-size:18px}
+.ckBoat span,.ckHours span{display:block;font-size:13px;color:var(--mut)}
+.ckHours b{display:block;font-size:26px;font-variant-numeric:tabular-nums}
+.ckHForm{display:flex;gap:6px;flex:none}
+.ckHForm input{width:6.5em}
+.ckAlert{display:flex;width:100%;justify-content:space-between;align-items:center;margin:8px 0;background:color-mix(in srgb,var(--warn) 16%,var(--panel));border-color:var(--warn);color:var(--fg);text-align:left}
+.ckAlert.bad{background:color-mix(in srgb,var(--bad) 16%,var(--panel));border-color:var(--bad)}
+.ckAlert span{color:var(--acc)}
+.ckMenu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.ckMenu button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;min-height:118px;padding:14px;border-radius:16px;background:var(--panel)}
+.ckMenu svg{width:34px;height:34px;color:var(--acc);margin-bottom:auto}
+.ckMenu b{font-size:16px;line-height:1.2}
+.ckMenu span{font-size:13px;color:var(--mut);font-weight:500}
+.ckRep{display:flex;width:100%;justify-content:space-between;align-items:center;text-align:left;margin:0 0 10px;min-height:60px}
+.ckRep b{display:block}.ckRep span span{display:block;font-size:13px;color:var(--mut);font-weight:500}
+.ckRep>span:last-child{font-size:24px;color:var(--mut)}
+.ckProg{height:8px;border-radius:4px;background:var(--panel2);overflow:hidden;margin-top:4px}
+.ckProg i{display:block;height:100%;background:var(--ok);transition:width .2s}
+.ckCount{font-size:13px;color:var(--mut);margin:6px 0}
+.ckList{display:flex;flex-direction:column;gap:6px;margin:6px 0 12px}
+.ckI{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);font-size:15px;line-height:1.35;cursor:pointer}
+.ckI input{width:26px;height:26px;margin:0;flex:none;accent-color:var(--ok)}
+.ckI.on{background:color-mix(in srgb,var(--ok) 10%,var(--panel));border-color:color-mix(in srgb,var(--ok) 50%,var(--line))}
+.ckI.on span{color:var(--mut)}
+#ckNote,.ckE textarea{width:100%;box-sizing:border-box;resize:vertical}
+.ckEdit{display:flex;flex-direction:column;gap:10px;margin:8px 0 12px}
+.ckE{padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.ckEb{display:flex;gap:6px;justify-content:flex-end;margin-top:6px}
+.ckEb button{min-width:52px}
+.ckInt{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:8px;font-size:14px;color:var(--mut)}
+.ckInt label{display:flex;align-items:center;gap:6px}
+.ckInt input[type=number]{width:5.5em}
+.ckMan{display:flex;flex-direction:column;gap:8px;margin:8px 0 12px}
+.ckM{display:flex;gap:10px;align-items:center;padding:12px;border:1px solid var(--line);border-left:6px solid var(--line);border-radius:12px;background:var(--panel)}
+.ckM>div{flex:1;min-width:0}
+.ckM b{display:block;font-size:15px;line-height:1.3}
+.ckM span{display:block;font-size:13px;color:var(--mut)}
+.ckM .ckSt{font-weight:600;color:var(--fg);margin-top:2px}
+.ckM.ok{border-left-color:var(--ok)}
+.ckM.warn{border-left-color:var(--warn)}.ckM.warn .ckSt{color:var(--warn)}
+.ckM.bad{border-left-color:var(--bad)}.ckM.bad .ckSt{color:var(--bad)}
+.ckM button{flex:none}
+.ckWarn{color:var(--warn);font-weight:600}
+.ckReps{display:flex;flex-direction:column;gap:8px;margin:8px 0 12px}
+.ckR{border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden}
+.ckR>button{display:flex;width:100%;justify-content:space-between;align-items:center;text-align:left;border:0;border-radius:0;background:none;min-height:60px}
+.ckR>button b{display:block}.ckR>button span span{display:block;font-size:13px;color:var(--mut);font-weight:500}
+.ckR .okT{color:var(--ok)}.ckR .noT{color:var(--warn)}
+.ckRd{padding:0 14px 12px}
+.ckRd ul{margin:6px 0;padding:0;list-style:none;font-size:14px;line-height:1.4}
+.ckRd li{padding:3px 0}.ckRd li.n{color:var(--bad)}
 </style>
 </head>
 <body>
@@ -552,6 +612,10 @@ details.info .note+.note{margin-top:8px}
     <details class="info"><summary>Come funziona</summary><p class="note">Relitti da OpenStreetMap/OpenSeaMap: posizione e profondità sono indicative, verificale con un diving o con le carte ufficiali. Immergiti solo con il brevetto adatto alla profondità, segnala l'immersione con boa o bandiera sub e rispetta divieti, aree marine protette e relitti tutelati.</p></details>
   </div>
 
+  <div class="pane" id="p-check" hidden>
+    <div id="ckBox"></div>
+  </div>
+
   <div class="pane" id="p-meteo" hidden>
     <div class="btns"><button data-act="wxGps">La mia posizione</button><button data-act="wxCenter">Centro della carta</button><button data-act="wxRefresh">Aggiorna</button></div>
     <div id="wxBox"></div>
@@ -612,6 +676,7 @@ details.info .note+.note{margin-top:8px}
     <button data-home="punti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.5s7-6.4 7-12a7 7 0 10-14 0c0 5.6 7 12 7 12z"/><circle cx="12" cy="9.5" r="2.6" fill="currentColor"/></svg><b>Punti di interesse</b><span>Punti pesca, fonde, aree marine protette, relitti</span></button>
     <button data-home="meteo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18.5h9.5a4 4 0 00.4-8 5.5 5.5 0 00-10.6 1.4A3.3 3.3 0 007 18.5z"/><path d="M4 22c1.3-.9 2.7-.9 4 0s2.7.9 4 0 2.7-.9 4 0 2.7.9 4 0"/></svg><b>Meteo</b><span>Vento, onde e previsioni</span></button>
     <button data-home="imp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 15.5h18l-2.6 4.5H5.6z"/><path d="M12 3v12.5M12 4l6.5 9.5H12M12 6.5L7 13.5h5"/></svg><b>Barca e account</b><span>Barca, patente, account e barche collegate</span></button>
+    <button data-home="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3.5h6v3H9z"/><path d="M15 5h3v16H6V5h3"/><path d="M9 11.5l1.5 1.5 3-3M9 17l1.5 1.5 3-3"/></svg><b>Check-list</b><span>Partenza, navigazione, rientro, manutenzione e ore motore</span><i class="hmBadge" data-ckbadge hidden></i></button>
   </div>
   <button id="homeGo" class="primary" hidden>Riprendi la rotta</button>
   <p class="note">Ausilio alla navigazione: non sostituisce carte ufficiali, strumenti di bordo, bollettini e buona condotta marinaresca.</p>
@@ -638,6 +703,7 @@ window.addEventListener('error', function (e) {
 <script src="seamarks.js"></script>
 <script src="firebase-config.js"></script>
 <script src="flotta.js"></script>
+<script src="checklist.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

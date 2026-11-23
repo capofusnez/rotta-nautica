@@ -41,7 +41,7 @@ jobs:
           else
             echo "google-services.json non presente: APK senza accesso con Google"
           fi
-          cp ../index.html ../app.js ../water.js ../channels.js ../enc.js ../seamarks.js ../firebase-config.js ../flotta.js ../sw.js ../manifest.webmanifest ../icon-192.png ../icon-512.png ../traffico.html www/
+          cp ../index.html ../app.js ../water.js ../channels.js ../enc.js ../seamarks.js ../firebase-config.js ../flotta.js ../checklist.js ../sw.js ../manifest.webmanifest ../icon-192.png ../icon-512.png ../traffico.html www/
           cp -r node_modules/leaflet/dist/* www/leaflet/
           # dati nautici locali (canali e briccole), se presenti nel repository
           cp ../nautica_locale.geojson www/ 2>/dev/null || echo "nautica_locale.geojson non presente"
