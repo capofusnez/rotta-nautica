@@ -18,7 +18,7 @@
     user: null, sharing: false, error: null, loading: false, isMod: false
   };
   let fb = null, loadP = null, auth = null, db = null, offset = 0, unsub = [], lastSent = null, meRef = null, cur = null;
-  let poiCb = null, poiUnsub = null;
+  let poiCb = null, poiUnsub = null, modUnsub = null;
   const others = new Map(), listeners = new Set();
   const emit = () => listeners.forEach(f => { try { f(F); } catch (e) { /* ignora */ } });
   const now = () => Date.now() + offset;
@@ -45,7 +45,9 @@
         a.onAuthStateChanged(auth, u => {
           F.user = u ? { uid: u.uid, name: u.displayName || '', email: u.email || '' } : null;
           F.loading = false; F.isMod = false;
-          if (u) { listen(); listenPois(); d.get(d.ref(db, 'moderatori/' + u.uid)).then(s => { F.isMod = s.val() === true; emit(); }).catch(() => {}); }
+          if (modUnsub) { modUnsub(); modUnsub = null; }
+          /* moderatore: si controlla a ogni avvio e resta in ascolto, così aggiungere o togliere un moderatore vale subito */
+          if (u) { listen(); listenPois(); modUnsub = d.onValue(d.ref(db, 'moderatori/' + u.uid), s => { const m = s.val() === true; if (m !== F.isMod) { F.isMod = m; emit(); } }, () => { if (F.isMod) { F.isMod = false; emit(); } }); }
           else { quiet(); others.clear(); if (poiUnsub) { poiUnsub(); poiUnsub = null; } }
           emit();
         });

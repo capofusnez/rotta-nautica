@@ -1,7 +1,7 @@
 /* Service worker: l'app e le tiles della carta già viste restano disponibili senza rete. */
-const SHELL_CACHE = 'rn-shell-v53';
+const SHELL_CACHE = 'rn-shell-v54';
 const TILE_CACHE = 'rn-tiles-v2';
-const SHELL = ['./', 'index.html', 'app.js', 'water.js', 'channels.js', 'enc.js', 'seamarks.js', 'firebase-config.js', 'flotta.js', 'comunita.js', 'catalogo.js', 'checklist.js', 'traffico.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const SHELL = ['./', 'index.html', 'app.js', 'water.js', 'channels.js', 'enc.js', 'seamarks.js', 'firebase-config.js', 'flotta.js', 'comunita.js', 'aiuto.js', 'privacy.html', 'catalogo.js', 'checklist.js', 'traffico.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 const EXTERNAL = /(tile\.openstreetmap\.org|tiles\.openseamap\.org|server\.arcgisonline\.com|ows\.emodnet-bathymetry\.eu|unpkg\.com)$/;
 const MAX_TILES = 4000;
 let puts = 0;

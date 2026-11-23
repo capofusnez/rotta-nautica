@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Condizioni d'uso e privacy · Rotta Nautica</title>
+<link rel="icon" href="icon-192.png">
+<style>
+  :root { --bg: #f4f7f9; --fg: #0c2433; --mut: #4c6979; --line: #c3d1d9; --acc: #0f6f8c; --card: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #07151f; --fg: #e9f3f7; --mut: #8fb0bf; --line: #245068; --acc: #3fd0d9; --card: #0d2230; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+  header img { border-radius: 14px; }
+  h1 { font-size: 26px; line-height: 1.2; margin: 0; }
+  .upd { color: var(--mut); font-size: 14px; margin: 4px 0 20px; }
+  h2 { font-size: 19px; margin: 28px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+  h3 { font-size: 16px; margin: 18px 0 4px; }
+  p, li { margin: 0 0 10px; }
+  ul { padding-left: 20px; }
+  a { color: var(--acc); }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 12px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--mut); font-weight: 600; }
+  .back { display: inline-block; margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+<header><img src="icon-192.png" alt="" width="56" height="56"><h1>Condizioni d'uso e informativa sulla privacy</h1></header>
+<p class="upd">Rotta Nautica · ultimo aggiornamento: 23 novembre 2026</p>
+
+<div class="box"><b>In breve.</b> Rotta Nautica è un aiuto alla navigazione da diporto, gratuito. La posizione GPS resta sul telefono, salvo che tu scelga di condividerla. L'account Google è facoltativo e serve per la flotta, i punti sincronizzati, le recensioni e i nomi dei relitti. Non vendiamo dati e oggi l'app non contiene pubblicità.</div>
+
+<h2>1. Chi gestisce l'app</h2>
+<p>Rotta Nautica è sviluppata e gestita da chi pubblica il progetto <a href="https://github.com/capofusnez/rotta-nautica">github.com/capofusnez/rotta-nautica</a>, che è il titolare del trattamento dei dati descritti qui. Per domande, richieste sui dati o segnalazioni scrivi tramite la pagina del progetto.</p>
+
+<h2>2. Condizioni d'uso</h2>
+<h3>Aiuto alla navigazione, non strumento ufficiale</h3>
+<p>Carte, profondità, rotte, segnali, aree protette, zone di pesca, marine, meteo e ogni altra informazione dell'app vengono da fonti pubbliche e da volontari (OpenStreetMap, OpenSeaMap, EMODnet, Open-Meteo e altre) e possono essere incompleti, imprecisi o non aggiornati. L'app <b>non sostituisce</b> le carte nautiche ufficiali, gli avvisi ai naviganti, le ordinanze delle Capitanerie di porto, gli strumenti di bordo né l'attenzione di chi naviga.</p>
+<p>La responsabilità della navigazione, del rispetto delle norme (patente, distanza dalla costa, velocità, divieti di pesca e di ancoraggio) e della sicurezza a bordo resta di chi comanda l'unità. Lo sviluppatore non risponde di danni derivati dall'uso delle informazioni dell'app.</p>
+<h3>Contenuti della community</h3>
+<p>Recensioni e nomi proposti per i relitti sono pubblici e firmati con il nome del tuo account Google. Scrivi solo cose vere e rispettose: niente offese, pubblicità, dati personali di altre persone o contenuti illegali. I moderatori possono rifiutare o cancellare i contenuti che non rispettano queste regole.</p>
+<h3>Uso consentito</h3>
+<p>Non usare l'app per disturbare altri utenti, per raccogliere i loro dati o per caricare contenuti automatici. Possiamo bloccare gli account che lo fanno.</p>
+
+<h2>3. Dati che l'app usa</h2>
+<table>
+  <tr><th>Dato</th><th>A cosa serve</th><th>Dove finisce</th></tr>
+  <tr><td>Posizione GPS</td><td>Carta, rotta, dati di Bordo, allarmi (ancora, costa, velocità)</td><td>Solo sul telefono. Se attivi "Condividi la mia posizione": posizione, nome scelto, tipo di mezzo, rotta e velocità vanno su Google Firebase e li vedono gli altri utenti collegati; si cancellano quando chiudi l'app o perdi la connessione, e comunque dopo 10 minuti senza aggiornamenti.</td></tr>
+  <tr><td>Account Google: nome, email, codice utente</td><td>Accesso, flotta, punti sincronizzati, recensioni, nomi dei relitti, moderazione</td><td>Google Firebase: Authentication per l'accesso, Realtime Database con server in Europa (Belgio).</td></tr>
+  <tr><td>Punti salvati e nomi privati dei relitti</td><td>Ritrovarli su più dispositivi</td><td>Firebase, leggibili solo da te.</td></tr>
+  <tr><td>Recensioni e nomi proposti</td><td>Condividerli con la community</td><td>Firebase, pubblici con il tuo nome; i nomi proposti li leggono prima i moderatori.</td></tr>
+  <tr><td>Impostazioni, check-list, report, ore motore, traccia</td><td>Funzioni dell'app</td><td>Solo sul telefono (memoria del browser o dell'app).</td></tr>
+</table>
+<p>L'app non usa sistemi di profilazione né di pubblicità e non vende né cede dati a terzi.</p>
+
+<h2>4. Servizi esterni</h2>
+<p>Per mostrare carte e informazioni l'app chiede dati a servizi esterni. Ricevono la zona della carta che stai guardando (o il punto di cui chiedi il meteo o la ricerca) e, come ogni sito, l'indirizzo IP del telefono; non ricevono il tuo nome.</p>
+<ul>
+  <li>Carte: <a href="https://osmfoundation.org/wiki/Privacy_Policy">OpenStreetMap</a>, <a href="https://openseamap.org">OpenSeaMap</a>, <a href="https://www.esri.com/en-us/privacy/overview">Esri</a> (satellite) e, solo se la attivi con una tua chiave, <a href="https://policies.google.com/privacy">Google</a>.</li>
+  <li>Meteo e mare: <a href="https://open-meteo.com/en/terms">Open-Meteo</a>.</li>
+  <li>Profondità: <a href="https://emodnet.ec.europa.eu/en/privacy-policy">EMODnet</a> (Commissione europea).</li>
+  <li>Ricerca dei luoghi: <a href="https://osmfoundation.org/wiki/Privacy_Policy">Nominatim (OpenStreetMap)</a>.</li>
+  <li>Traffico navale (solo se apri la pagina AIS): <a href="https://www.vesselfinder.com/privacy-policy">VesselFinder</a>.</li>
+  <li>Account e dati condivisi: <a href="https://firebase.google.com/support/privacy">Google Firebase</a>.</li>
+  <li>Sito e aggiornamenti dell'app: <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub Pages</a>.</li>
+</ul>
+
+<h2>5. Base giuridica e conservazione</h2>
+<p>I dati dell'account e quelli che scegli di condividere sono trattati per fornirti le funzioni che chiedi (esecuzione del servizio) e con il tuo consenso, che dai accettando queste condizioni e attivando le singole funzioni. Puoi revocarlo in ogni momento: spegni la condivisione della posizione, esci dall'account o chiedi la cancellazione.</p>
+<p>La posizione condivisa si cancella da sola. Punti, recensioni e nomi restano finché non li cancelli tu o non chiedi di cancellare l'account.</p>
+
+<h2>6. I tuoi diritti</h2>
+<p>Secondo il Regolamento europeo 2016/679 (GDPR) puoi chiedere di vedere, correggere o cancellare i tuoi dati, limitarne l'uso, opporti al trattamento e riceverli in un formato leggibile. Scrivi tramite la pagina del progetto indicata al punto 1. Puoi anche presentare reclamo al <a href="https://www.garanteprivacy.it">Garante per la protezione dei dati personali</a>.</p>
+
+<h2>7. Modifiche</h2>
+<p>Se queste condizioni cambiano in modo importante, l'app te le ripropone al primo avvio dopo l'aggiornamento e ti chiede di accettarle di nuovo.</p>
+
+<a class="back" href="./">← Torna all'app</a>
+</main>
+</body>
+</html>
