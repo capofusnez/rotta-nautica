@@ -187,10 +187,11 @@
                più i ponti brevi (bridgeM); non aprono varchi nelle file di briccole e non valgono in laguna
      barrier:  file di segnali dello stesso lato, non attraversabili
      nogo:     pali, pericoli isolati, scogli, relitti
+     free:     darsene e porticcioli: niente limite di fondale EMODnet (la maglia da 115 m non vede i bacini dragati)
      sx, sy, sp, sn: corsia di dritta nei canali (regola 9), vedi Channels.paintSide */
   function makeGrid(rgba, W, H, box, extra) {
     const m = waterMask(rgba, W * H), X = extra || {};
-    const R = X.restrict, Z = X.zone, A = X.axis, E = X.ext, Ln = X.lines, B = X.barrier, N = X.nogo, SH = X.shallow, F = X.far;
+    const R = X.restrict, Z = X.zone, A = X.axis, E = X.ext, Ln = X.lines, B = X.barrier, N = X.nogo, SH = X.shallow, F = X.far, FR = X.free;
     const mpp0 = box ? 156543.03392 * Math.cos(px2lat(box.ty0 * TILE + H / 2, box.z) * RAD) / 2 ** box.z : 10;
     /* corsi d'acqua non dichiarati navigabili: valgono solo i pezzi brevi sopra la "terra" della carta (ponti) */
     const BR = X.lines2 ? bridges(X.lines2, m, W, H, mpp0) : null;
@@ -210,7 +211,7 @@
       if (EC && EC[i]) { m[i] = EN.ok[i] ? 1 : 0; continue; }
       const water = m[i], r = R && R[i];
       /* fondale EMODnet troppo basso: vietato fuori dai canali segnalati e dai corsi d'acqua navigabili */
-      if (SH && SH[i] && !((A && A[i]) || (E && E[i]) || (Ln && Ln[i]))) { m[i] = 0; continue; }
+      if (SH && SH[i] && !((A && A[i]) || (E && E[i]) || (Ln && Ln[i]) || (FR && FR[i]))) { m[i] = 0; continue; }
       const z = Z && Z[i];
       let ok = (wide[i] && !r && !z) || (BR && BR[i] && !r && !z) || (Ln && Ln[i]) || (A && A[i] && (water || r)) || (E && E[i] && water && !r);
       /* una fila di briccole è invalicabile, salvo dove la attraversa un canale mappato (lì c'è il varco); i pali restano ostacoli */
@@ -415,8 +416,11 @@
     /* ULTIMO TRATTO FUORI CANALE: se rispettando i canali non si arriva, si riprova permettendo di lasciare canali e
        zone lagunari solo entro relaxM metri da partenza e arrivo (es. l'approdo di un locale fuori dalle briccole).
        Terra, pali e file di briccole restano invalicabili. Il tratto fuori canale viene misurato e segnalato. */
-    if (m.relaxM > 0) {
-      const W = m.W, H = m.H, rPx = m.relaxM / g.mpp, r2 = rPx * rPx;
+    /* relaxM può essere un elenco di raggi crescenti (es. [500, 1500]): si prova prima il più stretto.
+       Il secondo serve quando la partenza è in una darsena dentro la laguna, lontana dall'inizio delle briccole. */
+    for (const relax of [].concat(m.relaxM || [])) {
+      if (!(relax > 0)) continue;
+      const W = m.W, H = m.H, rPx = relax / g.mpp, r2 = rPx * rPx;
       const P = [cellOfXY(g, m.a), cellOfXY(g, m.b)];
       const X2 = Object.assign({}, m.extra);
       ['restrict', 'zone', 'shallow'].forEach(k => {

@@ -48,6 +48,13 @@ way["natural"="coastline"]->.coast;
   nwr["seamark:type"="restricted_area"]["seamark:restricted_area:restriction"~"entry_prohibited"];
   way["water"="lagoon"];
   relation["water"="lagoon"];
+  // darsene e porticcioli: acqua libera anche quando stanno dentro il poligono di una laguna (es. Aprilia Marittima)
+  way["leisure"="marina"];
+  relation["leisure"="marina"];
+  way["landuse"="harbour"](around.coast:3000);
+  relation["landuse"="harbour"](around.coast:3000);
+  way["water"~"^(harbour|dock|marina|basin)$"](around.coast:3000);
+  relation["water"~"^(harbour|dock|marina|basin)$"](around.coast:3000);
   way["natural"="wetland"](around.coast:3000);
   relation["natural"="wetland"](around.coast:3000);
   way["natural"="shoal"];
