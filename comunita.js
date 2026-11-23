@@ -87,7 +87,8 @@
       emit();
     },
     reject: (k, uid) => F().dbRemove(`proposte/${k}/${uid}`),
-    removeApproved: k => F().dbRemove(`relitti_nomi/${k}`).then(() => { delete approved[k]; emit(); }),
+    removeApproved: k => F().dbRemove(`relitti_nomi/${k}`).then(() => { delete approved[k]; try { localStorage.setItem(LS, JSON.stringify(approved)); } catch (e) { /* ignora */ } emit(); }),
+    approvedNames: () => approved,
     /* recensioni */
     reviews: k => F() && F().available ? F().pub('recensioni/' + key(k)).then(v => v || {}) : Promise.resolve({}),
     async review(k, stars, text) {
@@ -127,8 +128,8 @@
       loadCw();
     },
     rejectWreck: (uid, k) => F().dbRemove(`relitti_proposti/${uid}/${k}`),
-    removeCommunityWreck: k => F().dbRemove(`relitti_utenti/${k}`).then(loadCw),
-    removeCommunityPos: k => F().dbRemove(`relitti_posizioni/${k}`).then(loadCw)
+    removeCommunityWreck: k => F().dbRemove(`relitti_utenti/${k}`).then(() => { delete cw.nuovi[k]; emit(); loadCw(); }),
+    removeCommunityPos: k => F().dbRemove(`relitti_posizioni/${k}`).then(() => { delete cw.posizioni[k]; emit(); loadCw(); })
   };
   window.RNCom = C;
   if (document.readyState !== 'loading') hook(); else document.addEventListener('DOMContentLoaded', hook);

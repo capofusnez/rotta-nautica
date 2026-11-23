@@ -2235,7 +2235,7 @@ async function openWreck(id) {
   }
   h += `<div class="btns"><button data-act="wreckShow" data-id="${esc(w.id)}">Mostra sulla carta</button><button data-act="ptUse" data-k="dest" ${a}>Destinazione</button></div>` +
     `<div class="btns"><button data-act="revOpen" data-k="${esc(w.id)}" data-n="${esc(wkName(w).slice(0, 60))}" data-back="${esc(w.id)}">★ Recensioni</button><button data-act="ptSave" ${a} data-c="immersione" data-n="${esc(wkName(w).slice(0, 60))}">Salva nei miei punti</button></div>` +
-    `<div class="btns"><button data-act="wkFix" data-id="${esc(w.id)}">📍 Correggi la posizione</button><button data-act="wreckBack">Torna ai punti</button></div>` +
+    `<div class="btns"><button data-act="wkFix" data-id="${esc(w.id)}">📍 Correggi la posizione</button><button data-act="wreckBack">Torna ai punti</button></div>` + wreckModBtns(w) +
     '<p class="note">Immergiti solo con il brevetto adatto alla profondità, segnala l\'immersione con boa o bandiera e rispetta i divieti: molti relitti sono tutelati.</p>';
   el.innerHTML = h;
   /* niente scheda ma c'è la voce di Wikipedia nei dati: si mostra il riassunto (serve la rete) */
@@ -2304,6 +2304,38 @@ function renderWkMod() {
       (r.p.note ? `<p>${esc(r.p.note)}</p>` : '') +
       `<div class="btns"><button class="primary" data-act="modWkOk" data-u="${esc(r.uid)}" data-k="${esc(r.k)}">Approva</button><button class="danger" data-act="modWkNo" data-u="${esc(r.uid)}" data-k="${esc(r.k)}">Rifiuta</button><button data-act="modWkShow" data-lat="${r.p.lat}" data-lng="${r.p.lng}">Vedi sulla carta</button></div></div>`;
   }).join('');
+}
+
+/* già approvati: il moderatore può toglierli se si accorge di un errore (doppio tocco per confermare) */
+const modDel = (act, k, label) => `<button class="danger" data-act="${act}" data-k="${esc(k)}">${label}</button>`;
+function renderModDone() {
+  const N = RNCom.approvedNames() || {}, cw = RNCom.wrecks() || {}, U = cw.nuovi || {}, P = cw.posizioni || {};
+  const byKey = k => (WRECKS || []).find(w => RNCom.key(w.id) === k);
+  const tot = Object.keys(N).length + Object.keys(U).length + Object.keys(P).length;
+  let h = `<h4>Già approvati</h4>`;
+  if (!tot) return h + '<p class="note">Niente di approvato finora.</p>';
+  h += '<p class="note">Se ti accorgi che qualcosa è sbagliato puoi toglierlo: tocca due volte il pulsante rosso per confermare.</p>';
+  const row = (title, sub, show, del) => `<div class="revItem"><div>${title}</div>${sub ? `<div class="mut">${sub}</div>` : ''}<div class="btns">${show}${del}</div></div>`;
+  if (Object.keys(N).length) h += `<details class="info"><summary>Nomi dei relitti (${Object.keys(N).length})</summary>` + Object.entries(N).map(([k, v]) => {
+    const w = byKey(k);
+    return row(`<b>${esc(v.n)}</b>`, v.da ? `proposto da ${esc(v.da)}` : '', w ? `<button data-act="wreckInfo" data-id="${esc(w.id)}">Vedi il relitto</button>` : '', modDel('modDelName', k, 'Togli il nome'));
+  }).join('') + '</details>';
+  if (Object.keys(U).length) h += `<details class="info"><summary>Relitti aggiunti (${Object.keys(U).length})</summary>` + Object.entries(U).map(([k, v]) =>
+    row(`<b>${esc(v.n || 'Relitto senza nome')}</b>`, `${fmtDMS(v)}${v.da ? ` · da ${esc(v.da)}` : ''}`, `<button data-act="wreckInfo" data-id="u_${esc(k)}">Vedi</button>`, modDel('modDelWk', k, 'Elimina il relitto'))).join('') + '</details>';
+  if (Object.keys(P).length) h += `<details class="info"><summary>Posizioni corrette (${Object.keys(P).length})</summary>` + Object.entries(P).map(([k, v]) => {
+    const w = byKey(k);
+    return row(`<b>${esc(w ? (w.name || wkName(w)) : v.id)}</b>`, `nuova posizione ${fmtDMS(v)}${v.da ? ` · da ${esc(v.da)}` : ''}`, w ? `<button data-act="wreckInfo" data-id="${esc(w.id)}">Vedi</button>` : '', modDel('modDelPos', k, 'Torna alla posizione originale'));
+  }).join('') + '</details>';
+  return h;
+}
+/* pulsanti del moderatore nella scheda del relitto */
+function wreckModBtns(w) {
+  if (!window.RNCom || !RNCom.isMod()) return '';
+  const k = RNCom.key(w.id), b = [];
+  if (w.comm) b.push(modDel('modDelWk', w.id.slice(2), 'Elimina il relitto'));
+  if (w.posFix) b.push(modDel('modDelPos', k, 'Torna alla posizione originale'));
+  if ((RNCom.approvedNames() || {})[k]) b.push(modDel('modDelName', k, 'Togli il nome della community'));
+  return b.length ? `<div class="cmBox"><h5 class="wkH">Moderatore</h5><div class="btns">${b.join('')}</div></div>` : '';
 }
 
 /* nome di un relitto senza nome: privato o proposto alla community (comunita.js) */
@@ -2376,7 +2408,7 @@ function renderModBox() {
     h += `<h4>Nomi dei relitti</h4>` + (P === null ? '<p class="note">Carico le proposte…</p>' : rows.length ? `<p class="note">${rows.length === 1 ? '1 proposta' : rows.length + ' proposte'} di nomi per i relitti:</p>` +
       rows.map(r => `<div class="revItem"><div><b>${esc(r.p.n)}</b> · proposto da ${esc(r.p.u || 'utente')}${r.p.t ? ' il ' + new Date(r.p.t).toLocaleDateString('it-IT') : ''}</div>` +
         `<div class="btns"><button class="primary" data-act="modOk" data-k="${esc(r.k)}" data-u="${esc(r.uid)}">Approva</button><button class="danger" data-act="modNo" data-k="${esc(r.k)}" data-u="${esc(r.uid)}">Rifiuta</button><button data-act="wreckInfo" data-id="${esc(r.p.id)}">Vedi il relitto</button></div></div>`).join('')
-      : '<p class="note">Nessuna proposta di nomi da approvare.</p>') + '<h4>Relitti segnalati</h4>' + renderWkMod();
+      : '<p class="note">Nessuna proposta di nomi da approvare.</p>') + '<h4>Relitti segnalati</h4>' + renderWkMod() + renderModDone();
   }
   el.innerHTML = h;
 }
@@ -2973,6 +3005,13 @@ document.addEventListener('click', e => {
     }
     case 'modWkOk': RNCom.approveWreck(d.u, d.k).then(() => { toast('Segnalazione approvata: ora la vedono tutti'); renderModBox(); }).catch(err => toast('Non approvata: ' + (err.message || err))); break;
     case 'modWkNo': RNCom.rejectWreck(d.u, d.k).then(() => { toast('Segnalazione rifiutata'); renderModBox(); }).catch(err => toast('Errore: ' + (err.message || err))); break;
+    case 'modDelName': case 'modDelWk': case 'modDelPos': {
+      if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.dataset.txt = b.textContent; b.textContent = 'Tocca di nuovo per confermare'; setTimeout(() => { if (b.isConnected) { b.dataset.armed = ''; b.textContent = b.dataset.txt; } }, 4000); break; }
+      const a = d.act, fn = a === 'modDelName' ? RNCom.removeApproved : a === 'modDelWk' ? RNCom.removeCommunityWreck : RNCom.removeCommunityPos;
+      fn(d.k).then(() => { toast(a === 'modDelName' ? 'Nome tolto' : a === 'modDelWk' ? 'Relitto eliminato' : 'Posizione originale ripristinata'); mergeCw(); if (S.tab === 'mod') renderModBox(); else if (S.tab === 'relitto') openSheet('punti'); })
+        .catch(err => toast('Non riuscito: ' + (err.message || err)));
+      break;
+    }
     case 'modWkShow': {
       const ll = [+d.lat, +d.lng]; minSheet(true); map.setView(ll, 15);
       const m = L.circleMarker(ll, { radius: 14, color: '#e65100', weight: 3, fillOpacity: 0.15 }).addTo(map).bindTooltip('Posizione segnalata', { permanent: true, direction: 'top' });
