@@ -1679,7 +1679,7 @@ async function isoLines(b, z) {
   });
   return out;
 }
-window.rnDebug = { terraTile: (z, x, y) => terraTile(z, x, y), offTilesRoute: p => offTilesRoute(p), coastHere, isoLines, mergeCw: () => mergeCw() };
+window.rnDebug = { wkForm: o => openWreckForm(o), openWreck: id => openWreck(id), terraTile: (z, x, y) => terraTile(z, x, y), offTilesRoute: p => offTilesRoute(p), coastHere, isoLines, mergeCw: () => mergeCw() };
 const isoRenderer = L.canvas({ padding: 0.2 });
 
 /* Tessere intere in memoria: al massimo 16 (3,7 MB l'una), le meno usate di recente escono. */
@@ -2531,7 +2531,7 @@ function mergeCw() {
     const id = 'u_' + k;
     let w = WRECKS.find(x => x.id === id);
     if (!w) { w = { id, comm: true }; WRECKS.push(w); }
-    Object.assign(w, { lat: v.lat, lng: v.lng, name: v.n || '', depth: v.prof != null ? v.prof : null, note: v.note || '', by: v.da || '' });
+    Object.assign(w, { lat: v.lat, lng: v.lng, name: v.n || '', depth: v.prof != null ? v.prof : null, note: v.note || '', by: v.da || '', st: v.st || null });
     if (w.marker) w.marker.setLatLng([w.lat, w.lng]); else wkMarker(w);
   });
   for (let i = WRECKS.length - 1; i >= 0; i--) { const w = WRECKS[i]; if (w.comm && !N[w.id.slice(2)]) { if (w.marker) cwLayer.removeLayer(w.marker); WRECKS.splice(i, 1); } }
@@ -2592,11 +2592,11 @@ async function openWreck(id) {
   if (wkComm(w)) h += `<p class="note">${wkComm(w)}, dopo il controllo di un moderatore.</p>`;
   if (w.comm && w.note) h += `<p class="wkP">${esc(w.note)}</p>`;
   if (!w.name && window.RNCom) h += wreckNameBox(w);
-  if (st) {
-    h += `<p class="wkIntro">${esc(st.intro)}</p>` + st.sezioni.map(s => `<h5 class="wkH">${esc(s.t)}</h5>` + s.p.map(p => `<p class="wkP">${esc(p)}</p>`).join('')).join('') +
-      `<p class="note"><b>Fonti:</b> ${st.fonti.map(f => `<a href="${esc(safeUrl(f.url) || '#')}" target="_blank" rel="noopener">${esc(f.t)}</a>`).join(' · ')}. Scheda scritta solo con le informazioni di queste fonti: dove non sono certe, è detto.</p>`;
-  } else {
-    h += `<div id="wkWiki"><p class="note">Per questo relitto non c'è ancora una scheda con la storia${w.note ? '' : ' e nei dati nautici non ci sono altre notizie'}.</p>${w.note ? `<p class="wkP">${esc(w.note)}</p>` : ''}</div>`;
+  const cst = !st && w.st && window.RNWreckSearch ? RNWreckSearch.unpack(w.st) : null;
+  if (st) h += storyHtml(st);
+  else if (cst) h += storyHtml(cst);
+  else {
+    h += `<div id="wkWiki"><p class="note">${window.RNWreckSearch && navigator.onLine ? 'Cerco notizie su questo relitto…' : `Per questo relitto non c'è ancora una scheda con la storia${w.note ? '' : ' e nei dati nautici non ci sono altre notizie'}.`}</p>${w.note && !w.comm ? `<p class="wkP">${esc(w.note)}</p>` : ''}</div>`;
     const q = encodeURIComponent((w.name ? w.name + ' ' : '') + 'relitto');
     h += `<p class="note">Cerca notizie: <a href="https://it.wikipedia.org/w/index.php?search=${q}" target="_blank" rel="noopener">Wikipedia</a> · <a href="https://duckduckgo.com/?q=${q}" target="_blank" rel="noopener">web</a></p>`;
   }
@@ -2605,15 +2605,21 @@ async function openWreck(id) {
     `<div class="btns"><button data-act="wkFix" data-id="${esc(w.id)}">📍 Correggi la posizione</button><button data-act="wreckBack">Torna ai punti</button></div>` + wreckModBtns(w) +
     '<p class="note">Immergiti solo con il brevetto adatto alla profondità, segnala l\'immersione con boa o bandiera e rispetta i divieti: molti relitti sono tutelati.</p>';
   el.innerHTML = h;
-  /* niente scheda ma c'è la voce di Wikipedia nei dati: si mostra il riassunto (serve la rete) */
-  const m = !st && /^([a-z]{2,3}):(.+)$/.exec(w.wiki || '');
-  if (m && navigator.onLine) {
-    try {
-      const r = await fetch(`https://${m[1]}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(m[2].replace(/ /g, '_'))}`);
-      const j = r.ok ? await r.json() : null, box = $('wkWiki');
-      if (j && j.extract && box) box.innerHTML = `<p class="wkP">${esc(j.extract)}</p><p class="note">Da <a href="${esc(wikiUrl(w.wiki))}" target="_blank" rel="noopener">Wikipedia (${esc(m[1])})</a>.</p>`;
-    } catch (e) { /* senza rete resta il messaggio */ }
+  /* niente scheda: ricerca automatica (nome, posizione, voce di Wikipedia nei dati); la risposta resta salvata */
+  if (!st && !cst && window.RNWreckSearch) {
+    const nm = w.name || (window.RNCom && RNCom.wreckName(w)) || '';
+    const res = await RNWreckSearch.find({ n: nm, lat: w.lat, lng: w.lng, wiki: w.wiki }).catch(() => null);
+    const box = $('wkWiki'); if (!box || S.tab !== 'relitto') return;
+    if (res) box.innerHTML = storyHtml(res);
+    else box.innerHTML = `<p class="note">${navigator.onLine ? 'Non ho trovato notizie su questo relitto.' : 'Senza rete non posso cercare notizie su questo relitto.'}</p>${w.note && !w.comm ? `<p class="wkP">${esc(w.note)}</p>` : ''}`;
   }
+}
+/* scheda della storia: scritta a mano (relitti-storie.json) o trovata in automatico (ricerca-relitti.js) */
+function storyHtml(st) {
+  const auto = st.auto ? `<p class="note warn">Scheda compilata in automatico da Wikipedia${st.km != null ? ` (voce con posizione a ${st.km} km)` : ''}: controlla che parli proprio di questo relitto.${st.lang && st.lang !== 'it' ? ' Testo in inglese.' : ''}</p>` : '';
+  return (st.auto ? `<h5 class="wkH">📖 ${esc(st.titolo)}</h5>` : '') + auto + (st.intro ? `<p class="wkIntro">${esc(st.intro)}</p>` : '') +
+    (st.sezioni || []).map(s => `<h5 class="wkH">${esc(s.t)}</h5>` + s.p.map(p => `<p class="wkP">${esc(p)}</p>`).join('')).join('') +
+    `<p class="note"><b>Fonti:</b> ${(st.fonti || []).map(f => `<a href="${esc(safeUrl(f.url) || '#')}" target="_blank" rel="noopener">${esc(f.t)}</a>`).join(' · ')}.${st.auto ? '' : ' Scheda scritta solo con le informazioni di queste fonti: dove non sono certe, è detto.'}</p>`;
 }
 
 /* ---------- Segnala un relitto o correggi la posizione (va ai moderatori) ---------- */
@@ -2636,7 +2642,7 @@ function openWreckForm(o) {
   if (WKF.poi) {
     /* dal mio punto: si salva sempre per me; la condivisione è facoltativa e richiede l'accesso */
     h += '<p class="note">Il punto è salvato nei tuoi punti. Dagli un nome e, se vuoi, condividilo: un moderatore lo controlla prima di mostrarlo a tutti.</p>' +
-      `<div class="form wkForm"><label>Nome del relitto <span><input id="wkfN" maxlength="60" value="${esc(WKF.n || '')}" placeholder="es. Aereo, Peschereccio Maria…" autocomplete="off"></span></label>` +
+      `<div class="form wkForm"><label>Nome del relitto <span><input id="wkfN" maxlength="60" value="${esc(WKF.n || '')}" placeholder="es. Aereo, Peschereccio Maria…" autocomplete="off"></span></label><div id="wkfAuto"></div>` +
       `<label>Posizione <span><input id="wkfP" value="${esc(pos)}" autocomplete="off"></span></label>` +
       `<div class="btns"><button type="button" data-act="wkGps">Usa la mia posizione</button><button type="button" data-act="wkPick">Scegli sulla carta</button></div>` +
       `<label>Profondità del fondo <span><input id="wkfD" type="number" inputmode="decimal" min="0" max="1000" step="0.5" value="${esc(WKF.prof != null ? WKF.prof : '')}"> m</span></label>` +
@@ -2645,13 +2651,13 @@ function openWreckForm(o) {
         `<label class="chk"><input type="checkbox" id="wkfA"${WKF.anon ? '' : ' checked'}> <span>Mostra il mio nome (${esc(me.name || 'utente')}) con la segnalazione</span></label>`
         : '<p class="note">Per condividerlo con tutti accedi con Google in <a href="#" data-act="goAccount">Barca e account</a>; intanto resta tra i tuoi punti.</p>') +
       `</div><div class="btns"><button class="primary" data-act="wkSend">Salva</button><button data-act="wreckBack">Annulla</button></div>`;
-    $('wkBox').innerHTML = h; return;
+    $('wkBox').innerHTML = h; wkAuto(); return;
   }
   if (!me) { $('wkBox').innerHTML = h + '<p class="note">Per segnalare un relitto o correggerne la posizione accedi con Google in <a href="#" data-act="goAccount">Barca e account</a>.</p><div class="btns"><button data-act="wreckBack">Indietro</button></div>'; return; }
   h += WKF.tipo === 'posizione' ? `<p class="note">Relitto: <b>${esc(w ? wkName(w) : 'relitto')}</b>. Posizione attuale: ${w ? fmtDMS(w.pos0 || w) : ''}. Indica quella giusta: un moderatore la controlla prima di renderla visibile a tutti.</p>`
     : '<p class="note">Indica dove si trova il relitto. Un moderatore controlla la segnalazione prima di renderla visibile a tutti.</p>';
   h += `<div class="form wkForm">` +
-    (WKF.tipo === 'nuovo' ? `<label>Nome (se lo conosci) <span><input id="wkfN" maxlength="60" value="${esc(WKF.n || '')}" placeholder="es. Peschereccio Maria" autocomplete="off"></span></label>` : '') +
+    (WKF.tipo === 'nuovo' ? `<label>Nome (se lo conosci) <span><input id="wkfN" maxlength="60" value="${esc(WKF.n || '')}" placeholder="es. Peschereccio Maria" autocomplete="off"></span></label><div id="wkfAuto"></div>` : '') +
     `<label>Posizione <span><input id="wkfP" value="${esc(pos)}" placeholder="45.6321, 13.0712 oppure 45°37'55&quot;N 13°04'16&quot;E" autocomplete="off"></span></label>` +
     `<div class="btns"><button type="button" data-act="wkGps">Usa la mia posizione</button><button type="button" data-act="wkPick">Scegli sulla carta</button></div>` +
     (WKF.tipo === 'nuovo' ? `<label>Profondità del fondo <span><input id="wkfD" type="number" inputmode="decimal" min="0" max="1000" step="0.5" value="${esc(WKF.prof != null ? WKF.prof : '')}"> m</span></label>` +
@@ -2661,7 +2667,38 @@ function openWreckForm(o) {
   const mineN = Object.keys((RNCom.myWreckProps && RNCom.myWreckProps()) || {}).length;
   if (mineN) h += `<p class="note">${mineN === 1 ? 'Hai 1 segnalazione' : `Hai ${mineN} segnalazioni`} in attesa di controllo.</p>`;
   $('wkBox').innerHTML = h;
+  if (WKF.tipo === 'nuovo') wkAuto();
 }
+/* ricerca automatica mentre si compila: con nome e/o posizione cerca su Wikipedia e completa i campi vuoti */
+let wkAutoT = 0, wkAutoSeq = 0;
+function wkAutoBox() {
+  const el = $('wkfAuto'); if (!el || !WKF) return;
+  if (WKF.busy) { el.innerHTML = '<p class="note">🔎 Cerco notizie su questo relitto…</p>'; return; }
+  const st = WKF.st;
+  el.innerHTML = st ? `<div class="wkAuto"><p class="note">📖 <b>Trovato:</b> <a href="${esc(safeUrl(st.fonti[0].url) || '#')}" target="_blank" rel="noopener">${esc(st.titolo)}</a>${st.km != null ? ` · a ${st.km} km` : ''}. Ho completato i campi vuoti; la scheda con la storia si allega alla segnalazione.</p>` +
+    `<p class="wkP">${esc(st.intro.slice(0, 220))}${st.intro.length > 220 ? '…' : ''}</p><div class="btns"><button type="button" data-act="wkAutoNo">Non è questo relitto</button></div></div>` : '';
+}
+function wkAuto(now) {
+  clearTimeout(wkAutoT);
+  if (!WKF || WKF.tipo !== 'nuovo' || !window.RNWreckSearch) return;
+  wkAutoT = setTimeout(async () => {
+    wkFormRead();
+    const q = (WKF.n || '').trim() + '|' + (isFinite(WKF.lat) ? (+WKF.lat).toFixed(3) + ',' + (+WKF.lng).toFixed(3) : '');
+    if (q === WKF.autoQ || q === '|') { wkAutoBox(); return; }
+    WKF.autoQ = q; if (WKF.noAuto && WKF.noAuto === q) return;
+    const seq = ++wkAutoSeq; WKF.busy = navigator.onLine; wkAutoBox();
+    const st = await RNWreckSearch.find({ n: WKF.n, lat: WKF.lat, lng: WKF.lng }).catch(() => null);
+    if (seq !== wkAutoSeq || !WKF) return;
+    WKF.busy = false;
+    if (st && WKF.noAutoT !== st.titolo) {
+      WKF.st = st; WKF.autoFill = {};
+      if (!(WKF.n || '').trim() && $('wkfN')) { WKF.n = st.titolo.replace(/\s*\([^)]*\)\s*$/, '').slice(0, 60); $('wkfN').value = WKF.n; WKF.autoFill.n = WKF.n; WKF.autoQ = WKF.n.trim() + q.slice(q.indexOf('|')); }
+      if (!(WKF.note || '').trim() && $('wkfT')) { WKF.note = st.intro.slice(0, 500).replace(/\s+\S*$/, st.intro.length > 500 ? '…' : ''); $('wkfT').value = WKF.note; WKF.autoFill.note = WKF.note; }
+    } else if (!st) WKF.st = null;
+    wkAutoBox();
+  }, now ? 0 : 1000);
+}
+document.addEventListener('input', e => { if (e.target && (e.target.id === 'wkfN' || e.target.id === 'wkfP') && WKF) wkAuto(); });
 function wkFormRead() {
   if (!WKF || !$('wkfP')) return;
   const p = parseCoords($('wkfP').value); if (p) { WKF.lat = p.lat; WKF.lng = p.lng; }
@@ -2696,7 +2733,7 @@ function renderWkMod() {
     const w = r.p.id && (WRECKS || []).find(x => x.id === r.p.id);
     const what = r.p.tipo === 'posizione' ? `Posizione corretta per <b>${esc(w ? wkName(w) : r.p.id)}</b>${w ? ` (spostamento di ${fmtDist(dist(w.pos0 || w, r.p))})` : ''}` : `Nuovo relitto: <b>${esc(r.p.n || 'senza nome')}</b>`;
     return `<div class="revItem"><div>${what}</div><div class="mut">${fmtDMS(r.p)}${r.p.prof != null ? ` · fondo ${esc(r.p.prof)} m` : ''} · da ${esc(r.p.u || 'utente')}${r.p.anon ? ' (nome nascosto al pubblico)' : ''}${r.p.t ? ' il ' + new Date(r.p.t).toLocaleDateString('it-IT') : ''}</div>` +
-      (r.p.note ? `<p>${esc(r.p.note)}</p>` : '') + (r.p.tipo === 'posizione' ? '' : asSel('wk/' + r.uid + '/' + r.k, 'relitto')) +
+      (r.p.note ? `<p>${esc(r.p.note)}</p>` : '') + (() => { const st = r.p.st && window.RNWreckSearch && RNWreckSearch.unpack(r.p.st); return st ? `<p class="note">📖 Con scheda trovata in automatico: <a href="${esc(safeUrl(st.fonti[0].url) || '#')}" target="_blank" rel="noopener">${esc(st.titolo)}</a>. Controlla che sia il relitto giusto.</p>` : ''; })() + (r.p.tipo === 'posizione' ? '' : asSel('wk/' + r.uid + '/' + r.k, 'relitto')) +
       `<div class="btns"><button class="primary" data-act="modWkOk" data-u="${esc(r.uid)}" data-k="${esc(r.k)}">Approva</button><button class="danger" data-act="modWkNo" data-u="${esc(r.uid)}" data-k="${esc(r.k)}">Rifiuta</button><button data-act="modWkShow" data-lat="${r.p.lat}" data-lng="${r.p.lng}">Vedi sulla carta</button></div></div>`;
   }).join('');
 }
@@ -3528,6 +3565,14 @@ document.addEventListener('click', e => {
     case 'wkPick': wkPickStart(); break;
     case 'wkPickOk': wkPickEnd(true); break;
     case 'wkPickNo': wkPickEnd(false); break;
+    case 'wkAutoNo': {
+      if (!WKF || !WKF.st) break;
+      wkFormRead();
+      const af = WKF.autoFill || {};
+      if (af.n && WKF.n === af.n && $('wkfN')) { WKF.n = ''; $('wkfN').value = ''; }
+      if (af.note && WKF.note === af.note && $('wkfT')) { WKF.note = ''; $('wkfT').value = ''; }
+      WKF.noAutoT = WKF.st.titolo; WKF.st = null; WKF.autoFill = null; wkAutoBox(); toast('Tolti i dati trovati'); break;
+    }
     case 'wkSend': {
       wkFormRead();
       if (!parseCoords($('wkfP').value)) { toast('Scrivi una posizione valida o sceglila sulla carta'); break; }

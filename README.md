@@ -128,6 +128,7 @@ Rotta Nautica è un **aiuto alla navigazione**. Non sostituisce:
   - `channels.js`: canali e briccole;
   - `flotta.js`: Firebase;
   - `comunita.js`: community e moderazione;
+  - `ricerca-relitti.js`: ricerca automatica delle notizie sui relitti (Wikipedia);
   - `checklist.js` e `catalogo.js`: check-list e catalogo;
   - `aiuto.js`: avvio, privacy e spiegazioni;
   - `pubblicita.js`: pubblicità e versione Pro.

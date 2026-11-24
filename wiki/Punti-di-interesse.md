@@ -74,7 +74,7 @@ Il colore dice se il nome è noto:
 
 I siti d'immersione hanno il simbolo più grande. Toccando un relitto, nell'elenco o sulla carta:
 
-- **Approfondisci** apre la scheda con profondità, posizione e, per i relitti più noti, la **storia**: com'era la nave, come e quando è affondata, note per l'immersione, con le fonti. Le schede con la storia (📖) oggi sono 8: Rex, Baron Gautsch, Mercurio, Coriolanus, Maona, Kec, Hans Schmidt, San Giorgio.
+- **Approfondisci** apre la scheda con profondità, posizione e la **storia**. Per i relitti senza scheda scritta, con la rete l'app cerca da sola su Wikipedia (per nome o entro 10 km) e mostra la scheda trovata, con l'avviso di controllare che sia il relitto giusto. Le schede scritte a mano sono quelle dei relitti più noti: com'era la nave, come e quando è affondata, note per l'immersione, con le fonti. Le schede con la storia (📖) oggi sono 8: Rex, Baron Gautsch, Mercurio, Coriolanus, Maona, Kec, Hans Schmidt, San Giorgio.
 - **Nome del relitto**: per i relitti senza nome puoi darne uno, solo per te o da proporre a tutti.
 - **📍 Correggi la posizione**: proponi la posizione giusta.
 - **★ Recensioni**.

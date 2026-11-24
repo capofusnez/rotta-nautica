@@ -217,6 +217,9 @@
           "t": {
             ".validate": "newData.val() === now"
           },
+          "st": {
+            ".validate": "newData.isString() && newData.val().length <= 8000"
+          },
           "$other": {
             ".validate": false
           }
@@ -248,6 +251,9 @@
         },
         "t": {
           ".validate": "newData.isNumber()"
+        },
+        "st": {
+          ".validate": "newData.isString() && newData.val().length <= 8000"
         },
         "$other": {
           ".validate": false

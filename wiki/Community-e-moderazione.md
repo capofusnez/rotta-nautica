@@ -27,6 +27,8 @@ Dai da 1 a 5 stelle e scrivi un commento: una recensione per persona per luogo, 
 3. Lascia spuntato **Condividi con la community** e scegli se mostrare il tuo nome.
 4. Tocca **Salva**.
 
+**Ricerca automatica:** mentre compili, l'app cerca da sola su Wikipedia (in italiano, poi in inglese) le voci su relitti e naufragi con quel nome o entro 10 km dalla posizione. Se trova il relitto completa i campi vuoti (nome e note) e allega alla segnalazione la **scheda con la storia**, con il link alla fonte. Se non è il relitto giusto tocca **Non è questo relitto**. Il moderatore vede la scheda allegata prima di approvare.
+
 Il punto resta sempre tra i tuoi e lo vedi subito. Gli altri lo vedono dopo l'**approvazione di un moderatore**.
 
 Sulla carta i punti e i relitti approvati compaiono con il contorno arancione tratteggiato. Si vedono finché in **Punti di interesse** è spuntato **Mostra i punti e i relitti condivisi dagli altri utenti**, anche con lo strato **Relitti** spento.

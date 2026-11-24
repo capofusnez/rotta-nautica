@@ -136,6 +136,8 @@
       if (o.n) v.n = String(o.n).trim().slice(0, 60);
       if (o.prof != null && isFinite(o.prof)) v.prof = Math.max(0, Math.min(1000, +o.prof));
       if (o.note) v.note = String(o.note).trim().slice(0, 500);
+      /* scheda trovata in automatico (ricerca-relitti.js) */
+      if (o.st && v.tipo === 'nuovo' && window.RNWreckSearch) { const s = RNWreckSearch.pack(o.st); if (s) v.st = s; }
       await f.dbSet(`relitti_proposti/${f.user.uid}/${k}`, v);
       return k;
     },
@@ -149,7 +151,7 @@
         await f.dbSet(`relitti_posizioni/${key(p.id)}`, Object.assign({ id: p.id, lat: p.lat, lng: p.lng, t: f.stamp() }, da ? { da } : {}));
       } else {
         const v = { lat: p.lat, lng: p.lng, t: f.stamp() };
-        if (p.n) v.n = p.n; if (p.prof != null) v.prof = p.prof; if (p.note) v.note = p.note; if (da) v.da = da;
+        if (p.n) v.n = p.n; if (p.prof != null) v.prof = p.prof; if (p.note) v.note = p.note; if (da) v.da = da; if (p.st) v.st = p.st;
         await f.dbSet(`relitti_utenti/${uid}_${k}`, v);
       }
       await f.dbRemove(`relitti_proposti/${uid}/${k}`);
