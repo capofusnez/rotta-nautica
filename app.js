@@ -157,11 +157,44 @@ const legFrom = w => (S.leg === 1 && S.legFrom) ? S.legFrom : w[S.leg - 1];
 const map = L.map('map', { zoomControl: false, worldCopyJump: true, maxZoom: 19 })
   .setView(S.view.c, S.view.z);
 map.attributionControl.setPosition('bottomleft');
+/* Carta senza rete. Sul sito le immagini viste le salva il service worker (sw.js). Nell'APK il service worker non c'è:
+   questo strato salva da solo le immagini viste (cache rn-tiles-v2) e legge prima quelle scaricate apposta
+   con "Scarica la carta di questa zona" (cache rn-map-offline, che non si svuota da sola). */
+const MAP_OFF = 'rn-map-offline', MAP_SEEN = 'rn-tiles-v2';
+let seenPuts = 0;
+async function tileFromCache(url) {
+  try {
+    for (const n of [MAP_OFF, MAP_SEEN]) { const c = await caches.open(n); const h = await c.match(url); if (h && h.type !== 'opaque') return h.blob(); }
+  } catch (e) { /* cache non disponibile */ }
+  return null;
+}
+async function tileFetchSave(url) {
+  const r = await fetch(url, { mode: 'cors' });
+  if (!r.ok) throw new Error(r.status);
+  try {
+    const c = await caches.open(MAP_SEEN); await c.put(url, r.clone());
+    if (++seenPuts % 100 === 0) { const k = await c.keys(); if (k.length > 6000) await Promise.all(k.slice(0, k.length - 6000).map(x => c.delete(x))); }
+  } catch (e) { /* spazio pieno: si mostra lo stesso */ }
+  return r.blob();
+}
+const OffTile = L.TileLayer.extend({
+  createTile(coords, done) {
+    const img = document.createElement('img'), url = this.getTileUrl(coords);
+    img.alt = ''; img.setAttribute('role', 'presentation');
+    const show = b => { const u = URL.createObjectURL(b); img.onload = () => { URL.revokeObjectURL(u); done(null, img); }; img.onerror = e => { URL.revokeObjectURL(u); done(e, img); }; img.src = u; };
+    tileFromCache(url).then(b => b || (navigator.onLine ? tileFetchSave(url) : null)).then(b => {
+      if (b) show(b);
+      else { img.onload = () => done(null, img); img.onerror = e => done(e, img); img.src = url; }
+    }).catch(() => { img.onload = () => done(null, img); img.onerror = e => done(e, img); img.src = url; });
+    return img;
+  }
+});
+const tileL = (url, o) => window.Capacitor ? new OffTile(url, o) : L.tileLayer(url, o);
 const base = {
-  osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, zIndex: 1, crossOrigin: true, attribution: '© OpenStreetMap' }),
+  osm: tileL('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, zIndex: 1, crossOrigin: true, attribution: '© OpenStreetMap' }),
   sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, zIndex: 1, attribution: 'Esri' })
 };
-const sea = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, zIndex: 3, attribution: 'OpenSeaMap' });
+const sea = tileL('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, zIndex: 3, attribution: 'OpenSeaMap' });
 const bathy = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
   layers: 'emodnet:mean_multicolour', format: 'image/png', transparent: true, opacity: 0.6, zIndex: 2, className: 'bathy', attribution: 'EMODnet Bathymetry'
 });
@@ -1202,6 +1235,8 @@ async function syncPackage(force) {
   try { cache = await caches.open('rn-data'); } catch (e) { return; }
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* facoltativo */ }
   const fresh = async path => { try { const r = await fetch(DATA_BASE + path, { cache: 'no-cache' }); return r.ok ? r.json() : null; } catch (e) { return null; } };
+  /* elenchi piccoli (relitti, marine, zone di pesca, punti di fonda): si salvano sempre, così ci sono anche senza rete */
+  for (const f of ['relitti.json', 'relitti-storie.json', 'servizi.json', 'pesca.json', 'poi.json']) getData(f).catch(() => {});
   const ni = await fresh('nautica/index.json');
   if (!ni || !ni.tiles) return;
   const di = S.set.pkg === 'all' ? await fresh('depth/index.json') : null;
@@ -1250,6 +1285,75 @@ async function syncPackage(force) {
   nIndexP = null; dIndexP = null;   // si rileggono gli indici nuovi
   finish(); pkgStatus();
   toast(failed ? `Dati nautici: ${failed} riquadri non scaricati, riprovo al prossimo avvio` : first ? 'Dati nautici salvati: ora funzionano anche senza rete' : 'Dati nautici aggiornati');
+}
+
+/* ---------- Carta di una zona per l'uso senza rete ----------
+   Scarica le immagini della carta (OpenStreetMap e segnali OpenSeaMap) della zona visibile o intorno alla rotta,
+   fino allo zoom 15: le regole d'uso di OpenStreetMap vietano di scaricare in blocco gli zoom più alti. */
+const OFF = { running: false, stop: false, done: 0, todo: 0, fail: 0 };
+const OFF_MAXZ = 15, OFF_LIMIT = 6000;
+const tX = (lng, z) => Math.floor((lng + 180) / 360 * 2 ** z);
+const tY = (lat, z) => { const r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * 2 ** z); };
+function offTiles(bounds) {
+  const out = [], z0 = Math.max(6, Math.min(map.getZoom() - 2, 10));
+  for (let z = z0; z <= OFF_MAXZ; z++) {
+    const x0 = tX(bounds.getWest(), z), x1 = tX(bounds.getEast(), z), y0 = tY(bounds.getNorth(), z), y1 = tY(bounds.getSouth(), z);
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+      out.push(`https://tile.openstreetmap.org/${z}/${x}/${y}.png`);
+      if (S.set.sea) out.push(`https://tiles.openseamap.org/seamark/${z}/${x}/${y}.png`);
+    }
+    if (out.length > OFF_LIMIT) return null;
+  }
+  return out;
+}
+function offBounds(kind) {
+  if (kind === 'rotta') {
+    const w = (S.route.path && S.route.path.length ? S.route.path : wps()); if (w.length < 2) return null;
+    return L.latLngBounds(w.map(p => [p.lat, p.lng])).pad(0.15);
+  }
+  return map.getBounds();
+}
+function offInfo(t) { const el = $('offInfo'); if (el) el.textContent = t; }
+async function offStatus() {
+  if (OFF.running) return offInfo(`Scarico la carta: ${OFF.done}/${OFF.todo} immagini…`);
+  let n = 0; try { n = (await (await caches.open(MAP_OFF)).keys()).length; } catch (e) { /* ignora */ }
+  const a = store.get('offAreas', []);
+  offInfo(n ? `Carta salvata sul telefono: ${n} immagini${a.length ? ` (${a.length} ${a.length === 1 ? 'zona' : 'zone'}, l'ultima il ${new Date(a[a.length - 1].t).toLocaleDateString('it-IT')})` : ''}.` : 'Nessuna zona della carta scaricata.');
+}
+async function offDownload(kind) {
+  if (OFF.running) { OFF.stop = true; return; }
+  if (!navigator.onLine) { toast('Serve la connessione a internet'); return; }
+  const b = offBounds(kind); if (!b) { toast('Prima imposta una rotta'); return; }
+  const list = offTiles(b);
+  if (!list) { toast('Zona troppo grande: avvicina la carta (zoom) o scegli una zona più piccola'); return; }
+  let cache; try { cache = await caches.open(MAP_OFF); } catch (e) { toast('Questo dispositivo non permette di salvare la carta'); return; }
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* facoltativo */ }
+  const todo = [];
+  for (const u of list) if (!(await cache.match(u))) todo.push(u);
+  Object.assign(OFF, { running: true, stop: false, done: 0, todo: todo.length, fail: 0 });
+  renderOffBtns(); offStatus();
+  toast(`Scarico ${todo.length} immagini della carta (circa ${Math.max(1, Math.round(todo.length * 0.02))} MB)…`);
+  const work = async () => {
+    while (todo.length && !OFF.stop) {
+      const u = todo.shift();
+      try { const r = await fetch(u, { mode: 'cors' }); if (!r.ok) throw new Error(r.status); await cache.put(u, r); } catch (e) { OFF.fail++; }
+      OFF.done++; if (OFF.done % 25 === 0) offStatus();
+    }
+  };
+  await Promise.all([work(), work()]);   // due alla volta, per non pesare sui server di OpenStreetMap
+  const stopped = OFF.stop; OFF.running = false; OFF.stop = false;
+  const a = store.get('offAreas', []); a.push({ t: Date.now(), b: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map(v => +v.toFixed(4)) }); store.set('offAreas', a.slice(-30));
+  renderOffBtns(); offStatus();
+  toast(stopped ? 'Scaricamento interrotto: quello già scaricato resta salvato' : OFF.fail ? `Carta salvata: ${OFF.fail} immagini non scaricate, riprova più tardi` : 'Carta salvata: questa zona si vede anche senza rete');
+}
+async function offClear() {
+  try { await caches.delete(MAP_OFF); } catch (e) { /* ignora */ }
+  store.set('offAreas', []); offStatus(); toast('Carte scaricate cancellate');
+}
+function renderOffBtns() {
+  const el = $('offBtns'); if (!el) return;
+  el.innerHTML = OFF.running ? '<button data-act="offStop" class="danger">Interrompi</button>'
+    : '<button data-act="offGet" data-k="vista">Scarica la zona visibile</button><button data-act="offGet" data-k="rotta">Scarica intorno alla rotta</button><button data-act="offClear" class="danger">Cancella</button>';
 }
 
 /* Dati nautici di tutta Italia a riquadri (nautica/index.json, creato dall'azione "Aggiorna dati nautici").
@@ -2065,6 +2169,21 @@ $('sheet').addEventListener('touchend', () => {
 });
 
 /* ---------- Ricerca luoghi ---------- */
+/* senza rete (o se Nominatim non risponde) si cerca tra i dati salvati sul telefono: i tuoi punti, marine,
+   distributori, scivoli, relitti, punti della community e punti di fonda */
+async function localSearch(q) {
+  const n = v => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const words = n(q).split(/\s+/).filter(Boolean); if (!words.length) return [];
+  if (!SRV) await loadServizi().catch(() => {});
+  if (!WRECKS) await loadWrecks();
+  const out = [], add = (name, kind, o) => { if (name && words.every(w => n(name).includes(w))) out.push({ display: `${name} · ${kind}`, lat: o.lat, lng: o.lng }); };
+  livePois().forEach(o => add(o.name, poiCat(o.cat).l + ' (tuo punto)', o));
+  if (SRV) { SRV.marine.forEach(o => add(marName(o), 'marina', o)); SRV.carburante.forEach(o => add(o.name, 'distributore', o)); SRV.scivoli.forEach(o => add(o.name, 'scivolo', o)); }
+  (WRECKS || []).forEach(w => add(w.name || (window.RNCom && RNCom.wreckName(w)), 'relitto', w));
+  if (window.RNCom) Object.values(RNCom.points() || {}).forEach(o => add(o.n, poiCat(o.cat).l + ' (community)', o));
+  if (POIDATA && POIDATA.fonde) POIDATA.fonde.forEach(o => add(o.name, 'punto di fonda', o));
+  return out.slice(0, 12);
+}
 $('fSearch').addEventListener('submit', async e => {
   e.preventDefault();
   const q = $('q').value.trim(); if (!q) return;
@@ -2073,12 +2192,20 @@ $('fSearch').addEventListener('submit', async e => {
     S.results = [{ display: 'Coordinate ' + fmtDMS(c), lat: c.lat, lng: c.lng }];
     showPoint(c, 'Coordinate cercate');
   } else {
-    try {
-      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=it&q=' + encodeURIComponent(q));
+    let online = navigator.onLine;
+    if (online) try {
+      const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 8000);
+      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=it&q=' + encodeURIComponent(q), { signal: ctl.signal });
+      clearTimeout(to);
       const j = await r.json();
       S.results = j.map(x => ({ display: x.display_name, lat: +x.lat, lng: +x.lon }));
-      if (!S.results.length) toast('Nessun risultato');
-    } catch (err) { toast('Ricerca non disponibile senza rete'); S.results = []; }
+    } catch (err) { online = false; S.results = []; }
+    else S.results = [];
+    /* aggiunge (o, senza rete, usa solo) i luoghi salvati sul telefono */
+    const loc = await localSearch(q).catch(() => []);
+    S.results = online ? S.results.concat(loc.slice(0, 6)) : loc;
+    if (!S.results.length) toast(online ? 'Nessun risultato' : 'Senza rete: nessun luogo salvato con questo nome');
+    else if (!online) toast('Senza rete: risultati tra i luoghi salvati sul telefono');
   }
   renderRoute();
 });
@@ -3034,7 +3161,7 @@ function openMeteo() {
 }
 async function loadMeteo(p, label) {
   WX.p = { lat: +p.lat, lng: +p.lng }; WX.label = label; WX.busy = true; renderMeteo();
-  if (!navigator.onLine) { WX.busy = false; WX.err = 'Il meteo richiede la connessione a internet'; renderMeteo(); return; }
+  if (!navigator.onLine) { WX.busy = false; if (!wxSaved(WX.p)) { WX.err = 'Il meteo richiede la connessione a internet'; WX.data = null; } renderMeteo(); return; }
   const q = `latitude=${WX.p.lat.toFixed(3)}&longitude=${WX.p.lng.toFixed(3)}&timezone=auto&forecast_days=4`;
   const [a, b] = await Promise.allSettled([
     fetch(`https://api.open-meteo.com/v1/forecast?${q}&wind_speed_unit=kn&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl` +
@@ -3044,10 +3171,18 @@ async function loadMeteo(p, label) {
       '&hourly=wave_height,wave_direction,wave_period&daily=wave_height_max,wave_direction_dominant').then(r => r.ok ? r.json() : Promise.reject())
   ]);
   WX.busy = false;
-  if (a.status !== 'fulfilled') { WX.err = 'Previsioni non disponibili in questo momento'; WX.data = null; renderMeteo(); return; }
-  WX.err = null; WX.t = Date.now();
+  if (a.status !== 'fulfilled') { if (!wxSaved(WX.p)) { WX.err = 'Previsioni non disponibili in questo momento'; WX.data = null; } renderMeteo(); return; }
+  WX.err = null; WX.t = Date.now(); WX.old = false;
   WX.data = { f: a.value, m: b.status === 'fulfilled' ? b.value : null };
+  try { localStorage.setItem('rn.wxLast', JSON.stringify({ p: WX.p, label: WX.label, t: WX.t, data: WX.data })); } catch (e) { /* spazio pieno */ }
   renderMeteo();
+}
+/* senza rete: le ultime previsioni scaricate (entro 30 km e 4 giorni) */
+function wxSaved(p) {
+  let w = null; try { w = JSON.parse(localStorage.getItem('rn.wxLast') || 'null'); } catch (e) { return false; }
+  if (!w || !w.data || Date.now() - w.t > 4 * 864e5 || dist(p, w.p) > 30e3) return false;
+  WX.data = w.data; WX.t = w.t; WX.old = true; WX.err = null; WX.p = w.p; WX.label = w.label;
+  return true;
 }
 function renderMeteo() {
   const el = $('wxBox'); if (!el) return;
@@ -3055,12 +3190,13 @@ function renderMeteo() {
   if (WX.busy) { el.innerHTML = where + '<p class="note">Carico le previsioni…</p>'; return; }
   if (!WX.data) { el.innerHTML = where + `<p class="note${WX.err ? ' warn' : ''}">${esc(WX.err || 'Scegli dove vedere il meteo.')}</p>`; return; }
   const f = WX.data.f, m = WX.data.m, c = f.current || {}, mc = (m && m.current) || {};
+  const oldNote = WX.old ? `<p class="note warn">Senza rete: previsioni scaricate il ${new Date(WX.t).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. I valori "adesso" sono di allora.</p>` : '';
   const ws = c.wind_speed_10m, wg = c.wind_gusts_10m, wd = c.wind_direction_10m, wh = mc.wave_height;
   const warn = [];
   if (wg >= 25) warn.push(`raffiche fino a ${Math.round(wg)} nodi`);
   if (wh >= 1.5) warn.push(`onda di ${wh.toFixed(1)} m`);
   const g = (l, v, sub, w) => `<div class="g${w ? ' w' : ''}"><span class="lbl">${l}</span><b>${v}</b>${sub ? `<span class="note">${sub}</span>` : ''}</div>`;
-  let h = where + (warn.length ? `<p class="note warn">Attenzione: ${warn.join(' e ')}. Valuta se uscire con una piccola barca.</p>` : '') +
+  let h = where + oldNote + (warn.length ? `<p class="note warn">Attenzione: ${warn.join(' e ')}. Valuta se uscire con una piccola barca.</p>` : '') +
     '<div class="grid">' +
     g('Vento', Number.isFinite(ws) ? `${arrow(wd)} ${Math.round(ws)} kn` : '--', Number.isFinite(ws) ? `${dir16(wd)} · ${vento(wd)} · forza ${beaufort(ws)} (${BF[beaufort(ws)]})` : '') +
     g('Raffiche', Number.isFinite(wg) ? `${Math.round(wg)} kn` : '--') +
@@ -3264,6 +3400,9 @@ document.addEventListener('click', e => {
       const s = S.route.start; S.route.start = S.route.dest; S.route.dest = s; S.route.via.reverse(); if (S.route.path) S.route.path.reverse(); routeChanged(); break;
     }
     case 'encImport': $('encFile').click(); break;
+    case 'offGet': offDownload(d.k); break;
+    case 'offStop': OFF.stop = true; break;
+    case 'offClear': if (b.dataset.armed) offClear(); else { b.dataset.armed = '1'; b.textContent = 'Tocca ancora per cancellare'; setTimeout(() => { delete b.dataset.armed; renderOffBtns(); }, 3000); } break;
     case 'pkgSync': if (!navigator.onLine) toast('Serve la connessione a Internet'); else { toast('Controllo gli aggiornamenti dei dati…'); syncPackage(true); } break;
     case 'encClear': if (window.ENC) ENC.clear().then(() => { encStatus(); encView.render(); toast('Carte ENC rimosse'); if (S.route.start && S.route.dest) editRoute(); }); break;
     case 'cancelRoute': clearTimeout(autoT); autoSeq++; stopWorker(); busy.fail('Calcolo annullato. Tocca "Ricalcola rotta" nella scheda Rotta per riprovare.'); $('bAuto').disabled = false; autoMsg('Calcolo annullato.'); break;
@@ -3376,7 +3515,7 @@ if ($('lPkgWifi')) {
   $('lPkgWifi').checked = !!S.set.pkgWifi;
   $('lPkgWifi').addEventListener('change', () => { S.set.pkgWifi = $('lPkgWifi').checked; saveSet(); pkgStatus(); });
 }
-pkgStatus();
+pkgStatus(); renderOffBtns(); offStatus();
 
 /* ---------- Ciclo a 1 Hz ---------- */
 setInterval(() => {

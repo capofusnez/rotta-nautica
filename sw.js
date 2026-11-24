@@ -1,19 +1,23 @@
 /* Service worker: l'app e le tiles della carta già viste restano disponibili senza rete. */
-const SHELL_CACHE = 'rn-shell-v70';
+const SHELL_CACHE = 'rn-shell-v71';
 const TILE_CACHE = 'rn-tiles-v2';
 const SHELL = ['./', 'index.html', 'app.js', 'water.js', 'channels.js', 'enc.js', 'seamarks.js', 'firebase-config.js', 'flotta.js', 'comunita.js', 'aiuto.js', 'privacy.html', 'pro-config.js', 'pubblicita.js', 'catalogo.js', 'checklist.js', 'traffico.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
-const EXTERNAL = /(tile\.openstreetmap\.org|tiles\.openseamap\.org|server\.arcgisonline\.com|ows\.emodnet-bathymetry\.eu|unpkg\.com)$/;
+const EXTERNAL = /(tile\.openstreetmap\.org|tiles\.openseamap\.org|server\.arcgisonline\.com|ows\.emodnet-bathymetry\.eu)$/;
+/* libreria della carta: si salva all'installazione insieme all'app, così l'app parte anche senza rete */
+const LIBS = ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'];
+const MAP_OFF = 'rn-map-offline';
 const MAX_TILES = 4000;
 let puts = 0;
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(SHELL_CACHE).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(SHELL_CACHE).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))
+    .then(() => c.addAll(LIBS.map(u => new Request(u, { mode: 'cors' }))).catch(() => {}))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== SHELL_CACHE && k !== TILE_CACHE && k !== 'rn-data' && k !== 'rn-route-tiles').map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== SHELL_CACHE && k !== TILE_CACHE && k !== 'rn-data' && k !== 'rn-route-tiles' && k !== MAP_OFF).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -29,8 +33,19 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
+  if (url.hostname === 'unpkg.com') {
+    e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
+      if (res.ok) { const copy = res.clone(); caches.open(SHELL_CACHE).then(c => c.put(req, copy)); }
+      return res;
+    })));
+    return;
+  }
+
   if (EXTERNAL.test(url.hostname)) {
     e.respondWith(caches.open(TILE_CACHE).then(async cache => {
+      /* prima le zone scaricate apposta per l'uso senza rete (non si cancellano da sole) */
+      const off = await caches.open(MAP_OFF).then(c => c.match(req.url)).catch(() => null);
+      if (off) return off;
       const hit = await cache.match(req);
       /* una tile salvata senza CORS non può essere letta dal calcolo della rotta */
       if (hit && !(hit.type === 'opaque' && req.mode === 'cors')) return hit;
