@@ -15,6 +15,10 @@ jobs:
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - name: Nodi principali del database
+        run: |
+          npx --yes firebase-tools@14 database:get / --shallow --project rotta-nautica --instance rotta-nautica-default-rtdb | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const o=JSON.parse(s||"{}")||{};console.log("nodi:",Object.keys(o).join(", "))})'
+          npx --yes firebase-tools@14 database:instances:list --project rotta-nautica 2>/dev/null | grep -v "^$" || true
       - name: Conteggi
         run: |
           for p in moderatori relitti_proposti relitti_utenti relitti_posizioni proposte relitti_nomi recensioni pro; do
