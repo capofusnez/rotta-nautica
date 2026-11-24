@@ -2640,6 +2640,7 @@ function renderFleetBox() {
   if (key !== fleetKey) {
     fleetKey = key;
     if (!FL.user) {
+      if (FL.prepare) FL.prepare();
       el.innerHTML = `<button data-act="fleetLogin"${FL.loading ? ' disabled' : ''}>${FL.loading ? 'Collegamento…' : 'Accedi con Google'}</button>` +
         (FL.error ? `<p class="note warn">${esc(FL.error)}</p>` : '');
       return;

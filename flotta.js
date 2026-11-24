@@ -20,6 +20,23 @@
   let fb = null, loadP = null, auth = null, db = null, offset = 0, unsub = [], lastSent = null, meRef = null, cur = null;
   let poiCb = null, poiUnsub = null, modUnsub = null, proUnsub = null;
   const others = new Map(), listeners = new Set();
+  const RKEY = 'rn.authRedirect';
+  const redir = on => { try { if (on) localStorage.setItem(RKEY, String(Date.now())); else localStorage.removeItem(RKEY); } catch (e) { /* ignora */ } };
+  const redirPending = () => { try { return +localStorage.getItem(RKEY) > Date.now() - 10 * 60e3; } catch (e) { return false; } };
+  const apple = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = !!((window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone);
+  function authMsg(e) {
+    const c = e && e.code || '';
+    if (c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request' || c === 'auth/user-cancelled') return 'Accesso annullato';
+    if (c === 'auth/unauthorized-domain') return 'Dominio non autorizzato: aggiungilo in Firebase → Authentication → Impostazioni';
+    if (c === 'auth/network-request-failed') return 'Servizio non raggiungibile: controlla la connessione';
+    if (c === 'auth/web-storage-unsupported' || c === 'auth/internal-error' || c === 'auth/popup-blocked')
+      return apple ? (standalone
+        ? 'Accesso non riuscito dall\'icona sulla schermata Home: apri il sito in Safari, fai l\'accesso lì e poi riapri l\'app'
+        : 'Accesso non riuscito: in Impostazioni → Safari consenti i pop-up (disattiva "Blocca pop-up") e riprova')
+        : 'Il browser ha bloccato la finestra di Google: consenti i pop-up per questo sito e riprova';
+    return (e && e.message) || 'Accesso non riuscito';
+  }
   const emit = () => listeners.forEach(f => { try { f(F); } catch (e) { /* ignora */ } });
   const now = () => Date.now() + offset;
   const dist = (a, b) => {
@@ -54,6 +71,13 @@
           else { quiet(); others.clear(); if (poiUnsub) { poiUnsub(); poiUnsub = null; } }
           emit();
         });
+        /* sul sito: prepara subito la finestra di accesso di Google e raccoglie l'esito di un accesso fatto con il
+           passaggio alla pagina di Google. Su iPhone e iPad Safari apre la finestra solo se parte subito dopo il tocco:
+           con questa preparazione "Accedi con Google" non deve più aspettare la rete prima di aprirla */
+        if (!native) a.getRedirectResult(auth).then(r => {
+          const was = redirPending(); redir(false);
+          if (was && !r && !auth.currentUser) { F.error = apple ? 'Accesso non completato: in Impostazioni → Safari consenti i pop-up (disattiva "Blocca pop-up") e tocca di nuovo Accedi' : 'Accesso non completato: tocca di nuovo Accedi'; emit(); }
+        }).catch(e => { redir(false); F.error = authMsg(e); emit(); });
         return fb;
       })
       .catch(e => { loadP = null; F.loading = false; F.error = 'Servizio non raggiungibile: controlla la connessione'; emit(); throw e; });
@@ -124,7 +148,9 @@
   /* Pro attivo: acquisto unico o attivato a mano (per sempre), abbonamento fino alla data di scadenza */
   F.isPro = () => { const p = F.pro; if (!p) return false; if (p.tipo === 'unico' || p.tipo === 'manuale') return true; return +p.fino > now(); };
   /* all'avvio: se l'accesso era già stato fatto, si ricollega da solo */
-  F.init = wasIn => { if (F.available && wasIn) load().catch(() => {}); };
+  F.init = wasIn => { if (F.available && (wasIn || redirPending())) load().catch(() => {}); };
+  /* si chiama quando compare il tasto "Accedi con Google": scarica Firebase prima del tocco */
+  F.prepare = () => { if (F.available && !F.user && !fb && !loadP && !F.error && navigator.onLine) load().catch(() => {}); };
   F.login = async () => {
     F.error = null;
     const { a } = await load();
@@ -140,10 +166,9 @@
       pr.setCustomParameters({ prompt: 'select_account' });
       try { await a.signInWithPopup(auth, pr); }
       catch (e) {
-        if (e && e.code === 'auth/popup-blocked') return a.signInWithRedirect(auth, pr);
-        if (e && (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request')) throw new Error('Accesso annullato');
-        if (e && e.code === 'auth/unauthorized-domain') throw new Error('Dominio non autorizzato: aggiungilo in Firebase → Authentication → Impostazioni');
-        throw e;
+        /* finestra bloccata: si passa alla pagina di Google e al ritorno l'accesso si completa da solo (getRedirectResult) */
+        if (e && e.code === 'auth/popup-blocked') { redir(true); return a.signInWithRedirect(auth, pr); }
+        throw new Error(authMsg(e));
       }
     }
   };

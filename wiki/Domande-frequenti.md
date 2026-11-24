@@ -62,3 +62,9 @@ Dettagli nell'[informativa privacy](https://capofusnez.github.io/rotta-nautica/p
 ### Ho trovato un problema
 
 Aprilo nella [pagina delle segnalazioni](https://github.com/capofusnez/rotta-nautica/issues) del repository, con uno screenshot.
+
+### Su iPhone o iPad non riesco ad accedere con Google
+
+Aggiorna la pagina (o chiudi e riapri l'app) per avere l'ultima versione: il tasto **Accedi con Google** ora prepara la finestra di Google prima del tocco, come chiede Safari. Se l'accesso non riesce ancora:
+- in **Impostazioni → Safari** disattiva **Blocca pop-up** e riprova;
+- se usi l'icona sulla schermata Home e non funziona, apri il sito in Safari e accedi da lì.
