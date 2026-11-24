@@ -60,7 +60,7 @@
 - **Marine, distributori e scivoli** con i servizi offerti, i nomi sulla carta e il **filtro per servizio** (per esempio solo le marine con lo scivolo).
 - Punti di fonda e aree marine protette.
 - **Zone di pesca** dell'Alto Adriatico (consentite, con limiti, vietate) con le fonti.
-- **Relitti** con il simbolo del tipo (nave, aereo, sommergibile…), arancioni se il nome è noto, e la scheda storica "Approfondisci".
+- **Relitti** con i simboli delle carte nautiche ufficiali (pericoloso, non pericoloso, scafo emergente, resti), arancioni se il nome è noto, e la scheda storica "Approfondisci".
 
 **Check-list**
 - Pre partenza, navigazione, rientro, manutenzione.

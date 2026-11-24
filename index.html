@@ -82,15 +82,17 @@ input[type=checkbox],input[type=radio]{min-height:0;width:20px;height:20px;accen
 .aisBar span{flex:1;opacity:.85}
 #aisFrame{flex:1;width:100%;border:0;background:#0d1b26}
 /* relitti */
-.wk{width:22px;height:22px;box-sizing:border-box;border-radius:50%;background:#6f7c86;border:1.5px solid #fff;box-shadow:0 0 0 1px #0007,0 1px 3px #0005;display:flex;align-items:center;justify-content:center;color:#fff}
-.wk svg{width:15px;height:15px;fill:#fff;display:block}
-.wk.named{background:#e8811a}
-.wk.dive{width:26px;height:26px;box-shadow:0 0 0 2px #fff9,0 0 0 3px #0005}
-.wk.dive svg{width:18px;height:18px}
+.wk{width:30px;height:22px;display:flex;align-items:center;justify-content:center;color:#59656e}
+.wk svg{width:100%;height:100%;display:block;overflow:visible}
+.wk svg g{fill:none;stroke-linecap:round;stroke-linejoin:round}.wk svg .h{stroke:#fff;stroke-width:4.6;opacity:.95}.wk svg .c{stroke:currentColor;stroke-width:2}
+.wk svg .f{fill:currentColor}.wk svg .h .f{fill:#fff}.wk svg .dot{stroke-dasharray:1.6 2.6;stroke-width:1.6}.wk svg .h .dot{stroke-width:3.6;stroke-dasharray:none;opacity:.55}
+
+.wk.named{color:#e06a00}
+.wk.dive{width:38px;height:28px}
 .wkLeg{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;font-size:13px;margin:6px 0}
 .wkLeg span{display:inline-flex;align-items:center;gap:6px}
-#wreckList button{display:flex;width:100%;justify-content:space-between;gap:8px;text-align:left;margin:4px 0;font-weight:400}
-#wreckList b{font-weight:600}
+#wreckList button,#servList > button{display:flex;width:100%;justify-content:space-between;gap:8px;text-align:left;margin:4px 0;font-weight:400}
+#wreckList b,#servList > button b{font-weight:600}#servList > button > span:last-child,#wreckList button > span:last-child{white-space:nowrap}
 .wkPop{min-width:190px;font-size:13px;line-height:1.4}
 .wkPop b{font-size:14px}
 /* barche con Rotta Nautica */
@@ -414,7 +416,7 @@ details.info .note+.note{margin-top:8px}
 #results:empty{display:none}
 .search input{min-width:0}
 /* elenchi tappabili (punti, barche, relitti, fonde) */
-#poiList button,#fondaList button,#wreckList button,#fleetList button{min-height:56px;padding:8px 12px;border-radius:12px;background:var(--panel2);align-items:center}
+#poiList button,#fondaList button,#wreckList button,#servList > button,#fleetList button{min-height:56px;padding:8px 12px;border-radius:12px;background:var(--panel2);align-items:center}
 
 /* menu principale */
 #home{background:var(--bg);gap:22px}
@@ -497,7 +499,7 @@ details.info .note+.note{margin-top:8px}
 .ckSug{max-height:260px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;margin:-4px 0 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 6px 18px rgba(0,0,0,.18)}
 .ckSug[hidden]{display:none}.ckSug button{display:block;width:100%;text-align:left;min-height:42px;padding:8px 12px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:none;color:var(--fg);font-weight:500}
 .ckSug button:last-child{border-bottom:0}.ckSug .note{margin:6px 12px}
-.wk.comm{outline:2px dashed #e65100;outline-offset:1px}
+.wk.comm{outline:2px dashed #e65100;outline-offset:1px;border-radius:8px;background:#fff8}
 .cpI{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;background:#fff;border:2px dashed #e65100;box-shadow:0 1px 3px rgba(0,0,0,.35)}
 .cpI.sm{display:inline-grid;width:20px;height:20px;font-size:11px;vertical-align:middle;margin-right:6px;font-style:normal;box-shadow:none}
 .wkForm>label:not(.chk){display:block}.wkForm>label:not(.chk)>span{display:flex;align-items:center;gap:6px;margin-top:4px}.wkForm>label:not(.chk) input{flex:1;min-width:0;width:100%}.wkForm #wkfD{max-width:120px}.wkForm textarea{width:100%;margin-top:4px}.wkForm .btns{margin:6px 0 10px}.wkForm>label.chk{display:flex;justify-content:flex-start;align-items:center;gap:10px;flex-wrap:nowrap;text-align:left}.wkForm>label.chk input{flex:none}
@@ -534,6 +536,24 @@ button.sm{min-height:0;padding:4px 10px;font-size:13px;margin-top:6px}
 .ckRd{padding:0 14px 12px}
 .ckRd ul{margin:6px 0;padding:0;list-style:none;font-size:14px;line-height:1.4}
 .ckRd li{padding:3px 0}.ckRd li.n{color:var(--bad)}
+/* ===== Tablet e computer: il pannello diventa una colonna a sinistra, la carta resta visibile a destra ===== */
+@media (min-width:900px) and (min-height:560px){
+  :root{--side:min(440px,40vw)}
+  #tabs{left:max(12px,env(safe-area-inset-left,0px));right:auto;bottom:12px;width:var(--side);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 4px 18px rgba(12,36,51,.18)}
+  #tabs button{min-height:58px}
+  #sheet,#sheet.tall{--sheetH:auto;left:max(12px,env(safe-area-inset-left,0px));right:auto;width:var(--side);top:calc(var(--hudH, 96px) + 12px);bottom:calc(var(--tabH) + 24px);max-height:none;
+    border-radius:18px;border:1px solid var(--line);box-shadow:0 6px 28px rgba(12,36,51,.22);padding:0 16px 16px}
+  #sheet.min{bottom:auto;max-height:64px}
+  #sheetHead{border-radius:18px 18px 0 0}
+  #sheetClose::before{display:none}
+  body.sheetOpen #fabsL{left:calc(var(--side) + 24px)}
+  body.sheetOpen #alarms{left:calc(var(--side) + 86px)}
+  #pickBar{left:calc(var(--side) + 24px);right:auto;width:min(520px,calc(100vw - var(--side) - 110px));bottom:24px}
+  #toast,#sheet:not([hidden]):not(.min) ~ #toast{bottom:24px;left:calc(50% + var(--side) / 2);transform:translateX(-50%)}
+  #routeBusy,#sheet:not([hidden]):not(.min) ~ #routeBusy{bottom:24px;left:calc(var(--side) + 24px);right:auto;width:min(520px,calc(100vw - var(--side) - 110px))}
+  body.adOn #sheet{padding-bottom:16px}
+  .pane .btns{flex-wrap:wrap}
+}
 </style>
 </head>
 <body>
@@ -694,7 +714,7 @@ button.sm{min-height:0;padding:4px 10px;font-size:13px;margin-top:6px}
     <details class="info"><summary>Come funziona</summary><p class="note">In zona A di norma non si può entrare né ancorare; in B e C la navigazione e l'ancoraggio hanno limiti di velocità e di luogo. Ogni area ha il suo regolamento, che fa fede: i confini mostrati vengono da OpenStreetMap e possono essere incompleti. Se la rotta attraversa una zona A, la scheda Rotta te lo segnala.</p></details>
     <h4>Relitti per immersioni</h4>
     <label class="chk"><input type="checkbox" id="lWrecks"> Mostra i relitti sulla carta</label>
-    <div class="wkLeg"><span><i class="wk named"><svg viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(-18 12 13)"><path d="M2 14h20l-3.2 5H5.2z"/><path d="M6 10.5h10V14H6z"/><path d="M11.5 6.5h3v4h-3z"/></g><path d="M1.5 21.5h21" stroke="#fff" stroke-width="1.6" stroke-dasharray="2.4 1.6"/></svg></i> Nome noto</span><span><i class="wk"><svg viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(-18 12 13)"><path d="M2 14h20l-3.2 5H5.2z"/><path d="M6 10.5h10V14H6z"/><path d="M11.5 6.5h3v4h-3z"/></g><path d="M1.5 21.5h21" stroke="#fff" stroke-width="1.6" stroke-dasharray="2.4 1.6"/></svg></i> Nome non noto</span><span><i class="wk named"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 14h20l-3.2 5H5.2z"/><path d="M6 10.5h10V14H6z"/><path d="M11.5 6.5h3v4h-3z"/></svg></i> Nave</span><span><i class="wk named"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15.5v-2l-7.5-4.7V3.8a1.5 1.5 0 0 0-3 0v5L3 13.5v2l7.5-2.3v4.6l-2 1.5V21l3.5-1 3.5 1v-1.7l-2-1.5v-4.6z"/></svg></i> Aereo</span><span><i class="wk named dive"><svg viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(-18 12 13)"><path d="M2 14h20l-3.2 5H5.2z"/><path d="M6 10.5h10V14H6z"/><path d="M11.5 6.5h3v4h-3z"/></g><path d="M1.5 21.5h21" stroke="#fff" stroke-width="1.6" stroke-dasharray="2.4 1.6"/></svg></i> Più grande: sito d'immersione</span></div>
+    <div class="wkLeg"><span><i class="wk"><svg viewBox="0 0 32 22" aria-hidden="true"><g class="h"><path d="M7 11h18M11.5 7.5v7M16 6v10M20.5 7.5v7"/><ellipse cx="16" cy="11" rx="14" ry="9" class="dot"/></g><g class="c"><path d="M7 11h18M11.5 7.5v7M16 6v10M20.5 7.5v7"/><ellipse cx="16" cy="11" rx="14" ry="9" class="dot"/></g></svg></i> Relitto pericoloso</span><span><i class="wk"><svg viewBox="0 0 32 22" aria-hidden="true"><g class="h"><path d="M3 11h26M10 6.5v9M16 4.5v13M22 6.5v9"/></g><g class="c"><path d="M3 11h26M10 6.5v9M16 4.5v13M22 6.5v9"/></g></svg></i> Relitto non pericoloso</span><span><i class="wk"><svg viewBox="0 0 32 22" aria-hidden="true"><g class="h"><path class="f" d="M6 12.5h20l-3.4-5.2H9.4z"/><path d="M2.5 15h27"/></g><g class="c"><path class="f" d="M6 12.5h20l-3.4-5.2H9.4z"/><path d="M2.5 15h27"/></g></svg></i> Scafo emergente</span><span><i class="wk"><svg viewBox="0 0 32 22" aria-hidden="true"><g class="h"><path d="M12 4v14M20 4v14M7 8.5h18M7 13.5h18"/></g><g class="c"><path d="M12 4v14M20 4v14M7 8.5h18M7 13.5h18"/></g></svg></i> Resti sparsi</span><span><i class="wk named"><svg viewBox="0 0 32 22" aria-hidden="true"><g class="h"><path d="M3 11h26M10 6.5v9M16 4.5v13M22 6.5v9"/></g><g class="c"><path d="M3 11h26M10 6.5v9M16 4.5v13M22 6.5v9"/></g></svg></i> Arancione: nome noto</span><span><i class="wk"><svg viewBox="0 0 32 22" aria-hidden="true"><g class="h"><path d="M3 11h26M10 6.5v9M16 4.5v13M22 6.5v9"/></g><g class="c"><path d="M3 11h26M10 6.5v9M16 4.5v13M22 6.5v9"/></g></svg></i> Grigio: nome non noto</span></div><p class="note">Simboli delle carte nautiche ufficiali (INT 1). I siti d'immersione hanno il simbolo più grande.</p>
     <div id="wreckList"></div>
     <p class="note">Conosci un relitto che manca? In "I miei punti" aggiungi un punto e scegli il tipo 🚢 Relitto: potrai condividerlo con tutti.</p>
     <details class="info"><summary>Come funziona</summary><p class="note">Relitti da OpenStreetMap/OpenSeaMap: posizione e profondità sono indicative, verificale con un diving o con le carte ufficiali. Immergiti solo con il brevetto adatto alla profondità, segnala l'immersione con boa o bandiera sub e rispetta divieti, aree marine protette e relitti tutelati.</p></details>

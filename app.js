@@ -2309,20 +2309,39 @@ function wkType(w) {
   if (/\b(nave|piroscafo|motonave|mercantile|cargo|petroliera|tanker|cacciatorpediniere|incrociatore|corazzata|torpediniera|dragamine|rimorchiatore|ss |ms |hms |steamer|ship)\b/.test(t)) return 'ship';
   return 'wreck';
 }
-const wkChip = w => `<i class="wk${wkNamed(w) ? ' named' : ''}" style="display:inline-flex;vertical-align:middle;margin-right:6px"><svg viewBox="0 0 24 24" aria-hidden="true">${WK_SVG[wkType(w)]}</svg></i>`;
+const wkChip = w => `<i class="wk${wkNamed(w) ? ' named' : ''}" style="display:inline-flex;vertical-align:middle;margin-right:6px">${wkSvg(w)}</i>`;
 const wkNamed = w => !!(w.name || (window.RNCom && RNCom.wreckName(w)));
+/* simboli delle carte nautiche ufficiali (INT 1, sezione K "Relitti"):
+   K29 relitto non pericoloso: linea con tre trattini; K28 relitto pericoloso: lo stesso dentro la linea di pericolo
+   punteggiata; K24 scafo emergente; K25 alberi visibili; K31 resti / fondo sporco: "#" */
+const WK_SYM = {
+  safe: '<path d="M3 11h26M10 6.5v9M16 4.5v13M22 6.5v9"/>',
+  danger: '<path d="M7 11h18M11.5 7.5v7M16 6v10M20.5 7.5v7"/><ellipse cx="16" cy="11" rx="14" ry="9" class="dot"/>',
+  hull: '<path class="f" d="M6 12.5h20l-3.4-5.2H9.4z"/><path d="M2.5 15h27"/>',
+  mast: '<path d="M3 14h26M10 10.5v7M16 9v10M22 10.5v7M13 14V3.5M19 14V5.5"/>',
+  foul: '<path d="M12 4v14M20 4v14M7 8.5h18M7 13.5h18"/>'
+};
+function wkSym(w) {
+  const lv = String(w.level || '');
+  if (w.cat === 'hull_showing' || /dry/.test(lv)) return 'hull';
+  if (w.cat === 'mast_showing') return 'mast';
+  if (w.cat === 'distributed_remains') return 'foul';
+  if (w.cat === 'dangerous') return 'danger';
+  return 'safe';
+}
+const wkSvg = w => { const g = WK_SYM[wkSym(w)]; return `<svg viewBox="0 0 32 22" aria-hidden="true"><g class="h">${g}</g><g class="c">${g}</g></svg>`; };
 function wkIcon(w) {
-  const sz = w.dive ? 26 : 22, named = wkNamed(w);
-  w._ik = [named, w.comm, w.dive, wkType(w)].join('|');
-  return L.divIcon({ className: '', iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2],
-    html: `<div class="wk${named ? ' named' : ''}${w.dive ? ' dive' : ''}${w.comm ? ' comm' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${WK_SVG[wkType(w)]}</svg></div>` });
+  const k = w.dive ? 1.25 : 1, sw = Math.round(30 * k), sh = Math.round(22 * k), named = wkNamed(w);
+  w._ik = [named, w.comm, w.dive, wkSym(w)].join('|');
+  return L.divIcon({ className: '', iconSize: [sw, sh], iconAnchor: [sw / 2, sh / 2],
+    html: `<div class="wk${named ? ' named' : ''}${w.dive ? ' dive' : ''}${w.comm ? ' comm' : ''}">${wkSvg(w)}</div>` });
 }
 function wkMarker(w) {
   w.marker = L.marker([w.lat, w.lng], { title: wkName(w), icon: wkIcon(w) })
     .bindPopup(() => wreckPopup(w)).addTo(w.comm ? cwLayer : wreckLayer);
 }
 /* aggiorna il simbolo quando arriva un nome (approvato o dato da te) */
-function wkRefreshIcons() { (WRECKS || []).forEach(w => { if (w.marker && w._ik !== [wkNamed(w), w.comm, w.dive, wkType(w)].join('|')) w.marker.setIcon(wkIcon(w)); }); }
+function wkRefreshIcons() { (WRECKS || []).forEach(w => { if (w.marker && w._ik !== [wkNamed(w), w.comm, w.dive, wkSym(w)].join('|')) w.marker.setIcon(wkIcon(w)); }); }
 /* relitti della community (comunita.js): nuovi relitti approvati e posizioni corrette approvate */
 function mergeCw() {
   if (!WRECKS || !window.RNCom) return;
@@ -2710,7 +2729,7 @@ const marOk = o => { if (!srvFOn()) return true; const s = o.s || []; if (!s.len
 function drawServizi() {
   servLayer.clearLayers(); srvMk.clear();
   if (!SRV || !S.set.servizi || map.getZoom() < 10) return;
-  const B = map.getBounds().pad(0.2), inB = o => B.contains([o.lat, o.lng]), lbl = map.getZoom() >= 12;
+  const B = map.getBounds().pad(0.2), inB = o => B.contains([o.lat, o.lng]), lbl = map.getZoom() >= (srvFOn() ? 10 : 12);
   const add = (o, k, html, size, pop) => { const m = L.marker([o.lat, o.lng], { title: o.name || '', icon: L.divIcon({ className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2], html }) }).bindPopup(pop).addTo(servLayer); srvMk.set(k + o.id, m); };
   SRV.marine.filter(o => inB(o) && marOk(o)).slice(0, 250).forEach(o => { const n = lbl && marName(o); add(o, 'm', `<div class="svI ma">⛵</div>${n ? `<span class="svLbl">${esc(n)}</span>` : ''}`, 24, () => marinaPopup(o)); });
   SRV.carburante.filter(inB).slice(0, 150).forEach(o => add(o, 'f', '<div class="svI fu">⛽</div>', 24, () => fuelPopup(o)));
@@ -2749,6 +2768,16 @@ function renderServizi(ref, from) {
     `<p class="note">Tocca un servizio: una volta per vedere solo le marine che <b>lo hanno</b> (✓), di nuovo per quelle che <b>non lo hanno</b> (✕), una terza volta per togliere il filtro. Le marine senza servizi indicati nei dati si nascondono quando un filtro è attivo.</p>` +
     `<div class="svcs">${SV.map(k => `<button type="button" class="svc f${F[k] > 0 ? ' on' : F[k] < 0 ? ' off' : ''}" data-act="srvF" data-k="${k}">${F[k] > 0 ? '✓ ' : F[k] < 0 ? '✕ ' : ''}${SERV[k][0]} ${SERV[k][1]}</button>`).join('')}</div>` +
     (srvFOn() ? '<div class="btns"><button data-act="srvF0">Togli i filtri</button></div>' : '') + '</details>';
+  /* con un filtro attivo: l'elenco delle marine che lo rispettano, con il nome, dalla più vicina */
+  if (srvFOn()) {
+    const M = SRV.marine.map((o, i) => ({ o, i, d: dist(ref, o) })).filter(x => marOk(x.o)).sort((a, b) => a.d - b.d);
+    const want = Object.entries(F).map(([k, v]) => (v > 0 ? 'con ' : 'senza ') + SERV[k][1].toLowerCase()).join(', ');
+    el.innerHTML = filt + (M.length ? `<p class="note"><b>${M.length === 1 ? '1 marina' : M.length + ' marine'}</b> ${esc(want)}, dalla più vicina ${from}:</p>` +
+      M.slice(0, 60).map(x => `<button data-act="srvGo" data-k="m" data-i="${x.i}"><span><i class="svI sm ma">⛵</i><b>${esc(marName(x.o) || 'Marina senza nome')}</b>${x.o.s && x.o.s.length ? ' · ' + x.o.s.map(s => SERV[s] ? SERV[s][0] : '').join('') : ''}</span><span>${(x.d / NM).toFixed(1)} mn</span></button>`).join('') +
+      (M.length > 60 ? `<p class="note">…e altre ${M.length - 60}: sposta la carta per vedere quelle di un'altra zona.</p>` : '')
+      : `<p class="note">Nessuna marina ${esc(want)}.</p>`);
+    return;
+  }
   const L1 = SRV.marine.filter(marOk).map((o, i) => ({ o, i: SRV.marine.indexOf(o), k: 'm', d: dist(ref, o) })).concat(SRV.carburante.map((o, i) => ({ o, i, k: 'f', d: dist(ref, o) })))
     .filter(x => x.d < 25 * NM).sort((a, b) => a.d - b.d).slice(0, 10);
   el.innerHTML = filt + (L1.length ? `<p class="note">Più vicini ${from}:</p>` + L1.map(x => `<button data-act="srvGo" data-k="${x.k}" data-i="${x.i}"><span><i class="svI sm ${x.k === 'm' ? 'ma' : 'fu'}">${x.k === 'm' ? '⛵' : '⛽'}</i><b>${esc((x.k === 'm' ? marName(x.o) : x.o.name) || (x.k === 'm' ? 'Marina' : 'Distributore'))}</b>${x.k === 'm' && x.o.s && x.o.s.length ? ' · ' + x.o.s.slice(0, 4).map(s => SERV[s] ? SERV[s][0] : '').join('') : ''}</span><span>${(x.d / NM).toFixed(1)} mn</span></button>`).join('')

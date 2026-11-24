@@ -36,7 +36,7 @@ Punti pesca, immersioni, fonde e soste condivisi dagli altri utenti e approvati 
 
 Da vicino sotto ogni marina compare il **nome**. Se nei dati manca, si usa quello della marina con nome più vicina nello stesso porto.
 
-**Filtra le marine per servizio** (sotto "Marine e distributori"): tocca un servizio una volta per vedere solo le marine che **lo hanno** (✓ verde), di nuovo per quelle che **non lo hanno** (✕ rosso), una terza volta per togliere il filtro. Per esempio ✓ Scivolo mostra solo le marine con la rampa. I filtri valgono per la carta e per l'elenco; le marine senza servizi indicati nei dati si nascondono finché un filtro è attivo.
+**Filtra le marine per servizio** (sotto "Marine e distributori"): tocca un servizio una volta per vedere solo le marine che **lo hanno** (✓ verde), di nuovo per quelle che **non lo hanno** (✕ rosso), una terza volta per togliere il filtro. Per esempio ✓ Scivolo mostra solo le marine con la rampa. Con un filtro attivo, sotto compare l'**elenco delle marine** che lo rispettano, con il **nome** e la distanza, dalla più vicina: toccane una per vederla sulla carta. I filtri valgono per la carta e per l'elenco; le marine senza servizi indicati nei dati si nascondono finché un filtro è attivo.
 
 Toccando una marina vedi:
 - i servizi: carburante, acqua, corrente, bagni, docce, gru, negozio nautico…;
@@ -61,7 +61,14 @@ Sotto ci sono i **relitti vicini**, spesso molto pescosi. Fanno fede le ordinanz
 
 I relitti delle carte nautiche e di OpenStreetMap. I relitti sulla terraferma sono esclusi.
 
-Sulla carta ogni relitto ha il **simbolo del tipo**: nave, aereo, sommergibile, barca, oppure lo scafo inclinato quando il tipo non è noto. Il tipo si ricava dai dati o dal nome (per esempio "Aereo …", "Piroscafo …"). Il colore dice se il nome è noto:
+Sulla carta i relitti hanno i **simboli delle carte nautiche ufficiali** (INT 1, sezione K):
+- linea con tre trattini dentro un ovale punteggiato: **relitto pericoloso** per la navigazione;
+- linea con tre trattini: **relitto non pericoloso**;
+- scafo sopra la linea dell'acqua: **scafo emergente**;
+- linea con due alberi: **alberi visibili**;
+- "#": **resti sparsi**.
+
+Il colore dice se il nome è noto:
 - **arancione**: nome noto (anche se dato dalla community);
 - **grigio**: nome non noto.
 
