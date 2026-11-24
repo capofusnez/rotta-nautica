@@ -414,7 +414,14 @@
     let list = q ? all.filter(v => norm(v).includes(q)).sort((a, b) => (norm(b).startsWith(q) ? 1 : 0) - (norm(a).startsWith(q) ? 1 : 0)) : all;
     if (list.length === 1 && norm(list[0]) === q) list = [];
     const lab = inp.closest('label');
-    if (!list.length) { box.hidden = true; return; }
+    if (!list.length) {
+      if (!all.length && !q && ((inp.id === 'ckBm' && $('ckBb') && $('ckBb').value.trim()) || (inp.id === 'ckEm' && $('ckEb') && $('ckEb').value.trim()))) {
+        box.innerHTML = '<p class="note">Per questo marchio non ci sono modelli in elenco: scrivilo tu.</p>';
+        if (lab && box.previousElementSibling !== lab) lab.after(box);
+        box.hidden = false; sugFor = inp; return;
+      }
+      box.hidden = true; return;
+    }
     box.innerHTML = list.slice(0, 80).map(v => `<button type="button" role="option" data-cksug="${esc(v)}">${esc(v)}</button>`).join('') +
       (list.length > 80 ? `<p class="note">…e altri ${list.length - 80}: continua a scrivere</p>` : '');
     if (lab && box.previousElementSibling !== lab) lab.after(box);
