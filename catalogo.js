@@ -94,6 +94,12 @@ window.RN_CAT = {
     'Yamaha (moto d\'acqua)': { moto: ['TR-1', 'SVHO 1.9'] },
     'Kawasaki (moto d\'acqua)': { moto: ['1498 cc'] }
   },
+  /* Potenza (CV) dei modelli il cui nome non la contiene; per gli altri la ricava checklist.js dal nome
+     (F150, DF140, D4-300, V8-350...). Chiave: modello in minuscolo senza spazi e trattini. Dati indicativi: fa fede il libretto. */
+  potenze: {
+    'Volvo Penta': { tamd41: 200, ad41: 200, kad32: 170, kad43: 230, kamd43: 230, kad44: 260, kamd44: 260, kad300: 285, kamd300: 285,
+      md2010: 10, md2020: 18, md2030: 29, md2040: 38, d113: 13, d120: 20, d130: 30, ips400: 300, ips600: 435, ips800: 600 }
+  },
   /* Programmi di manutenzione presi dal libretto del costruttore, per i motori di cui è stato controllato.
      re: espressione sul modello (minuscolo, senza spazi); marchio: parte del nome del marchio.
      man: [voce, ore, mesi, con, senza, solo i modelli che corrispondono a] (con/senza come in checklist.js: efb = con piede) */

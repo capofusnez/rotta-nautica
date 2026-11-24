@@ -669,7 +669,18 @@ function seaRules() {
   if (s.len > 24) warn.push('Oltre 24 m è una nave da diporto: servono la patente per navi da diporto e i documenti della nave.');
   return { limNm, why, warn };
 }
+/* oltre 40,8 CV (30 kW) in totale, o con una moto d'acqua, la patente è obbligatoria: "Nessuna" non si può scegliere */
+let licToast = 0;
+function enforceLic() {
+  const s = S.set, need = s.boat === 'moto' || (s.boat !== 'remi' && s.hp > 40.8), sel = $('sLic');
+  if (sel) { const o = sel.querySelector('option[value="none"]'); if (o) { o.disabled = need; o.textContent = need ? 'Nessuna (non ammessa: serve la patente)' : 'Nessuna (entro 6 miglia)'; } }
+  if (need && s.lic === 'none') {
+    s.lic = '12'; saveSet(); if (sel) sel.value = '12';
+    if (Date.now() - licToast > 3000) { licToast = Date.now(); toast(s.boat === 'moto' ? "Per la moto d'acqua serve la patente: impostata \"entro 12 miglia\", cambiala se è senza limiti" : `Con ${num1(s.hp)} CV serve la patente nautica: impostata "entro 12 miglia", cambiala se è senza limiti`); }
+  }
+}
 function renderRules() {
+  enforceLic();
   const el = $('licInfo'); if (!el) return;
   const r = seaRules();
   el.textContent = (r.limNm === Infinity

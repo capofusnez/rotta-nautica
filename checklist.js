@@ -284,7 +284,7 @@
 
   function render() {
     const el = box(); if (!el) return;
-    if (!D.boat || view === 'boat') { el.innerHTML = boatForm(); return; }
+    if (!D.boat || view === 'boat') { el.innerHTML = boatForm(); hpNote(); return; }
     if (view === 'reports') { el.innerHTML = reportsView(); return; }
     if (LISTS[view]) { el.innerHTML = view === 'man' ? manView() : listView(view); return; }
     el.innerHTML = homeView();
@@ -298,20 +298,21 @@
       `<h4>${first ? 'La tua barca' : 'Modifica la barca'}</h4>` +
       (first ? '<p class="note">Inserisci barca e motore: l\'app prepara le quattro check-list e le scadenze di manutenzione adatte. Dopo puoi modificare, cancellare o aggiungere ogni voce.</p>' : '') +
       `<form class="form" data-ckf="boat">
-        <label>Marchio della barca <span><input id="ckBb" list="ckBbL" maxlength="40" value="${esc(b.brand)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
-        <label>Modello <span><input id="ckBm" list="ckBmL" maxlength="40" value="${esc(b.model)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
+        <label>Marchio della barca <span><input id="ckBb" maxlength="40" value="${esc(b.brand)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
+        <label>Modello <span><input id="ckBm" maxlength="40" value="${esc(b.model)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
         <label>Tipo di mezzo <span><select id="ckBk">${opt(KIND, b.kind)}</select></span></label>
         <label>Motore <span><select id="ckE">${opt(ENG, b.eng)}</select></span></label>
-        <label>Marchio del motore <span><input id="ckEb" list="ckEbL" maxlength="40" value="${esc(b.ebrand)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
-        <label>Modello del motore <span><input id="ckEm" list="ckEmL" maxlength="40" value="${esc(b.emodel)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
+        <label>Marchio del motore <span><input id="ckEb" maxlength="40" value="${esc(b.ebrand)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
+        <label>Modello del motore <span><input id="ckEm" maxlength="40" value="${esc(b.emodel)}" placeholder="Scegli o scrivi" autocomplete="off"></span></label>
         <label>Numero di motori <span><select id="ckN">${[1, 2, 3, 4].map(n => `<option${n === +b.n ? ' selected' : ''}>${n}</option>`).join('')}</select></span></label>
         <label>Potenza di ogni motore <span><input id="ckHp" type="number" inputmode="decimal" step="1" min="0" value="${esc(b.hp != null ? b.hp : '')}" placeholder="es. 200"> CV</span></label>
+        <p class="note" id="ckHpN" hidden></p>
         <label>Lunghezza fuori tutto <span><input id="ckLen" type="number" inputmode="decimal" step="0.1" min="1" value="${esc(b.len != null ? b.len : '')}" placeholder="es. 9,8"> m</span></label>
         <label>Pescaggio <span><input id="ckDr" type="number" inputmode="decimal" step="0.1" min="0" value="${esc(b.draft != null ? b.draft : '')}" placeholder="es. 0,9"> m</span></label>
         ${first ? '<label>Ore motore attuali <span><input id="ckH0" type="number" inputmode="decimal" step="0.1" min="0" placeholder="es. 245"> h</span></label>' : ''}
         <p class="note ckOk" id="ckProf"${profileOf(b) ? '' : ' hidden'}>${profileOf(b) ? `Programma di manutenzione dal libretto del costruttore: ${esc(profileOf(b).nome)}.` : ''}</p>
         <p class="note">Mezzo, potenza, lunghezza e pescaggio passano anche nella sezione Barca, dove servono per la rotta e i limiti di distanza dalla costa.</p>
-        <p class="note">Tocca una casella per vedere l'elenco o inizia a scrivere: se marchio o modello non ci sono, scrivili tu. Dal modello del motore l'app riconosce se è fuoribordo, entrobordo o entrofuoribordo: controlla comunque la casella "Motore".</p>
+        <p class="note">Tocca una casella per vedere l'elenco, o inizia a scrivere per restringerlo: se marchio o modello non ci sono, scrivili tu. Dal modello del motore l'app riconosce se è fuoribordo, entrobordo o entrofuoribordo: controlla comunque la casella "Motore".</p>
         <div class="btns"><button class="primary">${first ? 'Prepara le check-list' : 'Salva'}</button></div>
       </form>
       <datalist id="ckBbL">${dl(boatBrands())}</datalist><datalist id="ckBmL">${dl(boatModels(b.brand))}</datalist>
@@ -365,8 +366,9 @@
       if (t.id === 'ckEb' && e.type === 'change') { const ty = engTypeOf(t.value, ''); if (ty && ty !== $('ckE').value && !CAT().motori[findKey(CAT().motori, t.value)][$('ckE').value]) $('ckE').value = ty; }
     }
     if (t.id === 'ckEm' || (t.id === 'ckEb' && e.type === 'change' && $('ckEm').value)) {
-      const pw = /^fb|^el/.test(engGuess($('ckEb').value, $('ckEm').value) || $('ckE').value) && /(?:^|[a-z\s])(\d{1,3}(?:[.,]\d)?)(?:\s|$|[a-z])/i.exec($('ckEm').value);
-      if (pw && !/^el/.test($('ckE').value) && $('ckHp') && (!$('ckHp').value || $('ckHp').dataset.auto)) { $('ckHp').value = parseFloat(pw[1].replace(',', '.')); $('ckHp').dataset.auto = '1'; }
+      const pw = hpGuess($('ckEb').value, $('ckEm').value, engGuess($('ckEb').value, $('ckEm').value) || $('ckE').value);
+      if (pw && $('ckHp') && (!$('ckHp').value || $('ckHp').dataset.auto)) { $('ckHp').value = pw; $('ckHp').dataset.auto = '1'; }
+      hpNote();
       const listed = engModels($('ckEb').value, $('ckE').value).some(m => mkey(m) === mkey($('ckEm').value));
       if (e.type === 'change' || listed) {
         const ty = engGuess($('ckEb').value, $('ckEm').value);
@@ -375,6 +377,66 @@
       showProf();
     }
   }
+  /* potenza di un motore dal modello: tabella del catalogo o numero nel nome (F150, DF140, D4-300, V8-350, 4JH57...) */
+  function hpGuess(brand, model, type) {
+    const M = mkey(model); if (!M) return null;
+    const P = CAT().potenze || {}, bk = findKey(P, brand) || Object.keys(P).find(k => norm(brand).includes(norm(k).split(' ')[0]));
+    if (bk && P[bk][M]) return P[bk][M];
+    if (/^el/.test(type || '')) return null;
+    let m;
+    const R = String(model).trim().toLowerCase();
+    if ((m = /^d(\d{1,2})\s*-\s*(\d{2,3})/.exec(R))) return +m[2];          // Volvo Penta D1-30, D4-300
+    if ((m = /^v[68]-?(\d{3})/.exec(M))) return +m[1];                    // Volvo Penta V8-350
+    if ((m = /^\d[a-z]{2}(\d{2,3})/.exec(M))) return +m[1];              // Yanmar 4JH57, 3YM30
+    if ((m = /(\d{3})(?:prox?s?|hp|cv)?$/.exec(M)) && +m[1] >= 100) return +m[1];   // MerCruiser 6.2L 350, Mercury 150 Pro XS
+    if (/^fb|^moto/.test(type || '') && (m = /^(?:[a-z]+\s*)?(\d{1,3}(?:[.,]\d)?)(?:\s|[a-z]|$)/.exec(R))) return +m[1].replace(',', '.');   // F150, DF140, BF60, MFS20, 9.9
+    if ((m = /verado(\d{3})/.exec(M))) return +m[1];
+    return null;
+  }
+  /* sotto la potenza: da dove viene il numero e se serve la patente (oltre 40,8 CV in totale) */
+  function hpNote() {
+    const el = $('ckHpN'); if (!el) return;
+    const hp = parseFloat(String($('ckHp').value).replace(',', '.')), n = +$('ckN').value || 1, tot = hp * n, msg = [];
+    if ($('ckHp').dataset.auto && hp) msg.push('Potenza proposta dal modello del motore: controllala sul libretto.');
+    if (tot > 40.8) msg.push(`In totale ${Math.round(tot)} CV: oltre 40,8 CV (30 kW) serve la patente nautica. La sezione Barca la imposta da sola.`);
+    el.hidden = !msg.length; el.textContent = msg.join(' '); el.className = 'note' + (tot > 40.8 ? ' ckWarn' : '');
+  }
+
+  /* elenco di suggerimenti sotto le caselle di marchio e modello: funziona anche nell'app Android,
+     dove l'elenco a tendina del browser (datalist) non compare */
+  const SUG = { ckBb: () => boatBrands(), ckBm: () => boatModels($('ckBb').value), ckEb: () => engBrands(), ckEm: () => engModels($('ckEb').value, $('ckE').value) };
+  let sugFor = null, sugT = 0;
+  function sugShow(inp) {
+    const all = SUG[inp.id] ? SUG[inp.id]() : [];
+    let box = $('ckSug');
+    if (!box) { box = document.createElement('div'); box.id = 'ckSug'; box.className = 'ckSug'; box.setAttribute('role', 'listbox'); }
+    const q = norm(inp.value);
+    let list = q ? all.filter(v => norm(v).includes(q)).sort((a, b) => (norm(b).startsWith(q) ? 1 : 0) - (norm(a).startsWith(q) ? 1 : 0)) : all;
+    if (list.length === 1 && norm(list[0]) === q) list = [];
+    const lab = inp.closest('label');
+    if (!list.length) { box.hidden = true; return; }
+    box.innerHTML = list.slice(0, 80).map(v => `<button type="button" role="option" data-cksug="${esc(v)}">${esc(v)}</button>`).join('') +
+      (list.length > 80 ? `<p class="note">…e altri ${list.length - 80}: continua a scrivere</p>` : '');
+    if (lab && box.previousElementSibling !== lab) lab.after(box);
+    box.hidden = false; sugFor = inp;
+  }
+  function sugHide() { const b = $('ckSug'); if (b) b.hidden = true; sugFor = null; }
+  document.addEventListener('focusin', e => { if (e.target.id && SUG[e.target.id]) { clearTimeout(sugT); sugShow(e.target); } });
+  document.addEventListener('focusout', e => { if (e.target.id && SUG[e.target.id]) sugT = setTimeout(sugHide, 200); });
+  document.addEventListener('input', e => { if (e.target.id && SUG[e.target.id]) sugShow(e.target); if (e.target.id === 'ckHp') { delete e.target.dataset.auto; hpNote(); } });
+  document.addEventListener('change', e => { if (e.target.id === 'ckN') hpNote(); });
+  /* la scelta va presa prima che la casella perda il fuoco */
+  document.addEventListener('pointerdown', e => {
+    const b = e.target.closest && e.target.closest('[data-cksug]'); if (!b || !sugFor) return;
+    e.preventDefault();
+    const inp = sugFor; inp.value = b.dataset.cksug; sugHide();
+    inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true }));
+    sugHide();
+    /* dopo il marchio si passa al modello */
+    const next = { ckBb: 'ckBm', ckEb: 'ckEm' }[inp.id];
+    if (next && $(next) && !$(next).value) $(next).focus(); else inp.blur();
+  });
+
   function showProf() {
     const el = $('ckProf'); if (!el) return;
     const P = profileOf({ ebrand: $('ckEb').value, emodel: $('ckEm').value });
@@ -668,7 +730,7 @@
   window.RNCheck = {
     render: () => { edit = false; confirmKey = null; render(); },
     badge, dueCount,
-    _data: () => D, _guess: engGuess, boatInfo, syncBoat
+    _data: () => D, _guess: engGuess, _hp: hpGuess, boatInfo, syncBoat
   };
   /* la prima volta dopo l'aggiornamento: passa alla sezione Barca la scheda già compilata */
   const boot = () => { badge(); if (D.boat && !D.boat.synced) syncBoat(); };
