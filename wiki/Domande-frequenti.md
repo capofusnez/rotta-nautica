@@ -37,6 +37,16 @@ Con più di 40,8 CV in totale, o con la moto d'acqua, la patente nautica è obbl
 
 Deve prima approvarlo un **moderatore**. Tu lo vedi subito tra i tuoi punti. Per condividere serve l'accesso con Google. Vedi [[Community e moderazione]].
 
+### Posso usare l'app sempre senza rete?
+
+Sì, nella zona dove navighi. Una volta, con il Wi-Fi:
+1. porta la carta sulla tua zona (per esempio dalla laguna a Caorle);
+2. in **Carta → Carta senza rete** tocca **Scarica tutto per questa zona**.
+
+L'app scarica dati nautici e profondità, una vista d'insieme dell'Italia, la carta della zona fino allo zoom 15 e gli elenchi di marine, relitti e zone di pesca, poi attiva **Usa sempre senza rete**. Da quel momento carta, calcolo delle rotte, allarmi, punti e ricerca funzionano senza internet in quella zona. Per un'altra zona spostati lì e tocca di nuovo. Se la zona è troppo grande l'app lo dice: avvicina un po' la carta.
+
+Senza rete non ci sono satellite, meteo aggiornato, AIS e community.
+
 ### La carta è grigia senza rete
 
 Quella zona non è in memoria. Prima di partire, con la rete:

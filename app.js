@@ -200,7 +200,7 @@ const OffTile = L.TileLayer.extend({
     const parent = () => tileFromParent(this, coords).then(b => { if (b) show(b); else net(); }).catch(net);
     tileFromCache(url).then(b => {
       if (b) return show(b);
-      if (!navigator.onLine) return parent();
+      if (!navigator.onLine || S.set.offAlways) return parent();
       /* con la rete: nell'APK l'immagine si salva da qui; sul sito la salva il service worker */
       if (window.Capacitor) return tileFetchSave(url).then(show).catch(parent);
       net();
@@ -1132,13 +1132,15 @@ async function loadGrid(a, b, k, n, plan, via, pad, zmin, close) {
       while (jobs.length) {
         const [x, y] = jobs.shift(), url = `https://tile.openstreetmap.org/${box.z}/${x}/${y}.png`;
         try {
-          let r = cache ? await cache.match(url) : null;
-          if (!r) {
-            r = await fetch(url, { mode: 'cors' });
-            if (!r.ok) throw new Error(r.status);
-            if (cache) cache.put(url, r.clone()).catch(() => {});
+          let r = cache ? await cache.match(url) : null, blob = r ? await r.blob() : await tileFromCache(url);
+          if (!blob && navigator.onLine && !S.set.offAlways) {
+            r = await fetch(url, { mode: 'cors' }).catch(() => null);
+            if (r && r.ok) { if (cache) cache.put(url, r.clone()).catch(() => {}); blob = await r.blob(); }
           }
-          const bm = await createImageBitmap(await r.blob());
+          /* senza rete: l'immagine salvata di uno zoom più basso, ingrandita (zona scaricata fino allo zoom 15) */
+          if (!blob) blob = await tileFromParent(base.osm, { x, y, z: box.z });
+          if (!blob) throw new Error('assente');
+          const bm = await createImageBitmap(blob);
           ctx.drawImage(bm, (x - box.tx0) * Water.TILE, (y - box.ty0) * Water.TILE);
           if (bm.close) bm.close();
         } catch (e) { failed++; }
@@ -1146,7 +1148,7 @@ async function loadGrid(a, b, k, n, plan, via, pad, zmin, close) {
       }
     };
     await Promise.all([0, 1, 2, 3, 4, 5].map(work));
-    if (failed > nx * ny * 0.15) throw new Error('Carta non disponibile per questa zona: serve la connessione a Internet la prima volta');
+    if (failed > nx * ny * 0.15) throw new Error('Carta non disponibile per questa zona: scaricala prima con la rete (Carta → Carta senza rete)');
   }
   busy.set(`Tratto ${k}/${n}: riconosco canali, briccole e acque navigabili…`, k, 0.6);
   await yieldUI();
@@ -1313,16 +1315,23 @@ const OFF = { running: false, stop: false, done: 0, todo: 0, fail: 0 };
 const OFF_MAXZ = 15, OFF_LIMIT = 6000;
 const tX = (lng, z) => Math.floor((lng + 180) / 360 * 2 ** z);
 const tY = (lat, z) => { const r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * 2 ** z); };
-function offTiles(bounds) {
-  const out = [], z0 = Math.max(6, Math.min(map.getZoom() - 2, 10));
+function offTiles(bounds, z0, limit) {
+  const out = [];
+  z0 = z0 || Math.max(6, Math.min(map.getZoom() - 2, 10));
   for (let z = z0; z <= OFF_MAXZ; z++) {
     const x0 = tX(bounds.getWest(), z), x1 = tX(bounds.getEast(), z), y0 = tY(bounds.getNorth(), z), y1 = tY(bounds.getSouth(), z);
     for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
       out.push(`https://tile.openstreetmap.org/${z}/${x}/${y}.png`);
       if (S.set.sea) out.push(`https://tiles.openseamap.org/seamark/${z}/${x}/${y}.png`);
     }
-    if (out.length > OFF_LIMIT) return null;
+    if (out.length > (limit || OFF_LIMIT)) return null;
   }
+  return out;
+}
+/* vista d'insieme di Italia e mari vicini fino allo zoom 9 (circa 500 immagini): da lontano la carta c'è sempre */
+function offTilesOverview() {
+  const out = [], B = { w: 6, e: 19, n: 47.5, s: 35.5 };
+  for (let z = 5; z <= 9; z++) for (let x = tX(B.w, z); x <= tX(B.e, z); x++) for (let y = tY(B.n, z); y <= tY(B.s, z); y++) out.push(`https://tile.openstreetmap.org/${z}/${x}/${y}.png`);
   return out;
 }
 /* intorno alla rotta: solo una fascia lungo il percorso (circa 1 km per lato da vicino, di più da lontano) */
@@ -1365,7 +1374,8 @@ async function offDownload(kind) {
   if (!navigator.onLine) { toast('Serve la connessione a internet'); return; }
   const b = offBounds(kind); if (!b) { toast('Prima imposta una rotta'); return; }
   const rp = kind === 'rotta' ? wps() : null;
-  const list = rp ? offTilesRoute(rp) : offTiles(b);
+  let list = rp ? offTilesRoute(rp) : kind === 'zona' ? offTiles(b, 10, 12000) : offTiles(b);
+  if (list && kind === 'zona') list = offTilesOverview().concat(list);
   if (!list) { toast(rp ? 'Rotta troppo lunga per scaricarla tutta: scarica la zona visibile a pezzi' : 'Zona troppo grande: avvicina la carta (zoom) o scegli una zona più piccola'); return; }
   let cache; try { cache = await caches.open(MAP_OFF); } catch (e) { toast('Questo dispositivo non permette di salvare la carta'); return; }
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* facoltativo */ }
@@ -1400,7 +1410,18 @@ async function offClear() {
 function renderOffBtns() {
   const el = $('offBtns'); if (!el) return;
   el.innerHTML = OFF.running ? '<button data-act="offStop" class="danger">Interrompi</button>'
-    : '<button data-act="offAll" class="primary">Prepara tutto per l\'uscita</button><button data-act="offGet" data-k="vista">Scarica la zona visibile</button><button data-act="offGet" data-k="rotta">Scarica intorno alla rotta</button><button data-act="offClear" class="danger">Cancella</button>';
+    : '<button data-act="offAlways" class="primary">Scarica tutto per questa zona</button><button data-act="offAll">Prepara tutto per l\'uscita</button><button data-act="offGet" data-k="vista">Scarica la zona visibile</button><button data-act="offGet" data-k="rotta">Scarica intorno alla rotta</button><button data-act="offClear" class="danger">Cancella</button>';
+}
+/* Uso sempre senza rete: scarica una volta tutto per la zona dove navighi (dati nautici e profondità, vista d'insieme
+   dell'Italia, carta della zona visibile fino allo zoom 15, elenchi), poi l'app non usa più la rete per la carta */
+async function offSetupAlways() {
+  if (!navigator.onLine) { toast('Per la preparazione serve la connessione (meglio il Wi-Fi)'); return; }
+  S.set.pkg = 'all'; saveSet(); if ($('sPkg')) $('sPkg').value = 'all';
+  const pk = syncPackage(true);
+  await offDownload('zona');
+  await pk;
+  S.set.offAlways = true; saveSet(); if ($('lOffAlways')) $('lOffAlways').checked = true;
+  offStatus(); toast('Fatto: ora l\'app funziona senza rete in questa zona. Per un\'altra zona spostati e tocca di nuovo');
 }
 /* un tocco prima di partire: dati nautici, carta intorno alla rotta (o della zona visibile) e meteo della destinazione */
 async function offAll() {
@@ -3490,6 +3511,7 @@ document.addEventListener('click', e => {
     case 'encImport': $('encFile').click(); break;
     case 'offGet': offDownload(d.k); break;
     case 'offAll': offAll(); break;
+    case 'offAlways': offSetupAlways(); break;
     case 'offStop': OFF.stop = true; break;
     case 'offClear': if (b.dataset.armed) offClear(); else { b.dataset.armed = '1'; b.textContent = 'Tocca ancora per cancellare'; setTimeout(() => { delete b.dataset.armed; renderOffBtns(); }, 3000); } break;
     case 'pkgSync': if (!navigator.onLine) toast('Serve la connessione a Internet'); else { toast('Controllo gli aggiornamenti dei dati…'); syncPackage(true); } break;
@@ -3603,6 +3625,7 @@ if ($('sPkg')) {
 if ($('lPkgWifi')) {
   $('lPkgWifi').checked = !!S.set.pkgWifi;
   $('lPkgWifi').addEventListener('change', () => { S.set.pkgWifi = $('lPkgWifi').checked; saveSet(); pkgStatus(); });
+  if ($('lOffAlways')) { $('lOffAlways').checked = !!S.set.offAlways; $('lOffAlways').addEventListener('change', () => { S.set.offAlways = $('lOffAlways').checked; saveSet(); base.osm.redraw(); sea.redraw(); toast(S.set.offAlways ? 'La carta si prende solo da quella scaricata' : 'La carta si scarica di nuovo da internet quando c\'è la rete'); }); }
 }
 pkgStatus(); renderOffBtns(); offStatus();
 

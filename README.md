@@ -53,7 +53,7 @@
 - Profondità e **linee batimetriche** EMODnet, calcolate sul telefono.
 - Traffico AIS, traccia percorsa.
 - Temi giorno, sera e notte.
-- **Uso senza rete**: pacchetto dei dati nautici, carta della zona o della rotta da scaricare, ricerca tra i luoghi salvati, ultime previsioni meteo.
+- **Uso sempre senza rete** nella tua zona dopo un solo scaricamento: pacchetto dei dati nautici, carta della zona o della rotta da scaricare, ricerca tra i luoghi salvati, ultime previsioni meteo.
 
 **Punti di interesse**
 - I tuoi punti: pesca, fonda, immersione, sosta, relitto. Si sincronizzano con l'account e si esportano in GPX.
