@@ -2690,6 +2690,7 @@ function wkAuto(now) {
     const st = await RNWreckSearch.find({ n: WKF.n, lat: WKF.lat, lng: WKF.lng }).catch(() => null);
     if (seq !== wkAutoSeq || !WKF) return;
     WKF.busy = false;
+    wkAutoUndo();   // i campi compilati da una ricerca precedente (se non li hai cambiati) si tolgono sempre
     if (st && WKF.noAutoT !== st.titolo) {
       WKF.st = st; WKF.autoFill = {};
       if (!(WKF.n || '').trim() && $('wkfN')) { WKF.n = st.titolo.replace(/\s*\([^)]*\)\s*$/, '').slice(0, 60); $('wkfN').value = WKF.n; WKF.autoFill.n = WKF.n; WKF.autoQ = WKF.n.trim() + q.slice(q.indexOf('|')); }
@@ -2698,7 +2699,21 @@ function wkAuto(now) {
     wkAutoBox();
   }, now ? 0 : 1000);
 }
-document.addEventListener('input', e => { if (e.target && (e.target.id === 'wkfN' || e.target.id === 'wkfP') && WKF) wkAuto(); });
+/* toglie quello che la ricerca aveva compilato, se nel frattempo non l'hai modificato */
+function wkAutoUndo() {
+  if (!WKF) return;
+  wkFormRead();
+  const af = WKF.autoFill || {};
+  if (af.n && WKF.n === af.n && $('wkfN')) { WKF.n = ''; $('wkfN').value = ''; }
+  if (af.note && WKF.note === af.note && $('wkfT')) { WKF.note = ''; $('wkfT').value = ''; }
+  WKF.st = null; WKF.autoFill = null;
+}
+document.addEventListener('input', e => {
+  if (!e.target || !WKF) return;
+  /* nome scritto a mano: la scheda trovata per un altro nome non vale più */
+  if (e.target.id === 'wkfN' && WKF.st) { const af = WKF.autoFill || {}; if (af.note && $('wkfT') && $('wkfT').value === af.note) { $('wkfT').value = ''; WKF.note = ''; } WKF.st = null; WKF.autoFill = null; wkAutoBox(); }
+  if (e.target.id === 'wkfN' || e.target.id === 'wkfP') wkAuto();
+});
 function wkFormRead() {
   if (!WKF || !$('wkfP')) return;
   const p = parseCoords($('wkfP').value); if (p) { WKF.lat = p.lat; WKF.lng = p.lng; }
@@ -3567,11 +3582,7 @@ document.addEventListener('click', e => {
     case 'wkPickNo': wkPickEnd(false); break;
     case 'wkAutoNo': {
       if (!WKF || !WKF.st) break;
-      wkFormRead();
-      const af = WKF.autoFill || {};
-      if (af.n && WKF.n === af.n && $('wkfN')) { WKF.n = ''; $('wkfN').value = ''; }
-      if (af.note && WKF.note === af.note && $('wkfT')) { WKF.note = ''; $('wkfT').value = ''; }
-      WKF.noAutoT = WKF.st.titolo; WKF.st = null; WKF.autoFill = null; wkAutoBox(); toast('Tolti i dati trovati'); break;
+      WKF.noAutoT = WKF.st.titolo; wkAutoUndo(); wkAutoBox(); toast('Tolti i dati trovati'); break;
     }
     case 'wkSend': {
       wkFormRead();

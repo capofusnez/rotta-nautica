@@ -9,7 +9,7 @@
   const WK = /relitt|naufrag|affondat|affondò|affondament|sommergibil|sottomarin|piroscaf|incrociator|cacciatorpedinier|torpedinier|corazzat|motonave|mercantile|peschereccio|petroliera|dragamine|rimorchiator|\bnave\b|wreck|\bsank\b|\bsunk\b|scuttled|submarine|steamship|torpedoed|aereo precipitat|ammarag|ditched/i;
   const GENERIC = /^(relitto|relitti|aereo|nave|barca|peschereccio|wreck|relitto \d+|senza nome)$/i;
   const SKIP = /^(note|bibliografia|voci correlate|collegamenti esterni|altri progetti|riferimenti|fonti|references|notes|see also|external links|further reading|bibliography|sources|galleria|gallery|filmografia|curiosità)$/i;
-  const CACHE = 'rn.wkr.';
+  const CACHE = 'rn.wkr2.';
   const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').trim();
   const dist = (a, b) => {
     const r = Math.PI / 180, dl = (b.lat - a.lat) * r, dg = (b.lng - a.lng) * r;
@@ -37,7 +37,13 @@
       km = dist(o, { lat: c.lat, lng: c.lon });
       s += km < 1.5 ? 4 : km < 5 ? 3 : km < 15 ? 1 : km < 60 ? 0 : -3;
     }
-    return { s, km, wreck, nameHit: nm.length > 0 && s >= 5 };
+    /* con il nome: la voce deve avere quel nome nel titolo (o nel testo, se è vicina); senza nome: solo una voce
+       su un relitto a meno di 1,5 km. Meglio nessuna scheda che la scheda di un altro relitto */
+    const t = norm(pg.title), x = norm(pg.extract);
+    let ok;
+    if (nm.length) ok = nm.every(w => t.includes(w)) || (nm.every(w => x.includes(w)) && km != null && km < 15);
+    else ok = km != null && km < 1.5 && WK.test(pg.title + ' ' + String(pg.extract || '').split('. ')[0]);
+    return { s, km, wreck, ok };
   }
 
   async function candidates(lang, o) {
@@ -87,7 +93,7 @@
         let top = null;
         for (const pg of list) {
           if (seen.has(pg.pageid)) continue; seen.add(pg.pageid);
-          const sc = score(pg, o); if (!sc.wreck || sc.s < 5) continue;
+          const sc = score(pg, o); if (!sc.ok || !sc.wreck || sc.s < 5) continue;
           if (!top || sc.s > top.sc.s) top = { pg, sc };
         }
         if (top) best = await story(lang, top.pg.title, top.sc.km);

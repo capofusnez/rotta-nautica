@@ -32,6 +32,9 @@ jobs:
             Object.values(P).forEach(u => Object.values(u || {}).forEach(x => { tot++; if (x.tipo === "posizione") pos++; else nuovi++; if (x.n) conNome++; if (x.anon) anon++; }));
             console.log("segnalazioni relitti in attesa:", tot, "(nuovi", nuovi + ", posizioni", pos + ", con nome", conNome + ", nome nascosto", anon + ") da", n(P), "utenti");
             console.log("relitti approvati:", n(r("relitti_utenti")), "· posizioni corrette:", n(r("relitti_posizioni")));
+            const ti = x => { try { return JSON.parse(x.st).titolo; } catch (e) { return "-"; } };
+            Object.values(P).forEach(u => Object.values(u || {}).forEach(x => console.log("  proposto:", JSON.stringify(x.n || ""), "| note:", JSON.stringify((x.note || "").slice(0, 70)), "| scheda:", x.st ? ti(x) : "-")));
+            Object.values(r("relitti_utenti")).forEach(x => console.log("  approvato:", JSON.stringify(x.n || ""), "| note:", JSON.stringify((x.note || "").slice(0, 70)), "| scheda:", x.st ? ti(x) : "-"));
             let np = 0; Object.values(r("proposte")).forEach(x => { np += n(x); });
             console.log("nomi proposti in attesa:", np, "· nomi approvati:", n(r("relitti_nomi")));
             let nr = 0; Object.values(r("recensioni")).forEach(x => { nr += n(x); });
