@@ -32,4 +32,12 @@ jobs:
             console.log("nomi proposti in attesa:", np, "· nomi approvati:", n(r("relitti_nomi")));
             let nr = 0; Object.values(r("recensioni")).forEach(x => { nr += n(x); });
             console.log("recensioni:", nr, "· utenti senza pubblicità:", n(r("pro")));
+            /* forma delle voci pro (senza codici utente né email): serve a capire perché una voce non vale */
+            Object.entries(r("pro")).forEach(([k, v], i) => {
+              const t = v && typeof v === "object" ? v : null;
+              console.log(" pro #" + (i + 1) + ": codice di", k.length, "caratteri" + (/^[A-Za-z0-9]{28}$/.test(k) ? "" : " (NON sembra un codice utente Firebase)"),
+                "| tipo:", JSON.stringify(t ? t.tipo : v), t && t.tipo !== undefined && typeof t.tipo !== "string" ? "(non è testo)" : "",
+                "| fino:", t && t.fino ? new Date(+t.fino).toISOString() + (+t.fino > Date.now() ? " (valido)" : " (SCADUTO)") : "-",
+                "| campi:", t ? Object.keys(t).join(",") : typeof v);
+            });
           '
