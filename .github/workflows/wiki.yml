@@ -1,0 +1,33 @@
+# Pubblica la guida: le pagine stanno nella cartella wiki/ del repository e vengono copiate nella wiki di GitHub.
+# Parte da sola quando cambia la cartella wiki/, oppure a mano da Actions → Pubblica la wiki → Run workflow.
+name: Pubblica la wiki
+
+on:
+  push:
+    branches: [main]
+    paths: ['wiki/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copia le pagine nella wiki
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git clone "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-gh
+          # la wiki diventa uguale alla cartella wiki/ (le pagine tolte dalla cartella si tolgono anche dalla wiki)
+          find wiki-gh -maxdepth 1 -type f -name '*.md' -delete
+          cp wiki/*.md wiki-gh/
+          cd wiki-gh
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "Wiki invariata"; exit 0; fi
+          git commit -m "Guida aggiornata da ${GITHUB_SHA::7}"
+          git push

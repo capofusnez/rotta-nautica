@@ -5,12 +5,14 @@
 <h1 align="center">Rotta Nautica</h1>
 
 <p align="center">
-  Navigatore per la barca che funziona nel browser del telefono.<br>
-  Rotta via acqua, velocità in nodi, allarmi per secche e ancora, anche senza rete.
+  Navigatore per la barca da diporto, per il telefono: rotta via acqua lungo canali e briccole,<br>
+  dati di bordo, allarmi, punti di pesca e immersione, check-list e community. Funziona anche senza rete.
 </p>
 
 <p align="center">
-  <a href="https://capofusnez.github.io/rotta-nautica/"><b>▶ Apri l'app</b></a>
+  <a href="https://capofusnez.github.io/rotta-nautica/"><b>▶ Apri l'app</b></a> ·
+  <a href="https://github.com/capofusnez/rotta-nautica/releases/latest"><b>📱 Scarica l'APK per Android</b></a> ·
+  <a href="https://github.com/capofusnez/rotta-nautica/wiki"><b>📖 Guida (wiki)</b></a>
 </p>
 
 ---
@@ -18,73 +20,132 @@
 ## Cosa fa
 
 **Rotta**
-- Imposta partenza e destinazione toccando la carta, usando la posizione GPS o cercando un luogo per nome o per coordinate.
-- La **rotta via acqua viene calcolata in automatico**: segue mare, laguna, fiumi e canali invece di tagliare la terra.
-- Aggiungendo una **tappa** si sceglie il passaggio, per esempio via mare oppure via canali interni.
-- Rotte salvabili con un nome, importazione ed esportazione in **GPX**, inversione della rotta con un tocco.
+- Imposta partenza, tappe e destinazione: con il GPS, toccando la carta, cercando un luogo o scrivendo le coordinate (anche in gradi, primi e secondi).
+- La **rotta via acqua si calcola da sola**:
+  - in laguna e nei fiumi segue i canali segnati dalle briccole;
+  - esce in mare dalle bocche di porto;
+  - in mare resta entro la distanza dalla costa consentita da **patente e barca**.
+- Darsene e porticcioli dentro la laguna (es. Aprilia Marittima) sono trattati come acqua libera.
+- Rotte salvate, inversione, **GPX** in entrata e in uscita, simulazione.
 
-**Navigazione**
-- Strumenti sempre visibili: **SOG** (velocità in nodi), **COG** (rotta vera), **BRG**, **DTW** (distanza al punto), **XTE** (scarto laterale), **ETA** e **VMG**.
-- Passaggio automatico al punto successivo quando lo si raggiunge.
-- Linea di prua che mostra dove sarà la barca tra qualche minuto.
-- Traccia percorsa con distanza, tempo, velocità media e massima.
+**Bordo**
+- Velocità, direzione, distanza e arrivo sempre in alto.
+- Nella scheda Bordo:
+  - rilevamento, fuori rotta, VMG e tempi di arrivo;
+  - **distanza dalla costa** in tempo reale e **fondale** indicativo;
+  - vento, onda e pressione.
+- Una **"i"** accanto a ogni dato ne spiega il significato.
 
 **Sicurezza**
-- **Uomo a mare (MOB)**: un tocco segna il punto e dà subito rotta e distanza per tornarci.
-- **Allarme ancora**: suona se la barca si allontana oltre il raggio scelto.
-- **Secche e ostacoli** segnati a mano: allarme se la prua li raggiunge entro 5 minuti o se la rotta ci passa vicino.
-- Allarmi per fuori rotta, velocità massima, raffiche di vento e segnale GPS assente, con suono e vibrazione.
+- **Uomo a mare (MOB)** con un tocco.
+- Allarmi:
+  - ancora;
+  - secche e ostacoli segnati;
+  - fuori rotta;
+  - velocità;
+  - raffiche;
+  - distanza minima dalla costa;
+  - GPS assente.
+- **Patente obbligatoria** impostata da sola oltre 40,8 CV o con la moto d'acqua.
 
-**Carta e meteo**
-- Carta stradale o satellitare, segnali nautici OpenSeaMap, profondità indicative EMODnet.
-- Vento, raffiche, onda e pressione nel punto in cui ti trovi (Open-Meteo).
-- **Modalità notte** con luce rossa, per non perdere la visione notturna.
-- Le zone di carta già viste restano disponibili **anche senza rete**.
+**Carta**
+- Carta, satellite, segnali nautici OpenSeaMap, carte ENC (S-57).
+- Profondità e **linee batimetriche** EMODnet, calcolate sul telefono.
+- Traffico AIS, traccia percorsa.
+- Temi giorno, sera e notte.
+- Pacchetto dati da scaricare per l'**uso senza rete**.
 
-## Installarla sul telefono
+**Punti di interesse**
+- I tuoi punti: pesca, fonda, immersione, sosta, relitto. Si sincronizzano con l'account e si esportano in GPX.
+- **Marine, distributori e scivoli** con i servizi offerti.
+- Punti di fonda e aree marine protette.
+- **Zone di pesca** dell'Alto Adriatico (consentite, con limiti, vietate) con le fonti.
+- **Relitti**, con la scheda storica "Approfondisci".
 
-Non serve nessuno store.
+**Check-list**
+- Pre partenza, navigazione, rientro, manutenzione.
+- Le voci si generano in base a barca e motore e si possono modificare.
+- Report salvati.
+- **Ore motore e scadenze di manutenzione**, anche dal libretto del costruttore per alcuni motori.
 
-- **Android (Chrome):** apri il link, poi ⋮ → **Installa app**.
-- **iPhone (Safari):** apri il link, poi Condividi → **Aggiungi alla schermata Home**.
+**Community** (con l'accesso Google)
+- Recensioni.
+- Condivisione di punti pesca, immersioni, fonde e relitti.
+- Nomi dei relitti senza nome.
+- Correzione delle posizioni.
+- Tutto passa dall'**approvazione di un moderatore**.
+- Posizione condivisa con le altre barche collegate.
 
-L'app si apre a schermo intero e si aggiorna da sola quando esce una nuova versione.
+## Installazione
 
-## Come si usa
+- **Android:** scarica `rotta-nautica.apk` dall'[ultima release](https://github.com/capofusnez/rotta-nautica/releases/latest) e aprilo. Si installa sopra la versione precedente senza perdere i dati.
+- **Dal browser:** apri il [link dell'app](https://capofusnez.github.io/rotta-nautica/).
+  - Su Android (Chrome): ⋮ → **Installa app**.
+  - Su iPhone (Safari): Condividi → **Aggiungi alla schermata Home**.
 
-1. Apri la scheda **Rotta** e scegli partenza e destinazione.
-2. Attendi qualche secondo: la rotta via acqua compare sulla carta.
-3. Controllala con la vista **Satellite** e, se serve, aggiungi una tappa per far passare la rotta dove vuoi.
-4. Premi **Avvia navigazione**. Con **Simula** puoi provare la rotta senza muoverti.
+Al primo avvio si accettano le [condizioni d'uso e l'informativa sulla privacy](https://capofusnez.github.io/rotta-nautica/privacy.html).
 
-Prima di partire, scorri la carta sulla zona di navigazione a vari livelli di zoom: così resta in memoria anche dove non c'è campo.
+## Primi passi
 
-> **Suggerimento:** il pannello in basso si abbassa trascinandolo verso il basso, oppure toccando la carta. Tienilo premuto sulla carta per aprire il menu rapido (partenza, tappa, destinazione, secca).
+1. Apri **Menu → Barca e account**:
+   - imposta mezzo, potenza, lunghezza e patente, oppure compila la scheda della barca in **Check-list**: i dati passano da soli;
+   - se vuoi, accedi con Google.
+2. Scheda **Rotta**: scegli partenza e destinazione; la rotta compare da sola.
+3. Controllala. Se vuoi un altro passaggio, per esempio via canali invece che via mare, aggiungi una **tappa**.
+4. **Avvia navigazione**, oppure **Simula** per provarla da terra.
+5. Prima di andare dove non c'è campo, scarica il **pacchetto dati** da **Carta → Dati per l'uso senza rete**.
 
-## ⚠️ Da sapere prima di uscire in mare
+La guida completa è nella [wiki](https://github.com/capofusnez/rotta-nautica/wiki).
 
-Rotta Nautica è un **ausilio alla navigazione**. **Non sostituisce** le carte nautiche ufficiali, gli strumenti di bordo, i bollettini meteo e la buona condotta marinaresca.
+## ⚠️ Da sapere
 
-- **La rotta automatica non conosce le profondità.** Riconosce l'acqua dalla carta OpenStreetMap, che in laguna non distingue i canali dragati dalle zone basse. La rotta può quindi passare sopra una secca: **verificala sempre** e segui i segnalamenti (bricole, fanali).
-- **Con lo schermo spento** il browser può sospendere il GPS e gli allarmi. Durante la navigazione o all'ancora tieni lo schermo acceso e il telefono in carica.
-- Le profondità EMODnet hanno una risoluzione di circa 100 m: vanno bene come indicazione in mare aperto, ma non per i canali.
-- Il calcolo della rotta, la ricerca dei luoghi e il meteo richiedono la connessione a Internet.
+Rotta Nautica è un **aiuto alla navigazione**. Non sostituisce:
+- le carte nautiche ufficiali;
+- gli avvisi ai naviganti e le ordinanze delle Capitanerie;
+- gli strumenti di bordo e la buona condotta marinaresca.
 
-## Dati e servizi usati
+- Canali, segnali, profondità, marine e zone di pesca vengono da dati pubblici e da volontari: possono essere incompleti o non aggiornati. **Segui sempre i segnalamenti in acqua.**
+- Le profondità EMODnet hanno celle di circa 115 m: vanno bene come indicazione, non per i canali.
+- Con lo schermo spento il telefono può sospendere GPS e allarmi: in navigazione e all'ancora tienilo acceso e in carica.
 
-- Carta: © [OpenStreetMap](https://www.openstreetmap.org/copyright), con le sue [regole d'uso delle tiles](https://operations.osmfoundation.org/policies/tiles/)
-- Segnali nautici: [OpenSeaMap](https://www.openseamap.org/)
-- Profondità: [EMODnet Bathymetry](https://emodnet.ec.europa.eu/en/bathymetry)
-- Satellite: Esri World Imagery
-- Meteo e mare: [Open-Meteo](https://open-meteo.com/)
-- Ricerca luoghi: [Nominatim](https://nominatim.openstreetmap.org/)
-- Libreria cartografica: [Leaflet](https://leafletjs.com/)
+## Dati e servizi
 
-L'app è pensata per uso personale. Se viene usata da molte persone, conviene passare a un fornitore di tiles e di ricerca dedicato, nel rispetto delle regole d'uso dei servizi gratuiti.
+- Carta © [OpenStreetMap](https://www.openstreetmap.org/copyright) ([regole d'uso delle tiles](https://operations.osmfoundation.org/policies/tiles/)).
+- Segnali, canali, marine e relitti: [OpenStreetMap](https://www.openstreetmap.org/) / [OpenSeaMap](https://www.openseamap.org/).
+- Profondità: [EMODnet Bathymetry](https://emodnet.ec.europa.eu/en/bathymetry). Satellite: Esri World Imagery.
+- Meteo e mare: [Open-Meteo](https://open-meteo.com/). Ricerca luoghi: [Nominatim](https://nominatim.openstreetmap.org/).
+- Account e community: Google Firebase. Pagamenti della versione senza pubblicità: Stripe. Pubblicità nell'APK: Google AdMob.
+- Libreria cartografica: [Leaflet](https://leafletjs.com/).
 
-## Contribuire
+## Per chi sviluppa
 
-Segnalazioni e proposte sono benvenute nella sezione **Issues**. Per un problema sulla rotta automatica, allega uno screenshot della carta con partenza e destinazione.
+**L'app**
+- È una PWA statica in HTML e JavaScript puro, pubblicata con GitHub Pages.
+- File principali:
+  - `app.js`: carta, rotta e interfaccia;
+  - `water.js`: calcolo della rotta sulla griglia dell'acqua;
+  - `channels.js`: canali e briccole;
+  - `flotta.js`: Firebase;
+  - `comunita.js`: community e moderazione;
+  - `checklist.js` e `catalogo.js`: check-list e catalogo;
+  - `aiuto.js`: avvio, privacy e spiegazioni;
+  - `pubblicita.js`: pubblicità e versione Pro.
+
+**Azioni GitHub** (cartella `.github/workflows`)
+- `apk.yml` costruisce l'APK con Capacitor. Con **Run workflow** e il nome della release (es. `V1.8.0`) la pubblica, con la descrizione presa da `release/V1.8.0.md`.
+- `nautica.yml` aggiorna i dati nautici e i relitti.
+- `poi.yml` aggiorna punti di fonda, aree marine protette, marine e distributori.
+- `functions.yml` pubblica la funzione Firebase dei pagamenti e le regole del database (`database.rules.json`).
+- `diagnostica.yml` conta i dati della community.
+
+Versione senza pubblicità e pubblicità: vedi [PRO.md](PRO.md).
+
+**Prove:** `cd tools && node test_rotta.js` prova il calcolo della rotta.
+
+## Contatti
+
+Segnalazioni e proposte nella sezione **Issues**, oppure a capofusnez@gmail.com.
+Per un problema sulla rotta allega uno screenshot con partenza e destinazione.
 
 ---
 
