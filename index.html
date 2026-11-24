@@ -753,22 +753,12 @@ button.sm{min-height:0;padding:4px 10px;font-size:13px;margin-top:6px}
     <div class="btns"><button data-act="encImport">Importa pacchetto ENC</button><button data-act="encClear" id="bEncClear" hidden>Rimuovi carte ENC</button></div>
     <input id="encFile" type="file" accept=".json,application/json" hidden>
     </div>
-    <h4>Dati per l'uso senza rete</h4>
-    <div class="form">
-      <label>Scarica sul telefono <span><select id="sPkg">
-        <option value="all">Dati nautici e profondità (circa 90 MB)</option><option value="nautica">Solo dati nautici (circa 17 MB)</option><option value="off">Solo le zone che uso</option></select></span></label>
-    </div>
-    <label class="chk"><input type="checkbox" id="lPkgWifi"> Scarica solo con il Wi-Fi</label>
+    <h4>Uso senza rete</h4>
+    <p class="note">L'app funziona sempre senza rete: carta, rotte, allarmi, punti, relitti, marine e zone di pesca sono sul telefono. Quando c'è internet controlla da sola se ci sono dati nuovi e scarica solo quelli cambiati.</p>
+    <label class="chk"><input type="checkbox" id="lPkgWifi"> Aggiorna i dati solo con il Wi-Fi</label>
     <p class="note" id="pkgInfo"></p>
-    <div class="btns"><button data-act="pkgSync">Aggiorna ora</button></div>
-    <details class="info"><summary>Come funziona</summary><p class="note">Al primo avvio l'app scarica tutti i dati nautici d'Italia (canali, briccole, segnali, piattaforme, schemi di traffico) e, se scelto, le profondità. A ogni avvio controlla se sul sito ci sono dati nuovi e scarica solo i riquadri cambiati. Le immagini della carta invece si salvano solo per le zone viste o usate per le rotte.</p></details>
-    <h4>Carta senza rete</h4>
-    <label class="chk"><input type="checkbox" id="lOffAlways"> Usa sempre senza rete (la carta si prende solo da quella scaricata)</label>
-    <p class="note" id="offInfo"></p>
-    <div class="btns" id="offBtns"></div>
-    <details class="info"><summary>Come funziona</summary><p class="note"><b>L'app funziona sempre senza rete, da sola.</b> Quando c'è internet (con l'opzione qui sopra, solo con il Wi-Fi) controlla se ci sono dati nuovi e scarica solo quelli cambiati: dati nautici, profondità e la <b>carta di base</b> di tutta Italia (terra e mare, da OpenStreetMap), che l'app disegna sul telefono dove non ha l'immagine della carta. Così senza rete la carta non è mai vuota e le rotte si calcolano ovunque. Le immagini della carta che guardi con la rete restano salvate e si usano al posto della carta di base.</p><p class="note"><b>Scaricamenti in più (facoltativi):</b> "Scarica tutto per questa zona" salva le immagini complete della carta (con strade, nomi e porti) della zona visibile; "Prepara tutto per l'uscita" quelle lungo la rotta e il meteo della destinazione.</p><p class="note">Prima di partire, con la rete, porta la carta sulla zona dove andrai e tocca <b>Scarica la zona visibile</b>, oppure imposta la rotta e tocca <b>Scarica intorno alla rotta</b>. L'app salva le immagini della carta (e dei segnali OpenSeaMap, se accesi) fino a un ingrandimento adatto alla navigazione: senza rete la zona si vede lo stesso. Per i dettagli più vicini restano i dati nautici scaricati qui sopra. La vista satellite non si può salvare: le condizioni d'uso non lo consentono. Se la zona è troppo grande, avvicina la carta.</p></details>
     <div class="btns"><button data-act="trackClear">Azzera traccia e statistiche</button><button data-act="trackGpx">Esporta traccia GPX</button></div>
-    <details class="info"><summary>Come funziona</summary><p class="note">Le zone di carta già visualizzate restano disponibili anche senza rete. Prima di partire scorri la carta sulla zona di navigazione, a vari livelli di zoom.</p></details>
+    
     <p class="note warn">Ausilio alla navigazione. Non sostituisce carte ufficiali, strumenti di bordo, bollettini meteo e buona condotta marinaresca. Le profondità e le secche mostrate possono essere incomplete.</p>
   </div>
 </section>

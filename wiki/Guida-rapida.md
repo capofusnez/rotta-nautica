@@ -26,18 +26,11 @@ L'elenco compare toccando la casella e si restringe mentre scrivi. Dal modello d
 
 Questi dati passano da soli in **Barca → Barca e patente**, dove scegli anche la **patente**. Oltre 40,8 CV la patente è obbligatoria e l'app la imposta da sola. Vedi [[Barca e account]].
 
-## 4. Prepara l'uso senza rete
+## 4. Senza rete funziona da sola
 
-Con il Wi-Fi apri **Carta → Dati per l'uso senza rete** e scarica il pacchetto:
-- **dati nautici e profondità** (circa 90 MB);
-- **solo dati nautici** (circa 17 MB).
+Non c'è niente da preparare. Al primo avvio con internet l'app scarica da sola i dati per l'uso senza rete (circa 95 MB, le profondità solo con il Wi-Fi): dati nautici, profondità e una carta di base di tutta Italia. Poi, ogni volta che c'è internet, scarica solo quello che è cambiato.
 
-Poi imposta la rotta (punto 5) e, ancora con la rete, in **Carta → Carta senza rete** tocca **Prepara tutto per l'uscita**. Con un tocco l'app:
-- scarica o aggiorna i dati nautici;
-- salva la carta lungo la rotta (o della zona visibile, se la rotta non c'è), fino allo zoom 15;
-- salva le previsioni meteo della destinazione.
-
-In mare, senza campo, avvicinando la carta oltre lo zoom 15 l'app ingrandisce l'immagine salvata invece di lasciare il grigio.
+Senza campo funzionano carta, rotte, allarmi e punti. Dove non hai mai guardato la carta con la rete, l'app disegna la carta di base (terra, mare, lagune, porti, fiumi), senza strade e nomi.
 
 ## 5. Imposta la rotta
 

@@ -53,7 +53,7 @@
 - Profondità e **linee batimetriche** EMODnet, calcolate sul telefono.
 - Traffico AIS, traccia percorsa.
 - Temi giorno, sera e notte.
-- **Uso sempre senza rete**, da solo: quando c'è internet l'app aggiorna dati nautici, profondità e una **carta di base di tutta Italia** disegnata sul telefono (terra, mare, lagune, porti, fiumi); in più carta della zona o della rotta da scaricare, carta della zona o della rotta da scaricare, ricerca tra i luoghi salvati, ultime previsioni meteo.
+- **Funziona sempre senza rete**, senza pulsanti: quando c'è internet l'app aggiorna da sola dati nautici, profondità e una **carta di base di tutta Italia** disegnata sul telefono (terra, mare, lagune, porti, fiumi); senza rete ricerca tra i luoghi salvati e ultime previsioni meteo.
 
 **Punti di interesse**
 - I tuoi punti: pesca, fonda, immersione, sosta, relitto. Si sincronizzano con l'account e si esportano in GPX.
@@ -94,7 +94,7 @@ Al primo avvio si accettano le [condizioni d'uso e l'informativa sulla privacy](
 2. Scheda **Rotta**: scegli partenza e destinazione; la rotta compare da sola.
 3. Controllala. Se vuoi un altro passaggio, per esempio via canali invece che via mare, aggiungi una **tappa**.
 4. **Avvia navigazione**, oppure **Simula** per provarla da terra.
-5. Prima di andare dove non c'è campo, scarica il **pacchetto dati** da **Carta → Dati per l'uso senza rete** e la carta della zona da **Carta → Carta senza rete**.
+5. Senza campo l'app funziona da sola: i dati per l'uso senza rete li scarica e li aggiorna lei quando c'è internet.
 
 La guida completa è nella [wiki](https://github.com/capofusnez/rotta-nautica/wiki).
 

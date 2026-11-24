@@ -1237,7 +1237,7 @@ async function loadGrid(a, b, k, n, plan, via, pad, zmin, close) {
       }
     };
     await Promise.all([0, 1, 2, 3, 4, 5].map(work));
-    if (failed > nx * ny * 0.15) throw new Error('Carta non disponibile per questa zona: scaricala prima con la rete (Carta → Carta senza rete)');
+    if (failed > nx * ny * 0.15) throw new Error('Carta non disponibile per questa zona: i dati per l\'uso senza rete non sono ancora stati scaricati (serve internet la prima volta)');
   }
   busy.set(`Tratto ${k}/${n}: riconosco canali, briccole e acque navigabili…`, k, 0.6);
   await yieldUI();
@@ -1334,13 +1334,15 @@ function pkgStatus() {
   const st = store.get('pkgState', null);
   if (S.set.pkg === 'off') return pkgInfo('Si salvano solo le zone usate per calcolare le rotte.');
   if (PKG.running) return pkgInfo(`Scarico i dati: ${PKG.done}/${PKG.todo} riquadri…`);
-  if (!st) return pkgInfo('Dati non ancora scaricati: partirà al prossimo collegamento' + (S.set.pkgWifi ? ' Wi-Fi.' : '.'));
+  if (!st) return pkgInfo('Dati per l\'uso senza rete non ancora scaricati: partono da soli appena c\'è internet.');
   pkgInfo(`Dati salvati sul telefono: ${st.n} riquadri, circa ${Math.round(st.mb)} MB. Dati nautici del ${st.date || '?'}. Ultimo controllo ${new Date(st.checked).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`);
 }
 async function syncPackage(force) {
   if (PKG.running || S.set.pkg === 'off' || !navigator.onLine) return;
   const c = navigator.connection;
-  if (!force && S.set.pkgWifi && c && c.type && !/^(wifi|ethernet)$/.test(c.type)) { pkgStatus(); return; }
+  /* con la rete del telefono (opzione "solo con il Wi-Fi") si aggiornano dati nautici e carta di base, che sono piccoli;
+     le profondità (le più pesanti) aspettano il Wi-Fi */
+  const cellOnly = !force && S.set.pkgWifi && c && c.type && !/^(wifi|ethernet)$/.test(c.type);
   let cache;
   try { cache = await caches.open('rn-data'); } catch (e) { return; }
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* facoltativo */ }
@@ -1349,12 +1351,13 @@ async function syncPackage(force) {
   for (const f of ['relitti.json', 'relitti-storie.json', 'servizi.json', 'pesca.json', 'poi.json']) getData(f).catch(() => {});
   const ni = await fresh('nautica/index.json');
   if (!ni || !ni.tiles) return;
-  const di = S.set.pkg === 'all' ? await fresh('depth/index.json') : null;
+  const di = S.set.pkg === 'all' && !cellOnly ? await fresh('depth/index.json') : null;
   const ti = await fresh('terra/index.json');
   const items = ni.tiles.filter(t => t.file).map(t => ({ key: 'n:' + t.id, path: 'nautica/' + t.file, sig: t.bytes + '/' + t.count, bytes: t.bytes || 0 }))
     .concat(di && di.tiles ? di.tiles.map(t => ({ key: 'd:' + t.id, path: 'depth/' + t.file, sig: String(t.bytes), bytes: t.bytes || 0 })) : [])
     .concat(ti && ti.tiles ? ti.tiles.map(t => ({ key: 't:' + t.id, path: 'terra/' + t.file, sig: String(t.bytes), bytes: t.bytes || 0 })) : []);
   const saved = store.get('pkgSig', {}), want = new Set(items.map(x => x.key));
+  if (cellOnly) Object.keys(saved).forEach(k => { if (k.startsWith('d:')) want.add(k); });   // profondità già salvate: restano
   /* riquadri tolti dall'indice (diventati vuoti) o profondità non più volute: si cancellano dal telefono */
   for (const k of Object.keys(saved)) if (!want.has(k)) {
     const path = k.startsWith('n:') ? 'nautica/' + k.slice(2) + '.geojson' : k.startsWith('t:') ? 'terra/' + k.slice(2) + '.json' : 'depth/' + k.slice(2) + '.png';
@@ -3709,14 +3712,15 @@ document.querySelectorAll('input[name=base]').forEach(r => {
   $(id).addEventListener('change', () => { S.set[k] = $(id).checked; saveSet(); applyLayers(); renderPunti(); });
 });
 
-/* pacchetto dati per l'uso senza rete */
+/* pacchetto dati per l'uso senza rete: sempre tutto, senza scelte (l'app è fatta per funzionare senza rete) */
+S.set.pkg = 'all'; S.set.offAlways = false;
 if ($('sPkg')) {
   $('sPkg').value = S.set.pkg;
   $('sPkg').addEventListener('change', () => { S.set.pkg = $('sPkg').value; saveSet(); pkgStatus(); syncPackage(true); });
 }
 if ($('lPkgWifi')) {
   $('lPkgWifi').checked = !!S.set.pkgWifi;
-  $('lPkgWifi').addEventListener('change', () => { S.set.pkgWifi = $('lPkgWifi').checked; saveSet(); pkgStatus(); });
+  $('lPkgWifi').addEventListener('change', () => { S.set.pkgWifi = $('lPkgWifi').checked; saveSet(); pkgStatus(); syncPackage(); });
   if ($('lOffAlways')) { $('lOffAlways').checked = !!S.set.offAlways; $('lOffAlways').addEventListener('change', () => { S.set.offAlways = $('lOffAlways').checked; saveSet(); base.osm.redraw(); sea.redraw(); toast(S.set.offAlways ? 'La carta si prende solo da quella scaricata' : 'La carta si scarica di nuovo da internet quando c\'è la rete'); }); }
 }
 pkgStatus(); renderOffBtns(); offStatus();

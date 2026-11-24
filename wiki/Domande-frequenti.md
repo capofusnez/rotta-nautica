@@ -39,23 +39,15 @@ Deve prima approvarlo un **moderatore**. Tu lo vedi subito tra i tuoi punti. Per
 
 ### Posso usare l'app sempre senza rete?
 
-Sì, da sola. Quando il telefono ha internet (di base solo con il Wi-Fi) l'app controlla se ci sono dati nuovi e scarica solo quelli cambiati: dati nautici, profondità e la **carta di base** di tutta Italia (terra, mare, lagune, porti, fiumi e canali), circa 95 MB la prima volta. Senza rete la carta di base si disegna sul telefono dove manca l'immagine della carta: la carta non è mai vuota e le rotte si calcolano ovunque. Non devi scaricare niente a mano.
+Sì, è fatta così: non serve nessun pulsante. Quando il telefono ha internet l'app controlla se ci sono dati nuovi e scarica solo quelli cambiati: dati nautici, profondità (solo con il Wi-Fi, se l'opzione è accesa) e la **carta di base** di tutta Italia. Senza rete usa quello che ha sul telefono: carta, rotte, allarmi, punti, relitti, marine e zone di pesca.
 
-Le immagini della carta che guardi con la rete (con strade e nomi) restano salvate e si usano al posto della carta di base. Se vuoi le immagini complete di una zona anche dove non sei mai passato, una volta, con il Wi-Fi:
-1. porta la carta sulla tua zona (per esempio dalla laguna a Caorle);
-2. in **Carta → Carta senza rete** tocca **Scarica tutto per questa zona**.
+Le immagini della carta che guardi con la rete (con strade e nomi) restano salvate. Dove non le hai, l'app disegna la carta di base: terra, mare, lagune, porti, fiumi e canali.
 
-L'app scarica dati nautici e profondità, una vista d'insieme dell'Italia, la carta della zona fino allo zoom 15 e gli elenchi di marine, relitti e zone di pesca, poi attiva **Usa sempre senza rete**. Da quel momento carta, calcolo delle rotte, allarmi, punti e ricerca funzionano senza internet in quella zona. Per un'altra zona spostati lì e tocca di nuovo. Se la zona è troppo grande l'app lo dice: avvicina un po' la carta.
+Senza rete non ci sono satellite, meteo aggiornato (resta l'ultimo scaricato), AIS e invio alla community.
 
-Senza rete non ci sono satellite, meteo aggiornato, AIS e community.
+### La carta è senza nomi senza rete
 
-### La carta è grigia senza rete
-
-Quella zona non è in memoria. Prima di partire, con la rete:
-- in **Carta → Carta senza rete** tocca **Prepara tutto per l'uscita** (oppure **Scarica la zona visibile** o **Scarica intorno alla rotta**);
-- in **Carta → Dati per l'uso senza rete** scarica il pacchetto dei dati nautici.
-
-La vista satellite non si può salvare: senza rete usa la carta normale.
+È la carta di base, disegnata sul telefono dove non hai mai guardato la carta con la rete. Le zone viste con internet restano salvate con strade e nomi. Il satellite non si può salvare: senza rete usa la carta normale.
 
 ### Gli allarmi non suonano
 
