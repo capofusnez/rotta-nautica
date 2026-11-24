@@ -1,0 +1,40 @@
+# Sposta le voci scritte a mano nel nodo "Pro" (con la maiuscola) nel nodo giusto "pro" e ne corregge la forma:
+# campo "tipo" in minuscolo, senza spazi ("manuale", "unico" o "annuale" con "fino"). Actions → Sistema voci Pro → Run workflow.
+name: Sistema voci Pro
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sistema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - name: Correggi e sposta
+        run: |
+          DB="--project rotta-nautica --instance rotta-nautica-default-rtdb"
+          npx --yes firebase-tools@14 database:get /Pro $DB > vecchio.json || echo null > vecchio.json
+          npx --yes firebase-tools@14 database:get /pro $DB > attuale.json || echo null > attuale.json
+          node -e '
+            const fs = require("fs"), r = p => { try { return JSON.parse(fs.readFileSync(p, "utf8")) || {}; } catch (e) { return {}; } };
+            const fix = v => {
+              const o = {}; if (v && typeof v === "object") Object.entries(v).forEach(([k, x]) => { o[k.trim().toLowerCase()] = x; });
+              let tipo = String(o.tipo != null ? o.tipo : (typeof v === "string" ? v : "manuale")).trim().toLowerCase();
+              if (!["manuale", "unico", "annuale"].includes(tipo)) tipo = "manuale";
+              const out = { tipo }; if (tipo === "annuale") { const f = +o.fino; if (f > 0) out.fino = f; else out.tipo = "manuale"; }
+              return out;
+            };
+            const out = {}; let n = 0;
+            Object.entries(Object.assign({}, r("vecchio.json"), r("attuale.json"))).forEach(([k, v]) => { out[k.trim()] = fix(v); n++; console.log("voce", n, "→", JSON.stringify(out[k.trim()])); });
+            fs.writeFileSync("nuovo.json", JSON.stringify(out)); fs.writeFileSync("n.txt", String(n));
+          '
+          if [ "$(cat n.txt)" != "0" ]; then
+            npx --yes firebase-tools@14 database:update /pro nuovo.json $DB --force
+            npx --yes firebase-tools@14 database:remove /Pro $DB --force
+          fi
+          npx --yes firebase-tools@14 database:get / --shallow $DB
