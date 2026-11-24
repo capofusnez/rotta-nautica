@@ -421,20 +421,29 @@
     box.hidden = false; sugFor = inp;
   }
   function sugHide() { const b = $('ckSug'); if (b) b.hidden = true; sugFor = null; }
+  /* con il dito sull'elenco (anche per scorrerlo) l'elenco non si chiude; la scelta avviene solo con un tocco (click),
+     che il telefono non manda se il dito ha trascinato per scorrere */
+  let sugHold = false;
   document.addEventListener('focusin', e => { if (e.target.id && SUG[e.target.id]) { clearTimeout(sugT); sugShow(e.target); } });
-  document.addEventListener('focusout', e => { if (e.target.id && SUG[e.target.id]) sugT = setTimeout(sugHide, 200); });
+  document.addEventListener('focusout', e => { if (e.target.id && SUG[e.target.id]) sugT = setTimeout(() => { if (!sugHold) sugHide(); }, 250); });
   document.addEventListener('input', e => { if (e.target.id && SUG[e.target.id]) sugShow(e.target); if (e.target.id === 'ckHp') { delete e.target.dataset.auto; hpNote(); } });
   document.addEventListener('change', e => { if (e.target.id === 'ckN') hpNote(); });
-  /* la scelta va presa prima che la casella perda il fuoco */
   document.addEventListener('pointerdown', e => {
+    const box = $('ckSug'); if (!box || box.hidden) return;
+    if (box.contains(e.target)) { sugHold = true; clearTimeout(sugT); return; }
+    sugHold = false;
+    if (!(e.target.id && SUG[e.target.id])) sugT = setTimeout(sugHide, 150);   // tocco fuori: si chiude
+  }, true);
+  document.addEventListener('click', e => {
     const b = e.target.closest && e.target.closest('[data-cksug]'); if (!b || !sugFor) return;
     e.preventDefault();
-    const inp = sugFor; inp.value = b.dataset.cksug; sugHide();
+    const inp = sugFor; sugHold = false;
+    inp.value = b.dataset.cksug; sugHide();
     inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true }));
     sugHide();
     /* dopo il marchio si passa al modello */
     const next = { ckBb: 'ckBm', ckEb: 'ckEm' }[inp.id];
-    if (next && $(next) && !$(next).value) $(next).focus(); else inp.blur();
+    if (next && $(next) && !$(next).value) $(next).focus();
   });
 
   function showProf() {
