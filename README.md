@@ -144,7 +144,7 @@ Versione senza pubblicità e pubblicità: vedi [PRO.md](PRO.md).
 
 ## Contatti
 
-Segnalazioni e proposte nella sezione **Issues**, oppure a capofusnez@gmail.com.
+Segnalazioni e proposte nella sezione [Issues](https://github.com/capofusnez/rotta-nautica/issues).
 Per un problema sulla rotta allega uno screenshot con partenza e destinazione.
 
 ---

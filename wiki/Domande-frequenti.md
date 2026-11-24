@@ -61,4 +61,4 @@ Dettagli nell'[informativa privacy](https://capofusnez.github.io/rotta-nautica/p
 
 ### Ho trovato un problema
 
-Aprilo nella sezione **Issues** del repository oppure scrivi a capofusnez@gmail.com, con uno screenshot.
+Aprilo nella [pagina delle segnalazioni](https://github.com/capofusnez/rotta-nautica/issues) del repository, con uno screenshot.

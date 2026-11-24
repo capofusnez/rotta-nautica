@@ -47,4 +47,4 @@ Il pagamento è gestito da Stripe. La versione senza pubblicità vale su tutti i
 
 ## Condizioni d'uso e privacy
 
-Il link **Condizioni d'uso e privacy** apre il testo completo; **Rivedi il riepilogo** mostra di nuovo la schermata iniziale. Per domande sui dati o per cancellare l'account scrivi a capofusnez@gmail.com.
+Il link **Condizioni d'uso e privacy** apre il testo completo; **Rivedi il riepilogo** mostra di nuovo la schermata iniziale. Per domande sui dati o per cancellare l'account apri una richiesta nella [pagina delle segnalazioni](https://github.com/capofusnez/rotta-nautica/issues), senza scriverci dati personali.
