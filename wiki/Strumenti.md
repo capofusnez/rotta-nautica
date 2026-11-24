@@ -50,7 +50,7 @@ Il pulsante **Carta** a destra apre i livelli:
   - Da lontano: fino a 1000 m.
   - Sono calcolate sul telefono e funzionano anche senza rete.
 - **Traccia percorsa**, con **Azzera traccia e statistiche** ed **Esporta traccia GPX**.
-- **Traffico navale (AIS)**: aggiunge il pulsante AIS. Serve internet e mostra solo le navi con trasponditore acceso.
+- **Traffico navale (AIS)**: il pulsante AIS, sotto MOB, apre la mappa delle navi (VesselFinder). Serve internet e mostra solo le navi con trasponditore acceso.
 - **Carte ENC (S-57)**: carte nautiche elettroniche da importare come pacchetto.
 - **Uso senza rete**: l'app scarica da sola, quando ha la rete, i dati nautici, le profondità e la carta di base di tutta Italia, e poi solo quello che cambia. L'unica opzione è "Aggiorna i dati solo con il Wi-Fi": con la rete del telefono si aggiornano lo stesso dati nautici e carta di base, che sono piccoli; le profondità aspettano il Wi-Fi. Con il pacchetto si salvano anche relitti, marine, zone di pesca e punti di fonda.
 

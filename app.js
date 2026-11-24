@@ -425,7 +425,7 @@ function applyLayers() {
   if (S.set.pesca) { if (!map.hasLayer(pescaLayer)) { pescaLayer.addTo(map); loadPesca(); } } else map.removeLayer(pescaLayer);
   if (S.set.servizi) { if (!map.hasLayer(servLayer)) { servLayer.addTo(map); if (SRV) drawServizi(); else loadServizi(); } } else map.removeLayer(servLayer);
   if (S.set.comm) { if (!map.hasLayer(cpLayer)) { cpLayer.addTo(map); drawComm(); } } else map.removeLayer(cpLayer);
-  if ($('bAis')) { $('bAis').hidden = !S.set.ais; if (!S.set.ais) closeAis(); }
+  if ($('bAis')) $('bAis').hidden = false;   // il pulsante del traffico navale (AIS) c'è sempre, sotto MOB
   seamarkInspector.refresh();
   encView.render();
 }
@@ -2353,7 +2353,7 @@ async function localSearch(q) {
   if (!WRECKS) await loadWrecks();
   const out = [], add = (name, kind, o) => { if (name && words.every(w => n(name).includes(w))) out.push({ display: `${name} · ${kind}`, lat: o.lat, lng: o.lng }); };
   livePois().forEach(o => add(o.name, poiCat(o.cat).l + ' (tuo punto)', o));
-  if (SRV) { SRV.marine.forEach(o => add(marName(o), 'marina', o)); SRV.carburante.forEach(o => add(o.name, 'distributore', o)); SRV.scivoli.forEach(o => add(o.name, 'scivolo', o)); }
+  if (SRV) { SRV.marine.forEach(o => add(marName(o), 'marina', o)); SRV.carburante.forEach(o => add(srvName(o, ''), 'distributore', o)); SRV.scivoli.forEach(o => add(srvName(o, ''), 'scivolo', o)); }
   (WRECKS || []).forEach(w => add(w.name || (window.RNCom && RNCom.wreckName(w)), 'relitto', w));
   if (window.RNCom) Object.values(RNCom.points() || {}).forEach(o => add(o.n, poiCat(o.cat).l + ' (community)', o));
   if (POIDATA && POIDATA.fonde) POIDATA.fonde.forEach(o => add(o.name, 'punto di fonda', o));
@@ -2940,6 +2940,8 @@ function loadServizi() {
   return srvP;
 }
 /* nome della marina: quello dei dati o, se manca, quello della marina con nome più vicina (stesso porto, entro 600 m) */
+/* nome di distributori e scivoli: quello di OpenStreetMap o quello trovato con la località (campo nmA) */
+const srvName = (o, def) => o.name || o.nmA || def;
 function marName(o) {
   if (o.name) return o.name;
   if (o._nm === undefined) {
@@ -2947,7 +2949,7 @@ function marName(o) {
     (SRV ? SRV.marine : []).forEach(x => { if (x.name && x !== o) { const d = dist(o, x); if (d < bd) { bd = d; best = x.name; } } });
     o._nm = best;
   }
-  return o._nm || '';
+  return o._nm || o.nmA || '';
 }
 /* filtro delle marine per servizio: per ogni servizio "con" (1) o "senza" (-1) */
 const srvF = () => S.set.srvF || (S.set.srvF = {});
@@ -2957,7 +2959,7 @@ function drawServizi() {
   servLayer.clearLayers(); srvMk.clear();
   if (!SRV || !S.set.servizi || map.getZoom() < 10) return;
   const B = map.getBounds().pad(0.2), inB = o => B.contains([o.lat, o.lng]), lbl = map.getZoom() >= (srvFOn() ? 10 : 12);
-  const add = (o, k, html, size, pop) => { const m = L.marker([o.lat, o.lng], { title: o.name || '', icon: L.divIcon({ className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2], html }) }).bindPopup(pop).addTo(servLayer); srvMk.set(k + o.id, m); };
+  const add = (o, k, html, size, pop) => { const m = L.marker([o.lat, o.lng], { title: (k === 'm' ? marName(o) : srvName(o, '')) || '', icon: L.divIcon({ className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2], html }) }).bindPopup(pop).addTo(servLayer); srvMk.set(k + o.id, m); };
   SRV.marine.filter(o => inB(o) && marOk(o)).slice(0, 250).forEach(o => { const n = lbl && marName(o); add(o, 'm', `<div class="svI ma">⛵</div>${n ? `<span class="svLbl">${esc(n)}</span>` : ''}`, 24, () => marinaPopup(o)); });
   SRV.carburante.filter(inB).slice(0, 150).forEach(o => add(o, 'f', '<div class="svI fu">⛽</div>', 24, () => fuelPopup(o)));
   if (map.getZoom() >= 12) SRV.scivoli.filter(inB).slice(0, 150).forEach(o => add(o, 's', '<div class="svI sl">S</div>', 18, () => slipPopup(o)));
@@ -2978,12 +2980,12 @@ function marinaPopup(o) {
   return `<div class="wkPop"><b>⛵ ${esc(name)}</b><br>` + (o.s && o.s.length ? `<div class="svcs">${svcChips(o.s)}</div>` : '<span class="mut">Servizi non indicati nei dati.</span><br>') + rows.join('<br>') + srvFoot(o, 'm', name);
 }
 function fuelPopup(o) {
-  const name = o.name || 'Distributore per barche', fu = [o.diesel && 'gasolio', o.benzina && 'benzina', o.miscela && 'miscela'].filter(Boolean);
+  const name = srvName(o, 'Distributore per barche'), fu = [o.diesel && 'gasolio', o.benzina && 'benzina', o.miscela && 'miscela'].filter(Boolean);
   const rows = [o.brand && o.brand !== o.name ? esc(o.brand) : null, fu.length ? 'Carburanti: ' + fu.join(', ') : null, o.orari ? `Orari: ${esc(o.orari)}` : null,
     o.tel ? `Tel.: <a href="tel:${esc(o.tel.replace(/[^+\d]/g, ''))}">${esc(o.tel)}</a>` : null, o.marina ? `Nella ${esc(o.marina)}` : null].filter(Boolean);
   return `<div class="wkPop"><b>⛽ ${esc(name)}</b><br>${rows.join('<br>')}` + srvFoot(o, 'f', name);
 }
-function slipPopup(o) { return `<div class="wkPop"><b>🛶 ${esc(o.name || 'Scivolo')}</b><br>Scivolo per alare e varare${o.fee ? ` · ${/^no$/i.test(o.fee) ? 'gratuito' : 'a pagamento'}` : ''}` + srvFoot(o, 's', o.name || 'Scivolo'); }
+function slipPopup(o) { return `<div class="wkPop"><b>🛶 ${esc(srvName(o, 'Scivolo'))}</b><br>Scivolo per alare e varare${o.fee ? ` · ${/^no$/i.test(o.fee) ? 'gratuito' : 'a pagamento'}` : ''}` + srvFoot(o, 's', srvName(o, 'Scivolo')); }
 function renderServizi(ref, from) {
   const el = $('servList'); if (!el) return;
   if (!S.set.servizi) { el.innerHTML = ''; return; }
@@ -3007,7 +3009,7 @@ function renderServizi(ref, from) {
   }
   const L1 = SRV.marine.filter(marOk).map((o, i) => ({ o, i: SRV.marine.indexOf(o), k: 'm', d: dist(ref, o) })).concat(SRV.carburante.map((o, i) => ({ o, i, k: 'f', d: dist(ref, o) })))
     .filter(x => x.d < 25 * NM).sort((a, b) => a.d - b.d).slice(0, 10);
-  el.innerHTML = filt + (L1.length ? `<p class="note">Più vicini ${from}:</p>` + L1.map(x => `<button data-act="srvGo" data-k="${x.k}" data-i="${x.i}"><span><i class="svI sm ${x.k === 'm' ? 'ma' : 'fu'}">${x.k === 'm' ? '⛵' : '⛽'}</i><b>${esc((x.k === 'm' ? marName(x.o) : x.o.name) || (x.k === 'm' ? 'Marina' : 'Distributore'))}</b>${x.k === 'm' && x.o.s && x.o.s.length ? ' · ' + x.o.s.slice(0, 4).map(s => SERV[s] ? SERV[s][0] : '').join('') : ''}</span><span>${(x.d / NM).toFixed(1)} mn</span></button>`).join('')
+  el.innerHTML = filt + (L1.length ? `<p class="note">Più vicini ${from}:</p>` + L1.map(x => `<button data-act="srvGo" data-k="${x.k}" data-i="${x.i}"><span><i class="svI sm ${x.k === 'm' ? 'ma' : 'fu'}">${x.k === 'm' ? '⛵' : '⛽'}</i><b>${esc((x.k === 'm' ? marName(x.o) : srvName(x.o, '')) || (x.k === 'm' ? 'Marina' : 'Distributore'))}</b>${x.k === 'm' && x.o.s && x.o.s.length ? ' · ' + x.o.s.slice(0, 4).map(s => SERV[s] ? SERV[s][0] : '').join('') : ''}</span><span>${(x.d / NM).toFixed(1)} mn</span></button>`).join('')
     : `<p class="note">Nessuna marina${srvFOn() ? ' con questi servizi' : ''} o distributore entro 25 miglia.</p>`);
 }
 

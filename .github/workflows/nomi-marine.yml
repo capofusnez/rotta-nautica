@@ -1,0 +1,36 @@
+# Dà un nome a marine, distributori e scivoli senza nome in servizi.json (Nominatim / OpenStreetMap).
+# Si avvia a mano (Actions → Nomi delle marine → Run workflow) e da solo dopo l'aggiornamento mensile dei punti.
+name: Nomi delle marine
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['Punti di fonda e aree protette']
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dati-nautici
+  cancel-in-progress: false
+
+jobs:
+  nomi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Cerca i nomi
+        run: python -u tools/nomi_marine.py
+      - name: Salva nel repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add servizi.json
+          if git diff --cached --quiet; then echo "Nessun nome nuovo"; exit 0; fi
+          git commit -m "Nomi delle marine senza nome (Nominatim)"
+          git pull --rebase
+          git push
