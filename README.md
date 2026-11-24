@@ -64,6 +64,7 @@
 
 **Check-list**
 - Pre partenza, navigazione, rientro, manutenzione.
+- Scheda della barca con elenco di marchi e modelli (oltre 600 modelli di barche, motori fuoribordo ed entrobordo) e potenza proposta dal modello del motore.
 - Le voci si generano in base a barca e motore e si possono modificare.
 - Report salvati.
 - **Ore motore e scadenze di manutenzione**, anche dal libretto del costruttore per alcuni motori.

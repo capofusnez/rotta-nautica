@@ -27,7 +27,7 @@ Aggiungi una **tappa** lungo il percorso che vuoi. Vedi [[Rotte]].
 
 ### L'elenco di marchi e modelli non scorre o non compare
 
-Aggiorna all'ultima versione: l'elenco compare sotto la casella, si scorre con il dito e la voce si sceglie con un tocco. Se il modello non c'è, scrivilo a mano.
+Aggiorna all'ultima versione: l'elenco compare sotto la casella, si scorre con il dito e la voce si sceglie con un tocco. Dalla V1.7.4 tutti i marchi dell'elenco hanno i loro modelli (per esempio Azimut, Ferretti, Riva, Sea Ray, Capelli). Se il modello non c'è, scrivilo a mano.
 
 ### Perché non posso scegliere "Nessuna patente"?
 
