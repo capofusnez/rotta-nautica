@@ -53,14 +53,14 @@
 - Profondità e **linee batimetriche** EMODnet, calcolate sul telefono.
 - Traffico AIS, traccia percorsa.
 - Temi giorno, sera e notte.
-- Pacchetto dati da scaricare per l'**uso senza rete**.
+- **Uso senza rete**: pacchetto dei dati nautici, carta della zona o della rotta da scaricare, ricerca tra i luoghi salvati, ultime previsioni meteo.
 
 **Punti di interesse**
 - I tuoi punti: pesca, fonda, immersione, sosta, relitto. Si sincronizzano con l'account e si esportano in GPX.
-- **Marine, distributori e scivoli** con i servizi offerti.
+- **Marine, distributori e scivoli** con i servizi offerti, i nomi sulla carta e il **filtro per servizio** (per esempio solo le marine con lo scivolo).
 - Punti di fonda e aree marine protette.
 - **Zone di pesca** dell'Alto Adriatico (consentite, con limiti, vietate) con le fonti.
-- **Relitti**, con la scheda storica "Approfondisci".
+- **Relitti** con il simbolo del tipo (nave, aereo, sommergibile…), arancioni se il nome è noto, e la scheda storica "Approfondisci".
 
 **Check-list**
 - Pre partenza, navigazione, rientro, manutenzione.
@@ -74,7 +74,7 @@
 - Condivisione di punti pesca, immersioni, fonde e relitti.
 - Nomi dei relitti senza nome.
 - Correzione delle posizioni.
-- Tutto passa dall'**approvazione di un moderatore**.
+- Tutto passa dall'**approvazione di un moderatore**, che può anche cambiarne il tipo (es. da relitto a punto pesca).
 - Posizione condivisa con le altre barche collegate.
 
 ## Installazione
@@ -94,7 +94,7 @@ Al primo avvio si accettano le [condizioni d'uso e l'informativa sulla privacy](
 2. Scheda **Rotta**: scegli partenza e destinazione; la rotta compare da sola.
 3. Controllala. Se vuoi un altro passaggio, per esempio via canali invece che via mare, aggiungi una **tappa**.
 4. **Avvia navigazione**, oppure **Simula** per provarla da terra.
-5. Prima di andare dove non c'è campo, scarica il **pacchetto dati** da **Carta → Dati per l'uso senza rete**.
+5. Prima di andare dove non c'è campo, scarica il **pacchetto dati** da **Carta → Dati per l'uso senza rete** e la carta della zona da **Carta → Carta senza rete**.
 
 La guida completa è nella [wiki](https://github.com/capofusnez/rotta-nautica/wiki).
 

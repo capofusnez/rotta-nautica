@@ -39,7 +39,11 @@ Deve prima approvarlo un **moderatore**. Tu lo vedi subito tra i tuoi punti. Per
 
 ### La carta è grigia senza rete
 
-Quella zona non è in memoria. Prima di partire scarica il pacchetto in **Carta → Dati per l'uso senza rete** e scorri la carta sulla zona di navigazione.
+Quella zona non è in memoria. Prima di partire, con la rete:
+- in **Carta → Carta senza rete** tocca **Scarica la zona visibile** (o **Scarica intorno alla rotta**);
+- in **Carta → Dati per l'uso senza rete** scarica il pacchetto dei dati nautici.
+
+La vista satellite non si può salvare: senza rete usa la carta normale.
 
 ### Gli allarmi non suonano
 

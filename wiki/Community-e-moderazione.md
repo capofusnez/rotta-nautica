@@ -50,7 +50,9 @@ I moderatori vedono nel **Menu** il pulsante **Moderazione**. Gli altri utenti n
   - **Vedi sulla carta**, con il punto proposto in un cerchio arancione.
 
   Per le correzioni di posizione compare anche di quanto si sposta il relitto.
-- **Già approvati**: puoi togliere un nome, eliminare un relitto o un punto della community, o riportare un relitto alla posizione originale. I pulsanti rossi chiedono un **secondo tocco** di conferma. Gli stessi pulsanti ci sono nella scheda del relitto e nel riquadro del punto sulla carta.
+
+  **Approva come**: prima di approvare puoi cambiare il tipo. Per esempio un relitto segnalato che è meglio come 🐟 punto pesca, o un punto pesca che in realtà è un 🚢 relitto. Si può scegliere tra relitto, punto pesca, immersione, punto di fonda e sosta per il bagno.
+- **Già approvati**: puoi togliere un nome, eliminare un relitto o un punto della community, o riportare un relitto alla posizione originale. Per relitti e punti c'è anche **Tipo** con **Cambia tipo**, per correggere il tipo dopo l'approvazione. I pulsanti rossi chiedono un **secondo tocco** di conferma. Gli stessi pulsanti ci sono nella scheda del relitto e nel riquadro del punto sulla carta.
 - Sotto ogni recensione c'è **Cancella (moderatore)**.
 
 ### Aggiungere o togliere un moderatore

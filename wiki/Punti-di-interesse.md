@@ -34,6 +34,10 @@ Punti pesca, immersioni, fonde e soste condivisi dagli altri utenti e approvati 
 
 ⛵ **Marine**, ⛽ **distributori di carburante** per barche e, da vicino, **scivoli**, presi da OpenStreetMap. Compaiono sulla carta quando ingrandisci.
 
+Da vicino sotto ogni marina compare il **nome**. Se nei dati manca, si usa quello della marina con nome più vicina nello stesso porto.
+
+**Filtra le marine per servizio** (sotto "Marine e distributori"): tocca un servizio una volta per vedere solo le marine che **lo hanno** (✓ verde), di nuovo per quelle che **non lo hanno** (✕ rosso), una terza volta per togliere il filtro. Per esempio ✓ Scivolo mostra solo le marine con la rampa. I filtri valgono per la carta e per l'elenco; le marine senza servizi indicati nei dati si nascondono finché un filtro è attivo.
+
 Toccando una marina vedi:
 - i servizi: carburante, acqua, corrente, bagni, docce, gru, negozio nautico…;
 - posti barca, canale VHF, telefono e sito.
@@ -55,7 +59,13 @@ Sotto ci sono i **relitti vicini**, spesso molto pescosi. Fanno fede le ordinanz
 
 ## Relitti
 
-I relitti delle carte nautiche e di OpenStreetMap. I relitti sulla terraferma sono esclusi. Toccando un relitto, nell'elenco o sulla carta:
+I relitti delle carte nautiche e di OpenStreetMap. I relitti sulla terraferma sono esclusi.
+
+Sulla carta ogni relitto ha il **simbolo del tipo**: nave, aereo, sommergibile, barca, oppure lo scafo inclinato quando il tipo non è noto. Il tipo si ricava dai dati o dal nome (per esempio "Aereo …", "Piroscafo …"). Il colore dice se il nome è noto:
+- **arancione**: nome noto (anche se dato dalla community);
+- **grigio**: nome non noto.
+
+I siti d'immersione hanno il simbolo più grande. Toccando un relitto, nell'elenco o sulla carta:
 
 - **Approfondisci** apre la scheda con profondità, posizione e, per i relitti più noti, la **storia**: com'era la nave, come e quando è affondata, note per l'immersione, con le fonti. Le schede con la storia (📖) oggi sono 8: Rex, Baron Gautsch, Mercurio, Coriolanus, Maona, Kec, Hans Schmidt, San Giorgio.
 - **Nome del relitto**: per i relitti senza nome puoi darne uno, solo per te o da proporre a tutti.

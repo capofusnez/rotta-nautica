@@ -32,7 +32,7 @@ Con il Wi-Fi apri **Carta → Dati per l'uso senza rete** e scarica il pacchetto
 - **dati nautici e profondità** (circa 90 MB);
 - **solo dati nautici** (circa 17 MB).
 
-Poi scorri la carta sulla zona dove andrai a vari livelli di zoom: anche la carta vista resta in memoria.
+Poi, in **Carta → Carta senza rete**, porta la carta sulla zona dove andrai e tocca **Scarica la zona visibile**, oppure imposta la rotta e tocca **Scarica intorno alla rotta**. Anche la carta che guardi resta in memoria.
 
 ## 5. Imposta la rotta
 
