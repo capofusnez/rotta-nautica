@@ -21,7 +21,7 @@ jobs:
           npx --yes firebase-tools@14 database:instances:list --project rotta-nautica 2>/dev/null | grep -v "^$" || true
       - name: Conteggi
         run: |
-          for p in moderatori relitti_proposti relitti_utenti relitti_posizioni proposte relitti_nomi recensioni pro; do
+          for p in moderatori relitti_proposti relitti_utenti relitti_posizioni proposte relitti_nomi recensioni pro Pro; do
             npx --yes firebase-tools@14 database:get "/$p" --project rotta-nautica --instance rotta-nautica-default-rtdb > "$p.json" 2>/dev/null || echo null > "$p.json"
           done
           node -e '
@@ -35,9 +35,9 @@ jobs:
             let np = 0; Object.values(r("proposte")).forEach(x => { np += n(x); });
             console.log("nomi proposti in attesa:", np, "· nomi approvati:", n(r("relitti_nomi")));
             let nr = 0; Object.values(r("recensioni")).forEach(x => { nr += n(x); });
-            console.log("recensioni:", nr, "· utenti senza pubblicità:", n(r("pro")));
+            console.log("recensioni:", nr, "· utenti senza pubblicità:", n(r("pro")), "· voci nel nodo Pro (maiuscola):", n(r("Pro")));
             /* forma delle voci pro (senza codici utente né email): serve a capire perché una voce non vale */
-            Object.entries(r("pro")).forEach(([k, v], i) => {
+            Object.entries(Object.assign({}, r("pro"), r("Pro"))).forEach(([k, v], i) => {
               const t = v && typeof v === "object" ? v : null;
               console.log(" pro #" + (i + 1) + ": codice di", k.length, "caratteri" + (/^[A-Za-z0-9]{28}$/.test(k) ? "" : " (NON sembra un codice utente Firebase)"),
                 "| tipo:", JSON.stringify(t ? t.tipo : v), t && t.tipo !== undefined && typeof t.tipo !== "string" ? "(non è testo)" : "",
