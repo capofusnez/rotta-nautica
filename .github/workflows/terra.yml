@@ -1,0 +1,40 @@
+# Carta di base per l'uso senza rete (terraferma e mare), dai poligoni della terraferma di OpenStreetMap.
+# Si avvia a mano (Actions → Aggiorna carta senza rete → Run workflow) e da sola il giorno 2 di ogni mese.
+# L'app scarica i riquadri nuovi o cambiati da sola, quando ha la rete.
+name: Aggiorna carta senza rete
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 4 2 * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dati-nautici
+  cancel-in-progress: false
+
+jobs:
+  terra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Costruisci i riquadri
+        run: |
+          pip install --quiet shapely pyshp
+          python -u tools/build_terra.py
+          du -sh terra
+      - name: Salva nel repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A terra
+          if git diff --cached --quiet; then echo "Carta invariata"; exit 0; fi
+          git commit -m "Aggiorna carta senza rete (OpenStreetMap)"
+          git pull --rebase
+          git push
