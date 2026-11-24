@@ -13,7 +13,7 @@ La prima volta si compila la scheda:
 
 Marchi e modelli si scelgono dall'**elenco che compare sotto la casella**: si scorre con il dito e si restringe mentre scrivi. Se manca, scrivi a mano.
 
-L'elenco comprende circa 70 marchi di barche (gommoni, open, cabinati, yacht, barche a vela e catamarani) con oltre 600 modelli, e i principali marchi di motori fuoribordo ed entrobordo. Se un marchio non ha modelli in elenco, toccando la casella del modello compare l'avviso "scrivilo tu".
+L'elenco comprende 48 marchi di barche (gommoni, open, cabinati, yacht, barche a vela e catamarani) con oltre 600 modelli, e 26 marchi di motori fuoribordo ed entrobordo. Se un marchio non ha modelli in elenco, toccando la casella del modello compare l'avviso "scrivilo tu".
 
 Dal modello del motore l'app:
 - riconosce il **tipo**: fuoribordo, entrobordo o entrofuoribordo, benzina o diesel;
