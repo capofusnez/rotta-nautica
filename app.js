@@ -179,8 +179,8 @@ async function tileFetchSave(url) {
 }
 /* senza rete, se manca l'immagine di quello zoom, si ingrandisce quella salvata di uno zoom più basso (fino a 6 livelli):
    così avvicinando la carta oltre lo zoom scaricato non diventa grigia */
-async function tileFromParent(layer, c) {
-  for (let up = 1; up <= 6 && c.z - up >= 0; up++) {
+async function tileFromParent(layer, c, maxUp, minUp) {
+  for (let up = minUp || 1; up <= (maxUp || 6) && c.z - up >= 0; up++) {
     const f = 2 ** up, pc = { x: Math.floor(c.x / f), y: Math.floor(c.y / f), z: c.z - up };
     const b = await tileFromCache(layer.getTileUrl(pc)); if (!b) continue;
     const bmp = await createImageBitmap(b).catch(() => null); if (!bmp) continue;
@@ -191,13 +191,102 @@ async function tileFromParent(layer, c) {
   }
   return null;
 }
+/* ---------- Carta di base disegnata sul telefono (terra/*.json, azione "Aggiorna carta senza rete") ----------
+   Terraferma e mare d'Italia dai poligoni di OpenStreetMap, con gli stessi colori della carta OSM: senza rete
+   la carta non è mai grigia e il calcolo della rotta riconosce l'acqua anche dove l'immagine non è mai stata vista. */
+const T_SEA = '#aad3df', T_LAND = '#f2efe9';
+let terraIdxP = null;
+const terraCells = new Map();
+function terraIndex() {
+  if (!terraIdxP) terraIdxP = getData('terra/index.json').then(d => {
+    if (!d || !d.tiles) return null;
+    const by = new Map(d.tiles.map(t => [t.id, t])), land = new Set(d.land || []);
+    return { d, by, land, cover: d.cover };
+  }).catch(() => null).then(x => { if (!x) setTimeout(() => { terraIdxP = null; }, 60e3); return x; });
+  return terraIdxP;
+}
+function terraCell(t) {
+  if (terraCells.has(t.id)) { const p = terraCells.get(t.id); terraCells.delete(t.id); terraCells.set(t.id, p); return p; }
+  while (terraCells.size >= 24) terraCells.delete(terraCells.keys().next().value);
+  const p = getData('terra/' + t.file).then(d => {
+    if (!d || !d.parts) return null;
+    const q = d.q || 1e5;
+    d.parts.forEach(pt => { if (pt.p) pt.p = pt.p.map(poly => poly.map(r => { const a = new Float64Array(r.length); let x = 0, y = 0; for (let i = 0; i < r.length; i += 2) { x += r[i]; y += r[i + 1]; a[i] = x / q; a[i + 1] = y / q; } return a; })); });
+    return d;
+  }).catch(() => { terraCells.delete(t.id); return null; });
+  terraCells.set(t.id, p);
+  return p;
+}
+/* disegna l'immagine z/x/y; null se la zona non è coperta o i riquadri non sono sul telefono */
+async function terraTile(z, x, y) {
+  if (z < 6) return null;
+  const T = await terraIndex(); if (!T) return null;
+  const N = 2 ** z, w = x / N * 360 - 180, e = (x + 1) / N * 360 - 180;
+  const lat = v => Math.atan(Math.sinh(Math.PI * (1 - 2 * v / N))) * 180 / Math.PI, n = lat(y), sLat = lat(y + 1);
+  const [cs, cw, cn, ce] = T.cover;
+  if (sLat < cs || n > cn || w < cw || e > ce) return null;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+  const g = cv.getContext('2d');
+  g.fillStyle = T_SEA; g.fillRect(0, 0, 256, 256); g.fillStyle = T_LAND;
+  const ox = x * 256, oy = y * 256, PX = lng => Water.lon2px(lng, z) - ox, PY = la => Water.lat2px(la, z) - oy;
+  const rect = (s1, w1, n1, e1) => { const x0 = PX(w1), x1 = PX(e1), y0 = PY(n1), y1 = PY(s1); g.fillRect(Math.floor(x0), Math.floor(y0), Math.ceil(x1 - x0) + 1, Math.ceil(y1 - y0) + 1); };
+  for (let la = Math.floor(sLat); la <= Math.floor(n - 1e-9); la++) for (let lo = Math.floor(w); lo <= Math.floor(e - 1e-9); lo++) {
+    const id = `t_${la}_${lo}`;
+    if (T.land.has(id)) { rect(la, lo, la + 1, lo + 1); continue; }
+    const t = T.by.get(id); if (!t) continue;          // riquadro di solo mare
+    const d = await terraCell(t); if (!d) return null;  // non ancora scaricato: meglio niente che una carta sbagliata
+    for (const pt of d.parts) {
+      const [ps, pw, pn, pe] = pt.b;
+      if (ps > n || pn < sLat || pw > e || pe < w) continue;
+      if (pt.L) { rect(ps, pw, pn, pe); continue; }
+      g.beginPath();
+      for (const poly of pt.p) for (const r of poly) {
+        let lx = -1e9, ly = -1e9;
+        for (let i = 0; i < r.length; i += 2) {
+          const X = PX(r[i]), Y = PY(r[i + 1]);
+          if (i && Math.abs(X - lx) < 0.4 && Math.abs(Y - ly) < 0.4) continue;   // punti più vicini di mezzo pixel
+          if (!i) g.moveTo(X, Y); else g.lineTo(X, Y);
+          lx = X; ly = Y;
+        }
+        g.closePath();
+      }
+      g.fill('evenodd');
+      g.strokeStyle = T_LAND; g.lineWidth = 0.8; g.stroke();   // niente righine chiare tra un riquadro e l'altro
+    }
+  }
+  /* acque interne dai dati nautici: lagune, darsene e porti (acqua), barene (terra), fiumi e canali (linee) */
+  if (z >= 9) {
+    const D = await nauticaFor({ s: sLat, w, n, e }).catch(() => null);
+    if (D) {
+      const hitB = bb => bb[0] <= e && bb[2] >= w && bb[1] <= n && bb[3] >= sLat;
+      const fillRings = (list, col) => {
+        if (!list.length) return; g.fillStyle = col; g.beginPath();
+        list.forEach(a => a.rings.forEach(r => r.forEach((p, i) => { const X = PX(p.lng), Y = PY(p.lat); if (!i) g.moveTo(X, Y); else g.lineTo(X, Y); })));
+        g.fill('evenodd');
+      };
+      fillRings((D.restrictAreas || []).filter(a => a.lagoon && hitB(a.bb)), T_SEA);
+      fillRings((D.freeAreas || []).filter(a => hitB(a.bb)), T_SEA);
+      const mpp = 156543.03392 * Math.cos((n + sLat) / 2 * Math.PI / 180) / 2 ** z;
+      g.strokeStyle = T_SEA; g.lineCap = g.lineJoin = 'round';
+      (D.lines || []).filter(l => hitB(l.bb)).forEach(l => {
+        g.lineWidth = Math.max(1.5, (l.nav ? 30 : 12) / mpp); g.beginPath();
+        l.pts.forEach((p, i) => { const X = PX(p.lng), Y = PY(p.lat); if (!i) g.moveTo(X, Y); else g.lineTo(X, Y); }); g.stroke();
+      });
+      fillRings((D.restrictAreas || []).filter(a => a.hard && hitB(a.bb)), '#d3e3cf');
+    }
+  }
+  return new Promise(r => cv.toBlob(r, 'image/png'));
+}
 const OffTile = L.TileLayer.extend({
   createTile(coords, done) {
     const img = document.createElement('img'), url = this.getTileUrl(coords);
     img.alt = ''; img.setAttribute('role', 'presentation');
     const show = b => { const u = URL.createObjectURL(b); img.onload = () => { URL.revokeObjectURL(u); done(null, img); }; img.onerror = e => { URL.revokeObjectURL(u); done(e, img); }; img.src = u; };
     const net = () => { if (this.options.crossOrigin) img.crossOrigin = 'anonymous'; img.onload = () => done(null, img); img.onerror = e => done(e, img); img.src = url; };
-    const parent = () => tileFromParent(this, coords).then(b => { if (b) show(b); else net(); }).catch(net);
+    /* senza l'immagine: quella di 1-2 zoom più in basso ingrandita, poi la carta di base disegnata sul telefono
+       (solo per la carta OSM), poi quella di zoom ancora più bassi */
+    const parent = () => tileFromParent(this, coords, 2).then(b => b || (this.options.terra ? terraTile(coords.z, coords.x, coords.y) : null))
+      .then(b => b || tileFromParent(this, coords, 6, 3)).then(b => { if (b) show(b); else net(); }).catch(net);
     tileFromCache(url).then(b => {
       if (b) return show(b);
       if (!navigator.onLine || S.set.offAlways) return parent();
@@ -210,7 +299,7 @@ const OffTile = L.TileLayer.extend({
 });
 const tileL = (url, o) => new OffTile(url, o);
 const base = {
-  osm: tileL('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, zIndex: 1, crossOrigin: true, attribution: '© OpenStreetMap' }),
+  osm: tileL('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, zIndex: 1, crossOrigin: true, terra: true, attribution: '© OpenStreetMap' }),
   sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, zIndex: 1, attribution: 'Esri' })
 };
 const sea = tileL('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, zIndex: 3, attribution: 'OpenSeaMap' });
@@ -1138,7 +1227,7 @@ async function loadGrid(a, b, k, n, plan, via, pad, zmin, close) {
             if (r && r.ok) { if (cache) cache.put(url, r.clone()).catch(() => {}); blob = await r.blob(); }
           }
           /* senza rete: l'immagine salvata di uno zoom più basso, ingrandita (zona scaricata fino allo zoom 15) */
-          if (!blob) blob = await tileFromParent(base.osm, { x, y, z: box.z });
+          if (!blob) blob = await terraTile(box.z, x, y) || await tileFromParent(base.osm, { x, y, z: box.z });
           if (!blob) throw new Error('assente');
           const bm = await createImageBitmap(blob);
           ctx.drawImage(bm, (x - box.tx0) * Water.TILE, (y - box.ty0) * Water.TILE);
@@ -1221,7 +1310,7 @@ async function getData(path, type) {
   try { cache = await caches.open('rn-data'); } catch (e) { /* cache non disponibile */ }
   const url = DATA_BASE + path;
   /* riquadri del pacchetto scaricato: si leggono dal telefono (li tiene aggiornati syncPackage all'avvio) */
-  if (cache && S.set.pkg !== 'off' && /^(nautica\/c_|depth\/d_)/.test(path)) {
+  if (cache && (S.set.pkg !== 'off' || /^terra\//.test(path)) && /^(nautica\/c_|depth\/d_|terra\/t_)/.test(path)) {
     const hit = await cache.match(url).catch(() => null);
     if (hit) return type === 'blob' ? hit.blob() : hit.json();
   }
@@ -1261,18 +1350,21 @@ async function syncPackage(force) {
   const ni = await fresh('nautica/index.json');
   if (!ni || !ni.tiles) return;
   const di = S.set.pkg === 'all' ? await fresh('depth/index.json') : null;
+  const ti = await fresh('terra/index.json');
   const items = ni.tiles.filter(t => t.file).map(t => ({ key: 'n:' + t.id, path: 'nautica/' + t.file, sig: t.bytes + '/' + t.count, bytes: t.bytes || 0 }))
-    .concat(di && di.tiles ? di.tiles.map(t => ({ key: 'd:' + t.id, path: 'depth/' + t.file, sig: String(t.bytes), bytes: t.bytes || 0 })) : []);
+    .concat(di && di.tiles ? di.tiles.map(t => ({ key: 'd:' + t.id, path: 'depth/' + t.file, sig: String(t.bytes), bytes: t.bytes || 0 })) : [])
+    .concat(ti && ti.tiles ? ti.tiles.map(t => ({ key: 't:' + t.id, path: 'terra/' + t.file, sig: String(t.bytes), bytes: t.bytes || 0 })) : []);
   const saved = store.get('pkgSig', {}), want = new Set(items.map(x => x.key));
   /* riquadri tolti dall'indice (diventati vuoti) o profondità non più volute: si cancellano dal telefono */
   for (const k of Object.keys(saved)) if (!want.has(k)) {
-    const path = k.startsWith('n:') ? 'nautica/' + k.slice(2) + '.geojson' : 'depth/' + k.slice(2) + '.png';
+    const path = k.startsWith('n:') ? 'nautica/' + k.slice(2) + '.geojson' : k.startsWith('t:') ? 'terra/' + k.slice(2) + '.json' : 'depth/' + k.slice(2) + '.png';
     await cache.delete(DATA_BASE + path).catch(() => {}); delete saved[k];
   }
   const todo = [];
   for (const x of items) if (saved[x.key] !== x.sig || !(await cache.match(DATA_BASE + x.path).catch(() => null))) todo.push(x);
   /* l'indice aggiornato va salvato anche lui, per l'uso senza rete */
   await cache.put(DATA_BASE + 'nautica/index.json', new Response(JSON.stringify(ni), { headers: { 'Content-Type': 'application/json' } })).catch(() => {});
+  if (ti) { await cache.put(DATA_BASE + 'terra/index.json', new Response(JSON.stringify(ti), { headers: { 'Content-Type': 'application/json' } })).catch(() => {}); terraIdxP = null; }
   if (di) await cache.put(DATA_BASE + 'depth/index.json', new Response(JSON.stringify(di), { headers: { 'Content-Type': 'application/json' } })).catch(() => {});
   const totMb = items.reduce((a, x) => a + x.bytes, 0) / 1e6;
   const finish = () => {
@@ -1295,7 +1387,7 @@ async function syncPackage(force) {
         await cache.put(DATA_BASE + x.path, r);
         saved[x.key] = x.sig;
         /* il riquadro in memoria è vecchio: verrà riletto */
-        if (x.key.startsWith('n:')) nTiles.delete(x.key.slice(2)); else dTiles.delete(x.key.slice(2));
+        if (x.key.startsWith('n:')) nTiles.delete(x.key.slice(2)); else if (x.key.startsWith('t:')) terraCells.delete(x.key.slice(2)); else dTiles.delete(x.key.slice(2));
       } catch (e) { failed++; }
       PKG.done++;
       if (PKG.done % 10 === 0) { store.set('pkgSig', saved); pkgStatus(); }
@@ -1584,7 +1676,7 @@ async function isoLines(b, z) {
   });
   return out;
 }
-window.rnDebug = { offTilesRoute: p => offTilesRoute(p), coastHere, isoLines, mergeCw: () => mergeCw() };
+window.rnDebug = { terraTile: (z, x, y) => terraTile(z, x, y), offTilesRoute: p => offTilesRoute(p), coastHere, isoLines, mergeCw: () => mergeCw() };
 const isoRenderer = L.canvas({ padding: 0.2 });
 
 /* Tessere intere in memoria: al massimo 16 (3,7 MB l'una), le meno usate di recente escono. */

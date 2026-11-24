@@ -39,7 +39,9 @@ Deve prima approvarlo un **moderatore**. Tu lo vedi subito tra i tuoi punti. Per
 
 ### Posso usare l'app sempre senza rete?
 
-Sì, nella zona dove navighi. Una volta, con il Wi-Fi:
+Sì, da sola. Quando il telefono ha internet (di base solo con il Wi-Fi) l'app controlla se ci sono dati nuovi e scarica solo quelli cambiati: dati nautici, profondità e la **carta di base** di tutta Italia (terra, mare, lagune, porti, fiumi e canali), circa 95 MB la prima volta. Senza rete la carta di base si disegna sul telefono dove manca l'immagine della carta: la carta non è mai vuota e le rotte si calcolano ovunque. Non devi scaricare niente a mano.
+
+Le immagini della carta che guardi con la rete (con strade e nomi) restano salvate e si usano al posto della carta di base. Se vuoi le immagini complete di una zona anche dove non sei mai passato, una volta, con il Wi-Fi:
 1. porta la carta sulla tua zona (per esempio dalla laguna a Caorle);
 2. in **Carta → Carta senza rete** tocca **Scarica tutto per questa zona**.
 

@@ -53,7 +53,7 @@
 - Profondità e **linee batimetriche** EMODnet, calcolate sul telefono.
 - Traffico AIS, traccia percorsa.
 - Temi giorno, sera e notte.
-- **Uso sempre senza rete** nella tua zona dopo un solo scaricamento: pacchetto dei dati nautici, carta della zona o della rotta da scaricare, ricerca tra i luoghi salvati, ultime previsioni meteo.
+- **Uso sempre senza rete**, da solo: quando c'è internet l'app aggiorna dati nautici, profondità e una **carta di base di tutta Italia** disegnata sul telefono (terra, mare, lagune, porti, fiumi); in più carta della zona o della rotta da scaricare, carta della zona o della rotta da scaricare, ricerca tra i luoghi salvati, ultime previsioni meteo.
 
 **Punti di interesse**
 - I tuoi punti: pesca, fonda, immersione, sosta, relitto. Si sincronizzano con l'account e si esportano in GPX.
@@ -135,6 +135,7 @@ Rotta Nautica è un **aiuto alla navigazione**. Non sostituisce:
 **Azioni GitHub** (cartella `.github/workflows`)
 - `apk.yml` costruisce l'APK con Capacitor. Con **Run workflow** e il nome della release (es. `V1.8.0`) la pubblica, con la descrizione presa da `release/V1.8.0.md`.
 - `nautica.yml` aggiorna i dati nautici e i relitti.
+- `terra.yml` crea la carta di base per l'uso senza rete (cartella `terra/`).
 - `poi.yml` aggiorna punti di fonda, aree marine protette, marine e distributori.
 - `functions.yml` pubblica la funzione Firebase dei pagamenti e le regole del database (`database.rules.json`).
 - `diagnostica.yml` conta i dati della community.
