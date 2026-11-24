@@ -84,4 +84,7 @@ Per regalarla o dopo un bonifico:
 2. Sotto `pro` aggiungi il codice utente della persona (lo trovi in **Authentication → Users**).
 3. Dentro, aggiungi la chiave `tipo` con valore `manuale`.
 
+Scrivi tutto in **minuscolo e senza spazi**: `pro`, `tipo`, `manuale`. Il database distingue le maiuscole, quindi un nodo `Pro` o una chiave `Tipo` non valgono.
+Se hai già scritto una voce sbagliata, avvia **Actions → Sistema voci Pro → Run workflow**: sposta e corregge da solo le voci.
+
 Per toglierla, cancella la riga.

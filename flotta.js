@@ -146,7 +146,7 @@
   F.dbWatch = (path, cb) => { if (!fb || !F.user) return () => {}; return fb.d.onValue(fb.d.ref(db, path), s => cb(s.val()), () => cb(null)); };
   F.stamp = () => fb ? fb.d.serverTimestamp() : Date.now();
   /* Pro attivo: acquisto unico o attivato a mano (per sempre), abbonamento fino alla data di scadenza */
-  F.isPro = () => { const p = F.pro; if (!p) return false; if (p.tipo === 'unico' || p.tipo === 'manuale') return true; return +p.fino > now(); };
+  F.isPro = () => { const p = F.pro; if (!p || typeof p !== 'object') return false; const t = String(p.tipo != null ? p.tipo : p.Tipo || '').trim().toLowerCase(); if (t === 'unico' || t === 'manuale') return true; return +(p.fino || p.Fino) > now(); };
   /* all'avvio: se l'accesso era già stato fatto, si ricollega da solo */
   F.init = wasIn => { if (F.available && (wasIn || redirPending())) load().catch(() => {}); };
   /* si chiama quando compare il tasto "Accedi con Google": scarica Firebase prima del tocco */
