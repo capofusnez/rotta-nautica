@@ -177,19 +177,38 @@ async function tileFetchSave(url) {
   } catch (e) { /* spazio pieno: si mostra lo stesso */ }
   return r.blob();
 }
+/* senza rete, se manca l'immagine di quello zoom, si ingrandisce quella salvata di uno zoom più basso (fino a 6 livelli):
+   così avvicinando la carta oltre lo zoom scaricato non diventa grigia */
+async function tileFromParent(layer, c) {
+  for (let up = 1; up <= 6 && c.z - up >= 0; up++) {
+    const f = 2 ** up, pc = { x: Math.floor(c.x / f), y: Math.floor(c.y / f), z: c.z - up };
+    const b = await tileFromCache(layer.getTileUrl(pc)); if (!b) continue;
+    const bmp = await createImageBitmap(b).catch(() => null); if (!bmp) continue;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+    const sz = 256 / f, ox = (c.x - pc.x * f) * sz, oy = (c.y - pc.y * f) * sz, g = cv.getContext('2d');
+    g.imageSmoothingEnabled = true; g.drawImage(bmp, ox, oy, sz, sz, 0, 0, 256, 256);
+    return new Promise(r => cv.toBlob(r, 'image/png'));
+  }
+  return null;
+}
 const OffTile = L.TileLayer.extend({
   createTile(coords, done) {
     const img = document.createElement('img'), url = this.getTileUrl(coords);
     img.alt = ''; img.setAttribute('role', 'presentation');
     const show = b => { const u = URL.createObjectURL(b); img.onload = () => { URL.revokeObjectURL(u); done(null, img); }; img.onerror = e => { URL.revokeObjectURL(u); done(e, img); }; img.src = u; };
-    tileFromCache(url).then(b => b || (navigator.onLine ? tileFetchSave(url) : null)).then(b => {
-      if (b) show(b);
-      else { img.onload = () => done(null, img); img.onerror = e => done(e, img); img.src = url; }
-    }).catch(() => { img.onload = () => done(null, img); img.onerror = e => done(e, img); img.src = url; });
+    const net = () => { if (this.options.crossOrigin) img.crossOrigin = 'anonymous'; img.onload = () => done(null, img); img.onerror = e => done(e, img); img.src = url; };
+    const parent = () => tileFromParent(this, coords).then(b => { if (b) show(b); else net(); }).catch(net);
+    tileFromCache(url).then(b => {
+      if (b) return show(b);
+      if (!navigator.onLine) return parent();
+      /* con la rete: nell'APK l'immagine si salva da qui; sul sito la salva il service worker */
+      if (window.Capacitor) return tileFetchSave(url).then(show).catch(parent);
+      net();
+    }).catch(parent);
     return img;
   }
 });
-const tileL = (url, o) => window.Capacitor ? new OffTile(url, o) : L.tileLayer(url, o);
+const tileL = (url, o) => new OffTile(url, o);
 const base = {
   osm: tileL('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, zIndex: 1, crossOrigin: true, attribution: '© OpenStreetMap' }),
   sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, zIndex: 1, attribution: 'Esri' })
@@ -1306,9 +1325,30 @@ function offTiles(bounds) {
   }
   return out;
 }
+/* intorno alla rotta: solo una fascia lungo il percorso (circa 1 km per lato da vicino, di più da lontano) */
+function offTilesRoute(pts) {
+  const set = new Set(), out = [];
+  for (let z = 8; z <= OFF_MAXZ; z++) {
+    const pad = 1;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[Math.min(i + 1, pts.length - 1)];
+      const n = Math.max(1, Math.ceil(Math.max(Math.abs(tX(b.lng, z) - tX(a.lng, z)), Math.abs(tY(b.lat, z) - tY(a.lat, z))) * 2));
+      for (let k = 0; k <= n; k++) {
+        const la = a.lat + (b.lat - a.lat) * k / n, lo = a.lng + (b.lng - a.lng) * k / n, x = tX(lo, z), y = tY(la, z);
+        for (let dx = -pad; dx <= pad; dx++) for (let dy = -pad; dy <= pad; dy++) {
+          const key = `${z}/${x + dx}/${y + dy}`; if (set.has(key)) continue; set.add(key);
+          out.push(`https://tile.openstreetmap.org/${key}.png`);
+          if (S.set.sea) out.push(`https://tiles.openseamap.org/seamark/${key}.png`);
+        }
+      }
+      if (out.length > OFF_LIMIT * 2) return null;
+    }
+  }
+  return out;
+}
 function offBounds(kind) {
   if (kind === 'rotta') {
-    const w = (S.route.path && S.route.path.length ? S.route.path : wps()); if (w.length < 2) return null;
+    const w = wps(); if (w.length < 2) return null;
     return L.latLngBounds(w.map(p => [p.lat, p.lng])).pad(0.15);
   }
   return map.getBounds();
@@ -1324,8 +1364,9 @@ async function offDownload(kind) {
   if (OFF.running) { OFF.stop = true; return; }
   if (!navigator.onLine) { toast('Serve la connessione a internet'); return; }
   const b = offBounds(kind); if (!b) { toast('Prima imposta una rotta'); return; }
-  const list = offTiles(b);
-  if (!list) { toast('Zona troppo grande: avvicina la carta (zoom) o scegli una zona più piccola'); return; }
+  const rp = kind === 'rotta' ? wps() : null;
+  const list = rp ? offTilesRoute(rp) : offTiles(b);
+  if (!list) { toast(rp ? 'Rotta troppo lunga per scaricarla tutta: scarica la zona visibile a pezzi' : 'Zona troppo grande: avvicina la carta (zoom) o scegli una zona più piccola'); return; }
   let cache; try { cache = await caches.open(MAP_OFF); } catch (e) { toast('Questo dispositivo non permette di salvare la carta'); return; }
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* facoltativo */ }
   const todo = [];
@@ -1336,7 +1377,13 @@ async function offDownload(kind) {
   const work = async () => {
     while (todo.length && !OFF.stop) {
       const u = todo.shift();
-      try { const r = await fetch(u, { mode: 'cors' }); if (!r.ok) throw new Error(r.status); await cache.put(u, r); } catch (e) { OFF.fail++; }
+      try {
+        let r = await fetch(u, { mode: 'cors' }).catch(() => null);
+        /* se un server non permette la lettura (CORS), sul sito la copia vale lo stesso per il service worker */
+        if (!r && !window.Capacitor) r = await fetch(u, { mode: 'no-cors' });
+        if (!r || !(r.ok || r.type === 'opaque')) throw new Error(r ? r.status : 'rete');
+        await cache.put(u, r);
+      } catch (e) { OFF.fail++; }
       OFF.done++; if (OFF.done % 25 === 0) offStatus();
     }
   };
@@ -1353,7 +1400,19 @@ async function offClear() {
 function renderOffBtns() {
   const el = $('offBtns'); if (!el) return;
   el.innerHTML = OFF.running ? '<button data-act="offStop" class="danger">Interrompi</button>'
-    : '<button data-act="offGet" data-k="vista">Scarica la zona visibile</button><button data-act="offGet" data-k="rotta">Scarica intorno alla rotta</button><button data-act="offClear" class="danger">Cancella</button>';
+    : '<button data-act="offAll" class="primary">Prepara tutto per l\'uscita</button><button data-act="offGet" data-k="vista">Scarica la zona visibile</button><button data-act="offGet" data-k="rotta">Scarica intorno alla rotta</button><button data-act="offClear" class="danger">Cancella</button>';
+}
+/* un tocco prima di partire: dati nautici, carta intorno alla rotta (o della zona visibile) e meteo della destinazione */
+async function offAll() {
+  if (!navigator.onLine) { toast('Serve la connessione a internet'); return; }
+  const hasRoute = wps().length > 1;
+  if (S.set.pkg === 'off') { S.set.pkg = 'nautica'; saveSet(); if ($('sPkg')) $('sPkg').value = 'nautica'; }
+  const pk = syncPackage(true);
+  const dst = S.route.dest || (S.pos ? { lat: S.pos.lat, lng: S.pos.lng } : map.getCenter());
+  loadMeteo(dst, S.route.dest ? 'Destinazione' : 'Centro della carta').catch(() => {});
+  await offDownload(hasRoute ? 'rotta' : 'vista');
+  await pk;
+  toast(hasRoute ? 'Pronto: dati, carta intorno alla rotta e meteo salvati sul telefono' : 'Pronto: dati, carta della zona e meteo salvati sul telefono');
 }
 
 /* Dati nautici di tutta Italia a riquadri (nautica/index.json, creato dall'azione "Aggiorna dati nautici").
@@ -1504,7 +1563,7 @@ async function isoLines(b, z) {
   });
   return out;
 }
-window.rnDebug = { coastHere, isoLines, mergeCw: () => mergeCw() };
+window.rnDebug = { offTilesRoute: p => offTilesRoute(p), coastHere, isoLines, mergeCw: () => mergeCw() };
 const isoRenderer = L.canvas({ padding: 0.2 });
 
 /* Tessere intere in memoria: al massimo 16 (3,7 MB l'una), le meno usate di recente escono. */
@@ -3430,6 +3489,7 @@ document.addEventListener('click', e => {
     }
     case 'encImport': $('encFile').click(); break;
     case 'offGet': offDownload(d.k); break;
+    case 'offAll': offAll(); break;
     case 'offStop': OFF.stop = true; break;
     case 'offClear': if (b.dataset.armed) offClear(); else { b.dataset.armed = '1'; b.textContent = 'Tocca ancora per cancellare'; setTimeout(() => { delete b.dataset.armed; renderOffBtns(); }, 3000); } break;
     case 'pkgSync': if (!navigator.onLine) toast('Serve la connessione a Internet'); else { toast('Controllo gli aggiornamenti dei dati…'); syncPackage(true); } break;

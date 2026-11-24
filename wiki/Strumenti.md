@@ -53,7 +53,7 @@ Il pulsante **Carta** a destra apre i livelli:
 - **Traffico navale (AIS)**: aggiunge il pulsante AIS. Serve internet e mostra solo le navi con trasponditore acceso.
 - **Carte ENC (S-57)**: carte nautiche elettroniche da importare come pacchetto.
 - **Dati per l'uso senza rete**: scarica i dati nautici e le profondità sul telefono; c'è l'opzione "solo con il Wi-Fi". Con il pacchetto si salvano anche relitti, marine, zone di pesca e punti di fonda.
-- **Carta senza rete**: scarica le immagini della carta (e dei segnali OpenSeaMap, se accesi) della zona visibile o intorno alla rotta, fino all'ingrandimento 15. **Interrompi** ferma lo scaricamento, **Cancella** toglie le carte scaricate. Se la zona è troppo grande, avvicina la carta.
+- **Carta senza rete**: **Prepara tutto per l'uscita** scarica in un tocco dati nautici, carta lungo la rotta e meteo della destinazione. Oppure scarica le immagini della carta (e dei segnali OpenSeaMap, se accesi) della zona visibile o intorno alla rotta, fino all'ingrandimento 15. **Interrompi** ferma lo scaricamento, **Cancella** toglie le carte scaricate. Se la zona è troppo grande, avvicina la carta.
 
 ## Sulla carta
 

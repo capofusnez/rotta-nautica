@@ -32,7 +32,12 @@ Con il Wi-Fi apri **Carta → Dati per l'uso senza rete** e scarica il pacchetto
 - **dati nautici e profondità** (circa 90 MB);
 - **solo dati nautici** (circa 17 MB).
 
-Poi, in **Carta → Carta senza rete**, porta la carta sulla zona dove andrai e tocca **Scarica la zona visibile**, oppure imposta la rotta e tocca **Scarica intorno alla rotta**. Anche la carta che guardi resta in memoria.
+Poi imposta la rotta (punto 5) e, ancora con la rete, in **Carta → Carta senza rete** tocca **Prepara tutto per l'uscita**. Con un tocco l'app:
+- scarica o aggiorna i dati nautici;
+- salva la carta lungo la rotta (o della zona visibile, se la rotta non c'è), fino allo zoom 15;
+- salva le previsioni meteo della destinazione.
+
+In mare, senza campo, avvicinando la carta oltre lo zoom 15 l'app ingrandisce l'immagine salvata invece di lasciare il grigio.
 
 ## 5. Imposta la rotta
 
