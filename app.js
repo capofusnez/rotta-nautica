@@ -173,6 +173,9 @@ const legLine = L.polyline([], { color: '#e254ff', weight: 6, opacity: .95 }).ad
 const trackLine = L.polyline([], { color: '#ff9f1c', weight: 4, opacity: .95 }).addTo(map);
 /* relitti per immersioni (vedi "Relitti per immersioni" più sotto) */
 const wreckLayer = L.layerGroup();
+/* relitti segnalati dalla community e approvati: si vedono con i punti della community anche se lo strato Relitti è spento */
+const cwLayer = L.layerGroup();
+const hasCw = () => !!(window.RNCom && Object.keys((RNCom.wrecks() || {}).nuovi || {}).length);
 let WRECKS = null, wreckLoading = null;
 /* barche con Rotta Nautica (vedi "Barche con Rotta Nautica" più sotto) */
 const fleetLayer = L.layerGroup().addTo(map);
@@ -274,6 +277,7 @@ function applyLayers() {
   if (S.set.iso) { if (!map.hasLayer(isoLayer)) { isoLayer.addTo(map); drawIso(); } } else { map.removeLayer(isoLayer); isoLayer.clearLayers(); }
   if (S.set.track) { if (!map.hasLayer(trackLine)) trackLine.addTo(map); } else map.removeLayer(trackLine);
   { if (S.set.wrecks) { if (!map.hasLayer(wreckLayer)) { wreckLayer.addTo(map); loadWrecks(); } } else map.removeLayer(wreckLayer); }
+  if (S.set.wrecks || S.set.comm) { if (!map.hasLayer(cwLayer)) cwLayer.addTo(map); if (!WRECKS && hasCw()) loadWrecks(); } else map.removeLayer(cwLayer);
   if (S.set.pois) { if (!map.hasLayer(poiLayer)) poiLayer.addTo(map); } else map.removeLayer(poiLayer);
   if (S.set.amp) { if (!map.hasLayer(ampLayer)) { ampLayer.addTo(map); loadPoiData(); } } else map.removeLayer(ampLayer);
   if (S.set.fonde) { if (!map.hasLayer(fondaLayer)) { fondaLayer.addTo(map); loadPoiData(); } } else map.removeLayer(fondaLayer);
@@ -2161,7 +2165,7 @@ function wikiUrl(v) { const m = /^([a-z]{2,3}):(.+)$/.exec(v || ''); return m ? 
 function safeUrl(v) { return /^https?:\/\//i.test(v || '') ? v : v && /^www\./i.test(v) ? 'https://' + v : null; }
 function wkMarker(w) {
   w.marker = L.marker([w.lat, w.lng], { title: wkName(w), icon: L.divIcon({ className: '', iconSize: w.dive ? [20, 20] : [16, 16], iconAnchor: w.dive ? [10, 10] : [8, 8], html: `<div class="wk${w.dive ? ' dive' : ''}${w.comm ? ' comm' : ''}"></div>` }) })
-    .bindPopup(() => wreckPopup(w)).addTo(wreckLayer);
+    .bindPopup(() => wreckPopup(w)).addTo(w.comm ? cwLayer : wreckLayer);
 }
 /* relitti della community (comunita.js): nuovi relitti approvati e posizioni corrette approvate */
 function mergeCw() {
@@ -2180,7 +2184,7 @@ function mergeCw() {
     Object.assign(w, { lat: v.lat, lng: v.lng, name: v.n || '', depth: v.prof != null ? v.prof : null, note: v.note || '', by: v.da || '' });
     if (w.marker) w.marker.setLatLng([w.lat, w.lng]); else wkMarker(w);
   });
-  for (let i = WRECKS.length - 1; i >= 0; i--) { const w = WRECKS[i]; if (w.comm && !N[w.id.slice(2)]) { if (w.marker) wreckLayer.removeLayer(w.marker); WRECKS.splice(i, 1); } }
+  for (let i = WRECKS.length - 1; i >= 0; i--) { const w = WRECKS[i]; if (w.comm && !N[w.id.slice(2)]) { if (w.marker) cwLayer.removeLayer(w.marker); WRECKS.splice(i, 1); } }
 }
 const wkComm = w => w.comm ? `Segnalato dalla community${w.by ? ' da ' + esc(w.by) : ''}` : w.posFix ? `Posizione corretta dalla community${w.posBy ? ' da ' + esc(w.posBy) : ''}` : null;
 function wreckPopup(w) {
@@ -2509,7 +2513,7 @@ function renderModBox() {
   }
   el.innerHTML = h;
 }
-if (window.RNCom) RNCom.on(() => { mergeCw(); drawComm(); modHome(); if (S.tab === 'mod') renderModBox(); if (S.tab === 'punti') renderPunti(); });
+if (window.RNCom) RNCom.on(() => { if (!WRECKS && S.set.comm && hasCw()) loadWrecks(); mergeCw(); drawComm(); modHome(); if (S.tab === 'mod') renderModBox(); if (S.tab === 'punti') renderPunti(); });
 if (window.Flotta) window.Flotta.on(() => modHome());
 modHome();
 

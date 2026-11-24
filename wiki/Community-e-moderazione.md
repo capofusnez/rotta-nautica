@@ -29,6 +29,8 @@ Dai da 1 a 5 stelle e scrivi un commento: una recensione per persona per luogo, 
 
 Il punto resta sempre tra i tuoi e lo vedi subito. Gli altri lo vedono dopo l'**approvazione di un moderatore**.
 
+Sulla carta i punti e i relitti approvati compaiono con il contorno arancione tratteggiato. Si vedono finché in **Punti di interesse** è spuntato **Mostra i punti e i relitti condivisi dagli altri utenti**, anche con lo strato **Relitti** spento.
+
 ## Correggere un relitto
 
 Nella scheda del relitto (**Approfondisci**):
